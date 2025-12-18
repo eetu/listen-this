@@ -9,6 +9,9 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var audiobooks: [Audiobook]
+
     var body: some View {
         LibraryView()
     }

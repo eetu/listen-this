@@ -8,6 +8,10 @@
 import SwiftUI
 import SwiftData
 
+#if os(iOS)
+import WatchConnectivity
+#endif
+
 @main
 struct Listen_ThisApp: App {
     // MARK: - SwiftData Model Container
@@ -34,10 +38,13 @@ struct Listen_ThisApp: App {
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
             
-            modelContainer = try ModelContainer(
+            let container = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
+            
+            modelContainer = container
+            
         } catch {
             // Provide more helpful error message
             print("ModelContainer initialization error: \(error)")
@@ -49,7 +56,18 @@ struct Listen_ThisApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    #if os(iOS)
+                    // Log WatchConnectivity status for debugging
+                    print("📱 [iOS App] View appeared")
+                    print("📱 [iOS App] Session state: \(WCSession.default.activationState.rawValue)")
+                    print("📱 [iOS App] Watch paired: \(WCSession.default.isPaired)")
+                    print("📱 [iOS App] Watch app installed: \(WCSession.default.isWatchAppInstalled)")
+                    print("📱 [iOS App] Reachable: \(WCSession.default.isReachable)")
+                    #endif
+                }
         }
         .modelContainer(modelContainer)
     }
 }
+

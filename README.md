@@ -10,6 +10,7 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
 - Independent Watch operation without iPhone connection
 - Display chapter information and artwork
 - Support for multiple content sources (iCloud Drive, Jellyfin, AudiobookShelf)
+- WatchConnectivity integration for direct file transfers between iPhone and Watch
 
 ## Project Status
 
@@ -108,28 +109,68 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
    - File download status monitoring
    - Security-scoped resource access
 
+### Step 5: WatchConnectivity Integration (IN PROGRESS)
+
+**Completed Components:**
+
+1. **WatchConnectivityManager**
+   - Singleton service for managing Watch-iPhone communication
+   - Direct file transfers from iPhone cache to Watch
+   - Transfer progress tracking
+   - NSFileCoordinator for safe iCloud file access
+   - Transfer status monitoring
+
+2. **iOS Integration**
+   - "Send to Watch" context menu option
+   - Transfer progress indicators
+   - Automatic WatchConnectivity session activation
+   - Transfer retry logic
+
+3. **Watch Receiver (Planned)**
+   - Receive files from iPhone
+   - Save to Watch cache directory
+   - Update CacheEntry models
+   - Progress notifications
+
 ### Next Steps
 
-5. **watchOS App** - Build Apple Watch companion
-6. **Enhanced Features** - Bookmarks, CarPlay integration
-7. **Additional Sources** - Jellyfin, AudiobookShelf providers
+6. **watchOS App** - Build Apple Watch companion with playback
+7. **Enhanced Features** - Bookmarks, CarPlay integration
+8. **Additional Sources** - Jellyfin, AudiobookShelf providers
 
 ## Project Structure
 
 ```
-listen this/
-├── Shared/                  # Cross-platform code
-│   ├── Models/             # SwiftData models
-│   └── Providers/          # Content source abstractions
-├── iOS/                    # iOS/iPadOS specific
-│   └── Views/              # SwiftUI views
-├── docs/                   # Documentation
-├── ContentView.swift       # Main tab view
-├── listen_thisApp.swift    # App entry point
-└── README.md              # This file
+Listen This/
+├── Models/
+│   ├── Audiobook.swift
+│   ├── Chapter.swift
+│   ├── PlaybackSession.swift
+│   ├── CacheEntry.swift
+│   └── ContentSource.swift
+├── Services/
+│   ├── AudioPlayerService.swift
+│   ├── AudiobookLibraryService.swift
+│   ├── AudiobookCacheManager.swift
+│   ├── iCloudDriveProvider.swift
+│   ├── WatchConnectivityManager.swift
+│   └── WatchAudioPlayerService.swift
+├── Views/
+│   ├── iOS/
+│   │   ├── LibraryView.swift
+│   │   ├── PlayerView.swift
+│   │   ├── SettingsView.swift
+│   │   └── ImportView.swift
+│   └── watchOS/
+│       └── WatchPlayerView.swift
+├── Utilities/
+│   └── AudiobookError.swift
+├── ContentView.swift
+├── Listen_ThisApp.swift
+└── README.md
 ```
 
-**File Organization**: See `docs/File-Organization-Standards.md` for conventions and best practices when adding new files.
+**File Organization**: Maintain proper folder structure. See `Architechture.md` for complete system architecture and implementation details.
 
 ## Requirements
 
@@ -139,9 +180,15 @@ listen this/
 - **watchOS**: 10.0+ (planned)
 - **Swift**: 5.9+
 
-## Getting Started
+### Getting Started
 
-**Quick Start**: See `QUICKSTART-ICLOUD.md` for 10-minute setup guide.
+**Quick Start**: 
+
+1. Open project in Xcode 15.0+
+2. Configure signing with your team
+3. Enable iCloud capabilities (CloudKit + iCloud Documents)
+4. Enable Background Modes (Audio, Background fetch)
+5. Build and run on iOS 17.0+ device or simulator
 
 ### 1. Open Project
 
@@ -242,11 +289,8 @@ Run: Cmd+R
 
 ## Documentation
 
-- **Architecture** - Complete system architecture (see `architechture.md`)
-- **iCloud Drive Setup** - Configure and use iCloud Drive provider (see `docs/iCloud-Drive-Setup.md`)
-- **Xcode Configuration** - Quick setup checklist (see `docs/Xcode-Configuration.md`)
-- **Testing Guide** - Comprehensive test plan (see `docs/Testing-Guide.md`)
-- **Implementation Summary** - Technical details and design decisions (see `docs/Implementation-Summary.md`)
+- **Architecture** - Complete system architecture (see `Architechture.md`)
+- **Testing Guide** - Coming soon
 
 ## Development Roadmap
 
@@ -326,7 +370,8 @@ Private project - All rights reserved
 
 ---
 
-**Last Updated**: December 15, 2025
-**Status**: Phase 1 MVP Complete ✅
-**Next**: watchOS App Development or Additional Content Sources
+**Last Updated**: December 18, 2025
+**Status**: Phase 1 MVP In Progress
+**Next**: Complete AVPlayer Integration and watchOS App Development
 **CloudKit**: Configured and Active
+**WatchConnectivity**: Implemented for File Transfers

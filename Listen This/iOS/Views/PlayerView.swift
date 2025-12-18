@@ -586,8 +586,6 @@ struct SleepTimerView: View {
             author: "John Doe",
             narrator: "Jane Smith",
             duration: 36000,
-            sourceType: "icloud",
-            sourcePath: "/path/to/book.m4b"
         ))
     }
     .modelContainer(for: [Audiobook.self, Chapter.self, PlaybackSession.self])

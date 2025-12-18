@@ -7,60 +7,71 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 
 ### Key Features
 - Play M4B audiobooks on iPhone, iPad, and Apple Watch
-- Automatic playback position sync across all devices
-- Offline playback with smart caching on Apple Watch
+- Automatic playback position sync across all devices via CloudKit
+- Offline playback on all devices with device-independent caching
 - Independent Watch operation without iPhone connection
 - Display chapter information and artwork
 - Support for multiple content sources
+- Direct file transfers between iPhone and Watch via WatchConnectivity
 
 ---
 
 ## System Architecture
 
-### High-Level Architecture Diagram
+### High-Level Component Diagram
 
-```mermaid
-graph TB
-    subgraph "Content Sources"
-        A[iCloud Drive]
-        B[Jellyfin Server]
-        C[AudiobookShelf Server]
-    end
-    
-    subgraph "Sync Layer"
-        D[CloudKit Private DB]
-    end
-    
-    subgraph "iOS/iPadOS"
-        E[iPhone/iPad App]
-        F[Local Cache]
-        G[SwiftData]
-    end
-    
-    subgraph "watchOS"
-        H[Watch App]
-        I[Watch Cache]
-        J[Watch SwiftData]
-    end
-    
-    A -.WiFi.-> H
-    B -.WiFi.-> H
-    C -.WiFi.-> H
-    
-    A --> E
-    B --> E
-    C --> E
-    
-    E --> F
-    E --> G
-    H --> I
-    H --> J
-    
-    E <--> D
-    H <--> D
-    
-    E -.Library Sync.-> H
 ```
+┌─────────────────────────────────────────────────────────────┐
+│                         iOS/iPadOS App                       │
+├─────────────────────────────────────────────────────────────┤
+│  Views                                                       │
+│  ├─ LibraryView (grid, search, import)                     │
+│  ├─ PlayerView (playback controls, chapters)               │
+│  ├─ SettingsView                                           │
+│  └─ ImportView (iCloud Drive picker)                       │
+├─────────────────────────────────────────────────────────────┤
+│  Services                                                    │
+│  ├─ AudioPlayerService (AVPlayer integration)              │
+│  ├─ AudiobookLibraryService (library management)           │
+│  ├─ AudiobookCacheManager (local cache)                    │
+│  ├─ iCloudDriveProvider (file import)                      │
+│  └─ WatchConnectivityManager (file transfers)              │
+├─────────────────────────────────────────────────────────────┤
+│  Models (SwiftData)                                         │
+│  ├─ Audiobook (metadata, iCloud path)                      │
+│  ├─ Chapter (timing, metadata)                             │
+│  ├─ PlaybackSession (position, state)                      │
+│  └─ CacheEntry (cache metadata)                            │
+└─────────────────────────────────────────────────────────────┘
+                              ↕
+                    CloudKit Private DB
+                    (metadata sync)
+                              ↕
+                    WatchConnectivity
+                    (file transfers)
+                              ↕
+┌─────────────────────────────────────────────────────────────┐
+│                         watchOS App                          │
+├─────────────────────────────────────────────────────────────┤
+│  Views                                                       │
+│  ├─ WatchLibraryView                                       │
+│  ├─ WatchPlayerView                                        │
+│  └─ DownloadView                                           │
+├─────────────────────────────────────────────────────────────┤
+│  Services                                                    │
+│  ├─ WatchAudioPlayerService                                │
+│  ├─ WatchDownloadManager                                   │
+│  ├─ AudiobookCacheManager (shared logic)                   │
+│  └─ WatchConnectivityManager                               │
+├─────────────────────────────────────────────────────────────┤
+│  Models (SwiftData - same schema)                           │
+│  ├─ Audiobook                                              │
+│  ├─ Chapter                                                │
+│  ├─ PlaybackSession                                        │
+│  └─ CacheEntry                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
 
 ### Architecture Principles
 
@@ -69,6 +80,28 @@ graph TB
 3. **Eventual Consistency**: CloudKit syncs playback state when network available
 4. **Source Agnostic**: Abstract content providers behind common protocol
 5. **Resource Aware**: Intelligent cache management respecting device constraints
+6. **Device-Independent Caching**: Each device manages its own cache without sync conflicts
+
+### Current Implementation Status
+
+**Completed:**
+- SwiftData models with CloudKit sync configuration
+- Device-independent cache architecture
+- iOS application with library and player views
+- iCloud Drive file import and management
+- WatchConnectivity file transfer (iPhone sender)
+- AudioPlayerService with AVFoundation integration
+- Chapter parsing and metadata extraction
+
+**In Progress:**
+- Full AVPlayer playback integration
+- Watch receiver for file transfers
+- watchOS application
+
+**Planned:**
+- Additional content sources (Jellyfin, AudiobookShelf)
+- Enhanced playback features (bookmarks, sleep timer)
+- CarPlay integration
 
 ---
 
@@ -99,231 +132,14 @@ graph TB
 
 ---
 
-## Data Models
-
-### SwiftData Schema
-
-#### Audiobook Entity
-```swift
-@Model
-class Audiobook {
-    @Attribute(.unique) var id: UUID
-    var title: String
-    var author: String
-    var narrator: String?
-    @Attribute(.externalStorage) var artworkData: Data?
-    var duration: Double  // Total duration in seconds
-    var fileSize: Int64   // File size in bytes
-    var sourceType: String  // "icloud", "jellyfin", "audiobookshelf"
-    var sourcePath: String  // Original path/URL
-    var localFilePath: String?  // Cached file path if downloaded
-    var isCached: Bool
-    var downloadDate: Date?
-    var lastAccessedDate: Date
-    var lastSyncedDate: Date
-    var chapterCount: Int
-    var isArchived: Bool
-    
-    @Relationship(deleteRule: .cascade) var chapters: [Chapter]
-    @Relationship(deleteRule: .cascade) var playbackSession: PlaybackSession?
-    @Relationship(deleteRule: .cascade) var cacheEntry: CacheEntry?
-}
-```
-
-#### Chapter Entity
-```swift
-@Model
-class Chapter {
-    @Attribute(.unique) var id: UUID
-    var index: Int
-    var title: String
-    var startTime: Double  // Start time in seconds
-    var duration: Double   // Chapter duration in seconds
-    
-    @Relationship var audiobook: Audiobook?
-}
-```
-
-#### PlaybackSession Entity
-```swift
-@Model
-class PlaybackSession {
-    @Attribute(.unique) var id: UUID
-    var currentPosition: Double  // Current playback position in seconds
-    var currentChapter: Int      // Current chapter index
-    var playbackRate: Double     // Playback speed (0.5 - 2.0)
-    var lastSynced: Date        // Last CloudKit sync
-    var lastPlayed: Date        // Last playback activity
-    var progressPercentage: Double  // 0.0 - 100.0
-    var isCompleted: Bool
-    
-    @Relationship var audiobook: Audiobook?
-}
-```
-
-#### CacheEntry Entity
-```swift
-@Model
-class CacheEntry {
-    @Attribute(.unique) var id: UUID
-    var filePath: String         // Local file path
-    var fileSize: Int64          // Size in bytes
-    var downloadedDate: Date     // When downloaded
-    var lastAccessedDate: Date   // Last access for LRU
-    var expirationDate: Date?    // Optional expiration
-    
-    @Relationship var audiobook: Audiobook?
-}
-```
-
-### CloudKit Schema
-
-#### PlaybackState Record Type
-```swift
-struct PlaybackState {
-    let recordType = "PlaybackState"
-    
-    // Fields
-    var bookIdentifier: String      // CKRecord.Reference to AudiobookMetadata
-    var position: Double            // Current position in seconds
-    var lastUpdated: Date          // Timestamp for conflict resolution
-    var deviceName: String         // "iPhone 15 Pro", "Apple Watch Series 9"
-    var deviceType: String         // "iphone", "ipad", "watch"
-    var chapterIndex: Int          // Current chapter
-    var playbackRate: Double       // Playback speed
-    var isCompleted: Bool          // Finished book?
-}
-```
-
-#### AudiobookMetadata Record Type
-```swift
-struct AudiobookMetadata {
-    let recordType = "AudiobookMetadata"
-    
-    // Fields
-    var identifier: String         // Unique identifier (indexed)
-    var title: String
-    var author: String
-    var artworkAsset: CKAsset      // Cover image
-    var duration: Double           // Total duration
-    var fileSize: Int64           // Original file size
-    var sourceType: String        // "icloud", "jellyfin", "audiobookshelf"
-    var sourceURL: String         // Original URL/path
-    var chapterCount: Int
-    var addedDate: Date
-}
-```
-
-#### DeviceCacheManifest Record Type
-```swift
-struct DeviceCacheManifest {
-    let recordType = "DeviceCacheManifest"
-    
-    // Fields
-    var deviceIdentifier: String   // Unique device ID (indexed)
-    var cachedBooks: [String]      // List of cached book identifiers
-    var totalCacheSize: Int64      // Total cache usage in bytes
-    var lastUpdated: Date
-}
-```
-
----
-
-## Content Provider Architecture
-
-### ContentSource Protocol
-
-```swift
-protocol ContentSource {
-    // Authentication
-    func authenticate(credentials: Credentials) async throws
-    func validateAccess() async throws -> Bool
-    
-    // Library Management
-    func fetchLibrary() async throws -> [AudiobookMetadata]
-    func getAudiobookMetadata(identifier: String) async throws -> AudiobookMetadata
-    func searchLibrary(query: String) async throws -> [AudiobookMetadata]
-    
-    // Content Access
-    func getStreamURL(identifier: String) async throws -> URL
-    func getDownloadURL(identifier: String) async throws -> URL
-    func getArtwork(identifier: String) async throws -> Data
-    
-    // Optional: Server-side progress sync
-    func syncProgress(identifier: String, position: Double) async throws
-    func getProgress(identifier: String) async throws -> Double?
-}
-```
-
-### Provider Implementations
-
-#### iCloudDriveProvider
-```swift
-class iCloudDriveProvider: ContentSource {
-    // Uses FileManager for ubiquity container
-    // Monitors NSMetadataQuery for file changes
-    // Returns file:// URLs for local access
-}
-```
-
-#### JellyfinProvider
-```swift
-class JellyfinProvider: ContentSource {
-    // HTTP API client for Jellyfin
-    // Handles authentication tokens
-    // Returns streaming URLs with auth headers
-    // Optional: Uses Jellyfin's progress tracking
-}
-```
-
-#### AudiobookShelfProvider
-```swift
-class AudiobookShelfProvider: ContentSource {
-    // HTTP API client for AudiobookShelf
-    // Handles API key authentication
-    // Returns streaming URLs
-    // Optional: Uses ABS progress sync
-}
-```
-
----
-
 ## Apple Watch Architecture
 
 ### Watch Storage Strategy
 
 #### Storage Constraints
-- Apple Watch Series 4+: 8-32GB total storage
-- watchOS system reserves significant space
+- Apple Watch Series 4+: 8-64GB total storage
 - Realistic audiobook cache: 2-8GB
-- Target: 1-3 books cached simultaneously
-
-#### Cache Management Flow
-
-```mermaid
-flowchart TD
-    A[Book access request] --> B{Book in cache?}
-    B -->|Yes| C[Play from cache]
-    B -->|No| D{WiFi available?}
-    D -->|Yes| E[Download to cache]
-    D -->|No| F[Queue for download]
-    
-    E --> G[Check storage]
-    G --> H{Enough space?}
-    H -->|Yes| I[Download file]
-    H -->|No| J[Run cleanup]
-    J --> K{Space freed?}
-    K -->|Yes| I
-    K -->|No| L[Show storage error]
-    
-    I --> C
-    F --> M[Show offline message]
-    
-    N[Background task] --> O[Check last accessed]
-    O --> P{Not accessed > 30 days?}
-    P -->|Yes| Q[Remove from cache]
-    P -->|No| R[Keep cached]
-```
+- Target: 1-5 books cached simultaneously
 
 #### Cleanup Policy (Priority Order)
 
@@ -334,84 +150,6 @@ Removal priority from lowest to highest:
 4. Completed books (100% progress)
 5. Books accessed in last 7 days
 6. Currently playing book (never remove)
-
-### Watch Download Manager
-
-```swift
-class WatchDownloadManager {
-    // Configuration
-    let maxConcurrentDownloads = 1  // Watch constraint
-    let maxCachedBooks = 3
-    
-    // Background download session
-    private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(
-            withIdentifier: "com.app.audiobook.watch.download"
-        )
-        config.discretionary = true  // Download on charger
-        config.sessionSendsLaunchEvents = true
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
-    
-    // Public interface
-    func downloadBook(identifier: String) async throws -> URL
-    func cancelDownload(identifier: String)
-    func pauseDownload(identifier: String)
-    func getDownloadProgress(identifier: String) -> Double
-    func listCachedBooks() -> [Audiobook]
-    func removeFromCache(identifier: String) throws
-    func estimateAvailableSpace() -> Int64
-}
-```
-
-### Watch Network States
-
-```mermaid
-stateDiagram-v2
-    [*] --> Checking
-    Checking --> WiFiConnected: WiFi detected
-    Checking --> Cellular: LTE/5G available (Series 7+)
-    Checking --> Offline: No network
-    
-    WiFiConnected --> Downloading: Start download
-    Cellular --> Downloading: Start download
-    Downloading --> Downloaded: Complete
-    Downloading --> Paused: Network lost
-    Paused --> Downloading: Network restored
-    Offline --> Checking: Periodic check
-    
-    Downloaded --> [*]
-```
-
-### Independent Watch Operation
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Watch
-    participant WiFi
-    participant CloudKit
-    participant ContentSource
-    
-    User->>Watch: Open app on WiFi
-    Watch->>CloudKit: Fetch library metadata
-    CloudKit-->>Watch: Return book list
-    Watch->>Watch: Display available books
-    
-    User->>Watch: Select book to download
-    Watch->>Watch: Check storage
-    Watch->>ContentSource: Request download URL
-    ContentSource-->>Watch: Return stream URL
-    Watch->>Watch: Download to local storage
-    Watch->>CloudKit: Update cache manifest
-    
-    Note over User,Watch: Hours later, offline
-    
-    User->>Watch: Start playback
-    Watch->>Watch: Play from local cache
-    Watch->>Watch: Update position locally
-    Watch->>CloudKit: Sync position (when online)
-```
 
 ---
 
@@ -447,65 +185,53 @@ func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackSta
 
 #### Sync Flow
 
-```mermaid
-sequenceDiagram
-    participant iPhone
-    participant CloudKit
-    participant Watch
-    
-    iPhone->>iPhone: Update playback (position: 1234s)
-    iPhone->>CloudKit: Push state update
-    Note over CloudKit: Store with timestamp
-    CloudKit->>Watch: Push notification
-    Watch->>CloudKit: Fetch latest state
-    Watch->>Watch: Compare timestamps
-    Watch->>Watch: Update local position
-    
-    Note over Watch: Later, offline playback
-    Watch->>Watch: Update local state
-    Watch->>Watch: Queue sync
-    
-    Note over Watch: Network available
-    Watch->>CloudKit: Push queued update
-    CloudKit->>iPhone: Push notification
-    iPhone->>CloudKit: Fetch and merge
-```
+**Typical Sync Sequence:**
+
+1. **iPhone Updates Position**
+   - User plays audiobook
+   - Position updates every 30 seconds
+   - iPhone pushes to CloudKit with timestamp
+
+2. **CloudKit Storage**
+   - Stores PlaybackSession update
+   - Triggers push notification to other devices
+
+3. **Watch Receives Update**
+   - CloudKit sends push notification
+   - Watch fetches latest state
+   - Compares timestamps (local vs remote)
+   - Updates position if remote is newer
+
+4. **Offline Scenario**
+   - Watch updates local state during offline playback
+   - Queues sync operation
+   - Pushes to CloudKit when network available
+   - iPhone receives notification and merges state
 
 ### Watch-iPhone Communication
 
-#### When to Use Each Method
-
-```mermaid
-flowchart TD
-    A[Communication Need] --> B{Data Type?}
-    B -->|Playback State| C[CloudKit Sync]
-    B -->|Quick Commands| D[Watch Connectivity]
-    B -->|Large Files| E[Independent Download]
-    
-    C --> F[All devices updated]
-    D --> G{iPhone reachable?}
-    G -->|Yes| H[Instant message]
-    G -->|No| I[Queue for later]
-    
-    E --> J[Watch downloads directly]
-```
-
-#### Communication Methods
+#### Communication Strategy
 
 **CloudKit (Primary Sync)**
 - Playback position and state
 - Library metadata
 - Cache manifests
 - Works when devices not nearby
-- Handles conflicts
+- Handles conflicts automatically
 - Batch updates
 
-**Watch Connectivity (Optional Real-time)**
-- Live playback control when iPhone nearby
-- Quick command relay (play/pause/skip)
-- Small data transfer (< 64KB)
-- Not reliable for critical sync
-- Requires iPhone app active
+**WatchConnectivity (File Transfers)**
+- Direct file transfers from iPhone to Watch
+- Faster than re-downloading from iCloud
+- Progress tracking
+- Uses iPhone's cached copy when available
+- Falls back to iCloud if needed
+
+**Communication Decision Matrix:**
+- Metadata updates → CloudKit
+- Playback state → CloudKit
+- File transfers → WatchConnectivity
+- Direct downloads → Watch downloads from iCloud independently
 
 ---
 
@@ -534,15 +260,15 @@ class AudiobookPlayer {
     func load(audiobook: Audiobook) async throws {
         let asset: AVAsset
         
-        if let localPath = audiobook.localFilePath {
+        // Try cached file first, fallback to iCloud
+        if let cachedURL = audiobook.cacheFileURL {
             // Play from cache
-            let url = URL(fileURLWithPath: localPath)
-            asset = AVAsset(url: url)
+            asset = AVAsset(url: cachedURL)
+        } else if let iCloudURL = audiobook.iCloudFileURL {
+            // Play from iCloud Drive
+            asset = AVAsset(url: iCloudURL)
         } else {
-            // Stream from source
-            let provider = getProvider(for: audiobook.sourceType)
-            let streamURL = try await provider.getStreamURL(identifier: audiobook.id.uuidString)
-            asset = AVAsset(url: streamURL)
+            throw AudiobookError.fileNotFound
         }
         
         let playerItem = AVPlayerItem(asset: asset)
@@ -640,146 +366,96 @@ func setupWatchAudioSession() {
 
 ---
 
+## Cache Architecture
+
+### Device-Independent Cache Design
+
+The current architecture implements a **device-independent caching system** where:
+
+1. **Shared Metadata**: All audiobook metadata (title, author, duration, etc.) syncs via CloudKit
+2. **Shared iCloud Reference**: `iCloudRelativePath` stores the canonical file location in iCloud Drive
+3. **Device-Local Cache**: Each device maintains its own cache independently using computed properties
+
+#### How It Works
+
+```swift
+// On iPhone
+let audiobook = Audiobook(
+    title: "My Book",
+    iCloudRelativePath: "Documents/Audiobooks/mybook.m4b"
+)
+
+// expectedCachePath is computed per-device
+// iPhone: /var/mobile/.../Caches/Audiobooks/{UUID}.m4b
+// Watch:  /var/mobile/.../Caches/Audiobooks/{UUID}.m4b (different physical location)
+
+// Check if cached locally (no database query needed)
+if audiobook.isFileCached {
+    // File exists on THIS device
+    play(from: audiobook.cacheFileURL)
+} else {
+    // Download from iCloud to local cache
+    download(from: audiobook.iCloudFileURL)
+}
+```
+
+#### Key Benefits
+
+1. **No Sync Conflicts**: Cache state is device-local, not synced
+2. **Simple CloudKit Schema**: Only metadata syncs, not file paths
+3. **Storage Flexibility**: Each device can cache different books based on available space
+4. **Real-Time Status**: `isFileCached` checks file system directly, always accurate
+5. **Easy Cleanup**: Deleting cache file automatically updates `isFileCached` status
+
 ## Storage & Caching
 
 ### File Organization
 
 ```
-iOS/iPadOS:
-Application Support/
-├── Audiobooks/
-│   ├── {book-uuid-1}.m4b
-│   ├── {book-uuid-2}.m4b
-│   └── {book-uuid-3}.m4b
-├── Artwork/
-│   ├── {book-uuid-1}.jpg
-│   └── {book-uuid-2}.jpg
-├── Metadata/
-│   └── CoreData.sqlite
-└── Cache/
-    └── temp-downloads/
+iOS/iPadOS (FileManager.default.cachesDirectory):
+Caches/
+└── Audiobooks/
+    ├── {audiobook-uuid-1}.m4b
+    ├── {audiobook-uuid-2}.m4b
+    └── {audiobook-uuid-3}.m4b
 
-watchOS:
-Application Support/
-├── Audiobooks/
-│   ├── {book-uuid-1}.m4b  (max books depending on the available diskspace)
-│   ├── {book-uuid-2}.m4b
-│   └── {book-uuid-3}.m4b
-├── Artwork/
-│   └── {book-uuid}.jpg (compressed)
-└── Metadata/
-    ├── CoreData.sqlite
-    └── cache-manifest.json
+iCloud Drive (Ubiquity Container):
+iCloud.com.anarkisti.Listen-This/
+└── Documents/
+    └── Audiobooks/
+        ├── book1.m4b
+        └── book2.m4b
+
+watchOS (FileManager.default.cachesDirectory):
+Caches/
+└── Audiobooks/
+    ├── {audiobook-uuid-1}.m4b
+    ├── {audiobook-uuid-2}.m4b
+    └── {audiobook-uuid-3}.m4b
+
+SwiftData (CloudKit synced):
+- Audiobook metadata (title, author, duration)
+- iCloudRelativePath (reference to iCloud file)
+- Chapter metadata
+- PlaybackSession (position, state)
+- CacheEntry (optional cache metadata)
 ```
 
-### Cache Manager
+### Device-Independent Cache Architecture
 
-```swift
-class CacheManager {
-    // Storage limits
-    let maxCacheSizeIOS: Int64 = 10 * 1024 * 1024 * 1024  // 10GB
-    let maxCacheSizeWatch: Int64 = 3 * 1024 * 1024 * 1024 // 3GB
-    let maxBooksWatch = 3
-    
-    // Get current cache size
-    func getTotalCacheSize() -> Int64 {
-        let cacheURL = getCacheDirectory()
-        return calculateDirectorySize(cacheURL)
-    }
-    
-    // Check if enough space for download
-    func canCache(book: Audiobook) -> Bool {
-        let available = getAvailableSpace()
-        let required = book.fileSize
-        let current = getTotalCacheSize()
-        
-        #if os(watchOS)
-        let maxSize = maxCacheSizeWatch
-        let maxBooks = maxBooksWatch
-        #else
-        let maxSize = maxCacheSizeIOS
-        let maxBooks = Int.max
-        #endif
-        
-        if current + required > maxSize {
-            return false
-        }
-        
-        if getCachedBooksCount() >= maxBooks {
-            return false
-        }
-        
-        return available >= required
-    }
-    
-    // Run cleanup algorithm
-    func runCleanup(requiredSpace: Int64) throws {
-        var freedSpace: Int64 = 0
-        let books = getCachedBooks()
-            .sorted { calculatePriority($0) < calculatePriority($1) }
-        
-        for book in books {
-            guard freedSpace < requiredSpace else { break }
-            
-            if shouldRemove(book) {
-                try removeFromCache(book)
-                freedSpace += book.fileSize
-            }
-        }
-        
-        if freedSpace < requiredSpace {
-            throw CacheError.insufficientSpace
-        }
-    }
-    
-    // Priority calculation for LRU
-    func calculatePriority(_ book: Audiobook) -> Double {
-        let daysSinceAccess = Date().timeIntervalSince(book.lastAccessedDate) / 86400
-        let progress = book.playbackSession?.progressPercentage ?? 0
-        let accessCount = getAccessCount(book, days: 30)
-        let isUserRequested = book.downloadDate != nil
-        
-        let score = (-2.0 * daysSinceAccess) +
-                    (1.5 * progress) +
-                    (1.0 * Double(accessCount)) +
-                    (isUserRequested ? 10.0 : 0.0)
-        
-        return score
-    }
-    
-    // Determine if book should be removed
-    func shouldRemove(_ book: Audiobook) -> Bool {
-        let daysSinceAccess = Date().timeIntervalSince(book.lastAccessedDate) / 86400
-        let priority = calculatePriority(book)
-        let isPlaying = book.playbackSession?.lastPlayed.timeIntervalSinceNow ?? -1000 > -60
-        
-        if isPlaying { return false }  // Never remove currently playing
-        if daysSinceAccess > 90 { return true }
-        if daysSinceAccess > 30 && priority < 0 { return true }
-        
-        return false
-    }
-}
-```
+Each device maintains its own local cache independently:
 
-### File Size Estimates
+**Storage Strategy:**
+- `iCloudRelativePath` (synced): Canonical reference to file in iCloud Drive
+- `expectedCachePath` (computed): Device-specific local cache location
+- `isFileCached` (computed): Real-time check of file existence
+- `cacheFileURL` (computed): URL to local cache if exists
 
-```
-Average M4B audiobook (10-15 hours):
-- 64 kbps: 200-300MB
-- 96 kbps: 300-450MB
-- 128 kbps: 400-600MB
-
-Per book overhead:
-- Artwork: 500KB - 2MB
-- Metadata: ~50KB
-- SwiftData: ~10MB shared
-
-Watch capacity examples:
-- 4GB available → 8-20 books (theoretical)
-- 3GB cache limit → 6-15 books (practical)
-- 3 book limit → actual target for UX
-```
+**Benefits:**
+- No CloudKit sync conflicts for cache state
+- Each device manages storage independently
+- Real-time cache status without database queries
+- Simple cleanup (delete file, status auto-updates)
 
 ---
 
@@ -788,11 +464,12 @@ Watch capacity examples:
 ### Phase 1: Core Foundation (MVP)
 
 **Shared Components**
-- [x] Define SwiftData schema
-- [ ] Implement ContentSource protocol
-- [ ] Create iCloudDriveProvider
-- [ ] Build sync manager (CloudKit)
-- [ ] Implement cache manager base
+- [x] Define SwiftData schema (Audiobook, Chapter, PlaybackSession, CacheEntry)
+- [x] Implement device-independent cache architecture
+- [x] Create iCloudDriveProvider
+- [x] Build AudiobookCacheManager
+- [ ] Implement ContentSource protocol (for future providers)
+- [ ] Build CloudKit sync manager
 
 **iOS/iPadOS App**
 - [x] SwiftUI app structure
@@ -800,20 +477,26 @@ Watch capacity examples:
 - [x] Player view with controls
 - [x] Chapter navigation UI
 - [x] Artwork display
-- [ ] AVPlayer integration
-- [ ] Local file caching
+- [x] File import from iCloud Drive/document picker
+- [x] Context menu for audiobook management
+- [x] Delete audiobook functionality (iPhone/Watch/CloudKit options)
+- [x] WatchConnectivity integration for transferring audiobooks
+- [ ] Full AVPlayer integration with playback
 - [ ] CloudKit sync integration
 - [ ] Background playback
+- [ ] CarPlay integration
 
 **watchOS App**
 - [ ] SwiftUI app structure
-- [ ] Library browsing on WiFi
-- [ ] Download manager implementation
-- [ ] Local cache storage
+- [ ] Library browsing
+- [ ] Audiobook card UI with transfer status
+- [ ] WatchConnectivity file receiver
+- [ ] Cache entry management
+- [ ] Download manager implementation (direct WiFi downloads)
 - [ ] AVPlayer integration with background mode
-- [ ] Simple playback controls
+- [ ] Playback controls
 - [ ] CloudKit sync integration
-- [ ] Basic cache cleanup (LRU)
+- [ ] Cache cleanup automation
 
 **Sync & State**
 - [ ] CloudKit schema setup
@@ -821,6 +504,17 @@ Watch capacity examples:
 - [ ] Library metadata sync
 - [ ] Conflict resolution
 - [ ] Offline queue
+
+**Watch Transfer System**
+- [x] WatchConnectivity manager setup
+- [x] File transfer from iPhone to Watch
+- [x] Transfer status badges in UI
+- [x] Temporary file handling for transfers
+- [x] NSFileCoordinator for iCloud file access
+- [x] Transfer progress tracking
+- [ ] Transfer retry on failure
+- [ ] Background transfer support
+- [ ] Watch receiver implementation
 
 ### Phase 2: Extended Sources
 
@@ -920,6 +614,93 @@ protocol ContentSource {
     func getDownloadURL(identifier: String) async throws -> URL
 }
 ```
+
+### 6. Cache Architecture (Updated)
+**Decision**: Device-local cache with computed properties
+**Rationale**:
+- Eliminates CloudKit sync conflicts for cache state
+- Each device manages its own storage independently
+- Real-time cache status without database queries
+- Simpler data model (no stored cache paths)
+- Works seamlessly with @Observable macro
+
+**Key Implementation:**
+- `iCloudRelativePath`: Synced reference to canonical file location
+- `expectedCachePath`: Computed per-device cache location
+- `isFileCached`: Computed check of file existence
+- `CacheEntry`: Optional relationship for cache metadata tracking
+
+**Alternatives Considered**:
+- Synced cache paths (conflicts when devices have different storage)
+- Single source of truth approach (requires constant connectivity)
+- Manual cache state management (error-prone, stale data)
+
+### 7. Watch Connectivity
+**Decision**: Hybrid approach - WatchConnectivity for transfers, CloudKit for metadata
+**Rationale**:
+- WatchConnectivity enables direct file transfers from iPhone's cache
+- Faster than re-downloading from iCloud on Watch
+- CloudKit syncs audiobook metadata and playback state
+- Watch can still download directly from iCloud when iPhone unavailable
+
+**Implementation Benefits**:
+- User can quickly send books to Watch from iPhone
+- No duplicate downloads (use iPhone's cached copy)
+- Watch remains independent (can download from iCloud directly)
+- Progress tracking during transfers
+
+**Current Status**: Implemented iPhone → Watch transfers with progress tracking and NSFileCoordinator for iCloud file safety. Watch receiver pending implementation.
+
+### Watch Transfer Implementation Details
+
+#### WatchConnectivityManager Architecture
+
+The `WatchConnectivityManager` provides a centralized service for managing file transfers between iPhone and Apple Watch:
+
+**Key Features:**
+- Singleton pattern for global access
+- Observable properties for UI binding
+- Transfer progress tracking
+- Error handling with user-friendly messages
+- NSFileCoordinator integration for iCloud safety
+
+**Transfer Process:**
+
+```
+1. User Action
+   └─> Context menu "Send to Watch"
+
+2. Pre-flight Checks
+   ├─> Session activated?
+   ├─> Watch paired?
+   ├─> Watch app installed?
+   └─> Watch reachable?
+
+3. File Access
+   ├─> Check iPhone cache first
+   └─> If not cached, access iCloud with NSFileCoordinator
+
+4. Transfer Initiation
+   ├─> WCSession.transferFile()
+   ├─> Set metadata (audiobook UUID, title, size)
+   └─> Update transferProgress
+
+5. Progress Monitoring
+   ├─> Observable property updates
+   └─> UI reflects current state
+
+6. Completion (Watch side - planned)
+   ├─> Receive file in delegate
+   ├─> Save to Watch cache directory
+   ├─> Update CacheEntry model
+   └─> Notify completion
+```
+
+**Error Scenarios:**
+- Watch not paired: "Apple Watch not paired"
+- Watch app not installed: "Install app on Watch"
+- File not found: "Audiobook file not available"
+- Transfer failed: "Transfer failed, try again"
 
 ---
 
@@ -1165,65 +946,86 @@ WATCHOS_DEPLOYMENT_TARGET = 10.0
 ## Project Structure
 
 ```
-AudiobookPlayer/
-├── Shared/
-│   ├── Models/
-│   │   ├── Audiobook.swift
-│   │   ├── Chapter.swift
-│   │   ├── PlaybackSession.swift
-│   │   └── CacheEntry.swift
-│   ├── Providers/
-│   │   ├── ContentSource.swift (protocol)
-│   │   ├── iCloudDriveProvider.swift
-│   │   ├── JellyfinProvider.swift
-│   │   └── AudiobookShelfProvider.swift
-│   ├── Managers/
-│   │   ├── SyncManager.swift
-│   │   ├── CacheManager.swift
-│   │   └── AudiobookPlayer.swift
-│   └── Extensions/
-│       └── Date+Extensions.swift
-├── iOS/
-│   ├── Views/
+Listen This/
+├── Models/
+│   ├── Audiobook.swift                 # Main audiobook model
+│   ├── Chapter.swift                   # Chapter metadata
+│   ├── PlaybackSession.swift          # Playback state
+│   ├── CacheEntry.swift               # Cache metadata (optional)
+│   └── ContentSource.swift            # Provider protocol
+├── Services/
+│   ├── AudioPlayerService.swift       # iOS/iPadOS playback
+│   ├── AudiobookLibraryService.swift  # Library management
+│   ├── AudiobookCacheManager.swift    # Cache operations
+│   ├── iCloudDriveProvider.swift      # iCloud file import
+│   ├── WatchConnectivityManager.swift # Watch file transfers
+│   └── WatchAudioPlayerService.swift  # Watch playback
+├── Views/
+│   ├── iOS/
 │   │   ├── LibraryView.swift
 │   │   ├── PlayerView.swift
-│   │   ├── ChapterListView.swift
-│   │   └── SettingsView.swift
-│   ├── ViewModels/
-│   │   ├── LibraryViewModel.swift
-│   │   └── PlayerViewModel.swift
-│   └── AudiobookPlayerApp.swift
-├── watchOS/
-│   ├── Views/
-│   │   ├── WatchLibraryView.swift
-│   │   ├── WatchPlayerView.swift
-│   │   └── DownloadView.swift
-│   ├── ViewModels/
-│   │   ├── WatchLibraryViewModel.swift
-│   │   └── WatchPlayerViewModel.swift
-│   ├── Managers/
-│   │   └── WatchDownloadManager.swift
-│   └── AudiobookPlayerWatch.swift
-└── Tests/
-    ├── SharedTests/
-    ├── iOSTests/
-    └── watchOSTests/
+│   │   ├── SettingsView.swift
+│   │   └── ImportView.swift
+│   └── watchOS/
+│       └── WatchPlayerView.swift
+├── Utilities/
+│   └── AudiobookError.swift
+├── ContentView.swift                   # Main navigation
+├── Listen_ThisApp.swift               # App entry point
+├── README.md
+├── Architechture.md
+└── CLAUDE.md                          # Development guidelines
 ```
 
 ---
 
 ## Next Steps for Implementation
 
-1. **Set up Xcode project** with iOS, watchOS targets
-2. **Configure CloudKit** schema in developer console
-3. **Implement Core Data** models and migrations
-4. **Build ContentSource protocol** and iCloud provider
-5. **Create basic SwiftUI views** for iOS
-6. **Implement AVPlayer integration**
-7. **Add CloudKit sync manager**
-8. **Build Watch app** with download manager
-9. **Test sync** across devices
-10. **Iterate on cache management**
+### Immediate Priorities (Current Sprint)
+
+1. **Complete AVPlayer Integration**
+   - Full playback controls implementation
+   - Background audio session management
+   - Interruption handling (calls, route changes)
+   - Remote command center integration
+
+2. **Watch Receiver Implementation**
+   - WCSession delegate on watchOS
+   - File reception and cache storage
+   - CacheEntry model updates
+   - UI notifications on transfer completion
+
+3. **watchOS App Foundation**
+   - Basic library view
+   - Audiobook card UI with transfer status
+   - Cache management interface
+
+### Short-term Goals
+
+4. **Enhanced Playback Features**
+   - Variable playback speed controls
+   - Sleep timer functionality
+   - Chapter navigation improvements
+   - Progress persistence during interruptions
+
+5. **CloudKit Sync Testing**
+   - Multi-device sync validation
+   - Conflict resolution testing
+   - Offline queue implementation
+
+### Long-term Goals
+
+6. **Additional Content Sources**
+   - Jellyfin provider implementation
+   - AudiobookShelf provider implementation
+   - Source selection UI
+
+7. **Advanced Features**
+   - Bookmarks and notes
+   - Listening statistics
+   - Watch complications
+   - CarPlay integration
+   - Siri shortcuts
 
 ---
 

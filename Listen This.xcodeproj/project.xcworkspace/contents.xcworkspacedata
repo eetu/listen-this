@@ -4,4 +4,19 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:WatchConnectivityDebugView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:Critical-Background-Task-Fix.md">
+   </FileRef>
+   <FileRef
+      location = "group:Zombie-Transfer-Fix.md">
+   </FileRef>
+   <FileRef
+      location = "group:Watch-Download-Timeout-Fix.md">
+   </FileRef>
+   <FileRef
+      location = "group:FINAL_FILENAME_MIGRATION.md">
+   </FileRef>
 </Workspace>

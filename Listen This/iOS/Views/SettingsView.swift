@@ -48,7 +48,7 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("App")
-                }
+                }                
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
