@@ -281,4 +281,14 @@ extension Audiobook {
     func deleteCache(using cacheManager: AudiobookCacheManager) throws {
         try cacheManager.deleteCachedFile(for: self)
     }
+  
+    /*
+    /// Check if this audiobook has a valid cache file URL
+    var validCacheFileURL: URL? {
+        guard let cachePath = expectedCachePath else { return nil }
+        let url = URL(fileURLWithPath: cachePath)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+    */
 }

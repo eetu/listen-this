@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import WatchConnectivity
 
 struct WatchLibraryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -17,7 +18,7 @@ struct WatchLibraryView: View {
     
     @State private var selectedAudiobook: Audiobook?
     @State private var showingPlayer = false
-    
+
     var body: some View {
         NavigationStack {
             Group {
@@ -36,6 +37,20 @@ struct WatchLibraryView: View {
         }
         .onAppear {
             connectivity.configure(modelContext: modelContext)
+            
+            // Log active transfers
+            print("⌚ [Watch Library] View appeared")
+            print("⌚ [Watch Library] Active transfers: \(connectivity.activeTransfers.count)")
+            for (audiobookId, _) in connectivity.activeTransfers {
+                print("   - \(audiobookId): transferring")
+            }
+            
+            // Check if WCSession has content pending
+            if WCSession.default.hasContentPending {
+                print("⌚ [Watch Library] WCSession reports content pending")
+            } else {
+                print("⌚ [Watch Library] No content pending in WCSession")
+            }
         }
     }
     
@@ -83,8 +98,42 @@ struct WatchLibraryView: View {
                         selectedAudiobook = audiobook
                         showingPlayer = true
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if audiobook.isFileCached {
+                            Button(role: .destructive) {
+                                removeDownload(for: audiobook)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
             }
         }
+    }
+    
+    // MARK: - Actions
+    
+    private func removeDownload(for audiobook: Audiobook) {
+        // Remove the cache entry and file
+        if let cacheEntry = audiobook.cacheEntry {
+            // Delete file
+            let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+            try? FileManager.default.removeItem(at: fileURL)
+            
+            // Remove cache entry
+            modelContext.delete(cacheEntry)
+        }
+        
+        // Clear audiobook cache reference
+        audiobook.cacheEntry = nil
+        // DON'T clear localFilename - it's needed for future transfers!
+        // audiobook.localFilename = nil
+        
+        // Save changes
+        try? modelContext.save()
+        
+        print("🗑️ [Watch Library] Removed download (swipe action): \(audiobook.title)")
+        print("   Kept localFilename: \(audiobook.localFilename ?? "nil")")
     }
 }
 
@@ -93,6 +142,12 @@ struct WatchLibraryView: View {
 struct AudiobookRow: View {
     let audiobook: Audiobook
     @Environment(WatchConnectivityManager.self) private var connectivity
+    
+    @State private var showingTransferSheet = false
+    
+    var hasActiveTransfer: Bool {
+        connectivity.activeTransfers[audiobook.id.uuidString] != nil
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -124,20 +179,20 @@ struct AudiobookRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    
-                    // Cache status badge
-                    cacheStatusBadge
-                    
-                    // Progress bar if started
-                    if let session = audiobook.playbackSession,
-                       session.progressPercentage > 0 {
-                        ProgressView(value: session.progressPercentage, total: 100)
-                            .tint(.green)
-                    }
                 }
             }
         }
         .padding(.vertical, 4)
+        .onAppear {
+            if hasActiveTransfer {
+                print("⌚ [Watch Row] Active transfer for '\(audiobook.title)'")
+            }
+        }
+        .sheet(isPresented: $showingTransferSheet) {
+            NavigationStack {
+                WatchTransferStatusView(audiobook: audiobook)
+            }
+        }
     }
     
     @ViewBuilder
@@ -149,18 +204,25 @@ struct AudiobookRow: View {
                 Text("Downloaded")
                     .font(.caption2)
                     .foregroundStyle(.green)
-            } else if let transfer = connectivity.activeTransfers[audiobook.id.uuidString] {
-                ProgressView(value: transfer.progress)
-                    .frame(width: 40)
-                Text("\(Int(transfer.progress * 100))%")
+            } else if connectivity.activeTransfers[audiobook.id.uuidString] != nil {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Downloading")
                     .font(.caption2)
                     .foregroundStyle(.blue)
             } else {
-                Image(systemName: "icloud.and.arrow.down")
-                    .foregroundStyle(.orange)
-                Text("Not on Watch")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                Button {
+                    showingTransferSheet = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.blue)
+                        Text("Download")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
     }

@@ -279,11 +279,19 @@ final class AudiobookLibraryService {
         _ audiobook: Audiobook,
         deleteFromiCloud: Bool = true
     ) async throws {
-        print("🗑️ [Delete] Starting deletion for: \(audiobook.title)")
+        print("🗑️ [Delete] ===== STARTING DELETION =====")
+        print("🗑️ [Delete] Title: \(audiobook.title)")
         print("🗑️ [Delete] ID: \(audiobook.id)")
-        print("🗑️ [Delete] Filename: \(audiobook.filename)")
-        print("🗑️ [Delete] Expected cache path: \(audiobook.expectedCachePath)")
+        print("🗑️ [Delete] Filename: \(audiobook.filename ?? "nil")")
+        print("🗑️ [Delete] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
         print("🗑️ [Delete] Is cached: \(audiobook.isFileCached)")
+        print("🗑️ [Delete] Delete from iCloud: \(deleteFromiCloud)")
+        
+        // IMPORTANT: Force load external storage attributes before deletion
+        // This resolves the fault so SwiftData can properly clean up external storage
+        print("   🗑️ [Delete] Resolving external storage faults...")
+        _ = audiobook.artworkData  // Force load the artwork data fault
+        print("   ✅ [Delete] External storage faults resolved")
         
         var errors: [Error] = []
         
@@ -304,7 +312,7 @@ final class AudiobookLibraryService {
             ) {
                 let iCloudFileURL = ubiquityURL.appendingPathComponent(iCloudPath)
                 
-                print("   🗑️ [Delete] Attempting to delete from iCloud: \(iCloudFileURL.path)")
+                print("   🗑️ [Delete] Attempting to delete from iCloud Drive: \(iCloudFileURL.path)")
                 
                 // Use NSFileCoordinator for iCloud files
                 let coordinator = NSFileCoordinator()
@@ -339,24 +347,50 @@ final class AudiobookLibraryService {
                 errors.append(error)
             }
         }
-                
+        
+        // 3. Delete relationships (chapters, playback session, cache entry)
+        // SwiftData should handle this with cascade delete rules, but let's be explicit
+        print("   🗑️ [Delete] Deleting relationships...")
+        
+        if let chapters = audiobook.chapters {
+            print("   🗑️ [Delete] Found \(chapters.count) chapters to delete")
+        }
+        if let session = audiobook.playbackSession {
+            print("   🗑️ [Delete] Found playback session to delete")
+        }
+        if let cache = audiobook.cacheEntry {
+            print("   🗑️ [Delete] Found cache entry to delete")
+        }
+        
         // 4. Delete from SwiftData (will sync deletion via CloudKit to Watch)
-        print("   🗑️ [Delete] Deleting from SwiftData...")
+        print("   🗑️ [Delete] Deleting from SwiftData/CloudKit...")
+        print("   📡 [Delete] Model will sync to CloudKit container: iCloud.com.anarkisti.Listen-This")
+        
         modelContext.delete(audiobook)
         
         do {
             try modelContext.save()
-            print("   ✅ [Delete] Deleted from database")
+            print("   ✅ [Delete] Saved deletion to SwiftData")
+            print("   📡 [Delete] CloudKit sync initiated (may take a moment)")
+            print("   📡 [Delete] Watch and other devices will receive deletion via CloudKit sync")
         } catch {
-            print("   ❌ [Delete] CRITICAL: Failed to delete from database: \(error)")
+            print("   ❌ [Delete] CRITICAL: Failed to save deletion: \(error)")
+            print("   ❌ [Delete] Error type: \(type(of: error))")
+            print("   ❌ [Delete] Error details: \(error.localizedDescription)")
             throw error  // This is a fatal error
         }
         
         // Report completion
         if errors.isEmpty {
-            print("✅ [Delete] Audiobook deleted successfully")
+            print("✅ [Delete] ===== DELETION COMPLETE =====")
+            print("✅ [Delete] Audiobook '\(audiobook.title)' deleted successfully")
+            print("📡 [Delete] CloudKit will sync deletion to other devices")
         } else {
-            print("⚠️ [Delete] Audiobook deleted with \(errors.count) warning(s)")
+            print("⚠️ [Delete] ===== DELETION COMPLETE WITH WARNINGS =====")
+            print("⚠️ [Delete] Audiobook '\(audiobook.title)' deleted with \(errors.count) warning(s)")
+            for (index, error) in errors.enumerated() {
+                print("   Warning \(index + 1): \(error.localizedDescription)")
+            }
             // Don't throw - deletion from database succeeded which is most important
         }
     }

@@ -14,7 +14,12 @@ final class Audiobook {
     var title: String = ""
     var author: String = ""
     var narrator: String?
+    
+    // IMPORTANT: External storage attributes must be accessed (fault resolved) before deletion
+    // Otherwise SwiftData will crash with "This backing data was detached from a context without resolving attribute faults"
+    // See AudiobookLibraryService.deleteAudiobook() for the fault resolution pattern
     @Attribute(.externalStorage) var artworkData: Data?
+    
     var duration: Double = 0  // Total duration in seconds
     var fileSize: Int64 = 0   // File size in bytes
     
@@ -99,6 +104,13 @@ final class Audiobook {
         guard let cachePath = expectedCachePath else { return nil }
         let url = URL(fileURLWithPath: cachePath)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+    
+    /// Get valid cache file URL for transfers (returns URL even if file doesn't exist yet)
+    /// This is useful for checking if we have the path available, then verifying existence separately
+    var validCacheFileURL: URL? {
+        guard let cachePath = expectedCachePath else { return nil }
+        return URL(fileURLWithPath: cachePath)
     }
     
     /// Get the iCloud file URL (full path)

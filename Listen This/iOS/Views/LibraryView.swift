@@ -10,7 +10,7 @@ import SwiftData
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var audiobooks: [Audiobook]
+    @Query(sort: \Audiobook.lastAccessedDate, order: .reverse) private var audiobooks: [Audiobook]
 
     @State private var searchText = ""
     @State private var showingAddBook = false
@@ -92,16 +92,11 @@ struct LibraryView: View {
                 GridItem(.adaptive(minimum: 160), spacing: 16)
             ], spacing: 16) {
                 ForEach(filteredAudiobooks) { book in
-                    NavigationLink(value: book) {
-                        AudiobookCard(audiobook: book)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        AudiobookContextMenu(audiobook: book)
-                    }
+                    AudiobookCardWithMenu(audiobook: book)
                 }
             }
             .padding()
+            .animation(.default, value: filteredAudiobooks.count)
         }
         .navigationDestination(for: Audiobook.self) { book in
             PlayerView(audiobook: book)
@@ -110,6 +105,218 @@ struct LibraryView: View {
 }
 
 // MARK: - Audiobook Card
+
+// Wrapper view that manages the card, navigation, and context menu together
+struct AudiobookCardWithMenu: View {
+    let audiobook: Audiobook
+    @Environment(\.modelContext) private var modelContext
+    
+    @State private var showDeleteOptions = false
+    @State private var isDeleting = false
+    @State private var showDeleteError = false
+    @State private var deleteErrorMessage = ""
+    @State private var showWatchTransfer = false
+    
+    #if os(iOS)
+    @Environment(iOSWatchConnectivityManager.self) private var connectivity
+    #endif
+    
+    var body: some View {
+        NavigationLink(value: audiobook) {
+            AudiobookCard(audiobook: audiobook)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            contextMenuContent
+        }
+        .alert("Delete Failed", isPresented: $showDeleteError) {
+            Button("OK", role: .cancel) {
+                deleteErrorMessage = ""
+            }
+        } message: {
+            Text(deleteErrorMessage)
+        }
+        #if os(iOS)
+        .sheet(isPresented: $showWatchTransfer) {
+            NavigationStack {
+                SingleAudiobookTransferView(audiobook: audiobook)
+                    .environment(connectivity)
+            }
+        }
+        .sheet(isPresented: $showDeleteOptions) {
+            deleteOptionsSheet
+        }
+        #endif
+    }
+    
+    #if os(iOS)
+    @ViewBuilder
+    private var deleteOptionsSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteOptions = false
+                        // Give the sheet time to dismiss before deleting
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(300))
+                            await deleteAudiobook(deleteFromiCloud: false)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Delete from iPhone Only")
+                                .font(.headline)
+                            Text("Removes cached file from this device. File remains in iCloud.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    Button(role: .destructive) {
+                        showDeleteOptions = false
+                        // Give the sheet time to dismiss before deleting
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(300))
+                            await deleteAudiobook(deleteFromiCloud: true)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Delete Everywhere")
+                                .font(.headline)
+                            Text("Removes file from iCloud Drive and all devices. Metadata syncs via CloudKit.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Delete \"\(audiobook.title)\"?")
+                }
+                
+                Section {
+                    Button("Cancel", role: .cancel) {
+                        showDeleteOptions = false
+                    }
+                }
+            }
+            .navigationTitle("Delete Audiobook")
+            .navigationBarTitleDisplayMode(.inline)
+            .presentationDetents([.medium])
+        }
+    }
+    #endif
+    
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        // Info label showing cached status
+        if audiobook.isFileCached {
+            Label("Downloaded on iPhone", systemImage: "checkmark.icloud")
+        } else {
+            Label("Available in iCloud", systemImage: "icloud")
+        }
+
+        Divider()
+
+        // Cache management
+        if audiobook.isFileCached {
+            Button(role: .destructive) {
+                removeCacheFromiPhone()
+            } label: {
+                Label("Remove from iPhone", systemImage: "trash")
+            }
+        }
+
+        #if os(iOS)
+        // Transfer to Watch button or cancel button
+        if connectivity.isPaired && connectivity.isWatchAppInstalled {
+            if connectivity.activeTransfers[audiobook.id.uuidString] != nil {
+                // Show cancel option when transfer is active
+                Button(role: .destructive) {
+                    connectivity.cancelTransfer(for: audiobook.id.uuidString)
+                } label: {
+                    Label("Cancel Transfer", systemImage: "xmark.circle")
+                }
+            } else {
+                // Show transfer option when no active transfer
+                Button {
+                    showWatchTransfer = true
+                } label: {
+                    Label("Transfer to Watch", systemImage: "applewatch")
+                }
+            }
+        }
+
+        Divider()
+        #endif
+
+        // Delete button - opens sheet with options
+        Button(role: .destructive) {
+            print("🔘 [UI] Delete button tapped in context menu")
+            showDeleteOptions = true
+        } label: {
+            if isDeleting {
+                Label("Deleting...", systemImage: "trash")
+            } else {
+                Label("Delete Audiobook", systemImage: "trash")
+            }
+        }
+        .disabled(isDeleting)
+    }
+    
+    private func removeCacheFromiPhone() {
+        Task {
+            do {
+                print("🗑️ [UI] Removing cached file from iPhone...")
+                print("   Title: \(audiobook.title)")
+
+                let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+                try cacheManager.deleteCachedFile(for: audiobook)
+
+                await MainActor.run {
+                    print("✅ [UI] Cache removed successfully")
+                }
+            } catch {
+                await MainActor.run {
+                    print("❌ [UI] Failed to remove cache: \(error)")
+                    deleteErrorMessage = "Failed to remove cached file: \(error.localizedDescription)"
+                    showDeleteError = true
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func deleteAudiobook(deleteFromiCloud: Bool) async {
+        print("🔘 [UI] deleteAudiobook function called")
+        print("   Title: \(audiobook.title)")
+        print("   Delete from iCloud: \(deleteFromiCloud)")
+        
+        isDeleting = true
+        
+        do {
+            print("🗑️ [UI] Starting delete operation...")
+            
+            let service = AudiobookLibraryService(modelContext: modelContext)
+            try await service.deleteAudiobook(
+                audiobook,
+                deleteFromiCloud: deleteFromiCloud
+            )
+            
+            print("✅ [UI] Audiobook deleted successfully")
+            isDeleting = false
+            
+        } catch {
+            print("❌ [UI] Delete failed: \(error)")
+            print("   Error type: \(type(of: error))")
+            print("   Error description: \(error.localizedDescription)")
+            
+            deleteErrorMessage = error.localizedDescription
+            showDeleteError = true
+            isDeleting = false
+        }
+    }
+}
+
+// MARK: - Audiobook Card (Presentation Only)
 
 struct AudiobookCard: View {
     let audiobook: Audiobook
@@ -153,99 +360,6 @@ struct AudiobookCard: View {
             if let session = audiobook.playbackSession {
                 ProgressView(value: session.progressPercentage, total: 100)
                     .tint(.accentColor)
-            }
-        }
-    }
-}
-
-// MARK: - Audiobook Context Menu
-
-struct AudiobookContextMenu: View {
-    let audiobook: Audiobook
-    @State private var showDeleteConfirmation = false
-    @State private var isDeleting = false
-    @State private var showDeleteError = false
-    @State private var deleteErrorMessage = ""
-    @Environment(\.modelContext) private var modelContext
-
-    var body: some View {
-        Group {
-            // Info label showing cached status
-            if audiobook.isFileCached {
-                Label("Downloaded on iPhone", systemImage: "checkmark.icloud")
-            } else {
-                Label("Available in iCloud", systemImage: "icloud")
-            }
-            
-            Divider()
-            
-            // Delete button
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                if isDeleting {
-                    Label("Deleting...", systemImage: "trash")
-                } else {
-                    Label("Delete Audiobook", systemImage: "trash")
-                }
-            }
-            .disabled(isDeleting)
-        }
-        .confirmationDialog(
-            "Delete \"\(audiobook.title)\"?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete from iPhone Only", role: .destructive) {
-                deleteAudiobook(deleteFromCloudKit: false)
-            }
-            
-            Button("Delete Everywhere (iPhone & iCloud)", role: .destructive) {
-                deleteAudiobook(deleteFromCloudKit: true)
-            }
-            
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Deleting from iCloud will remove the file from all your devices. Metadata will sync via CloudKit.")
-        }
-        .alert("Delete Failed", isPresented: $showDeleteError) {
-            Button("OK", role: .cancel) {
-                deleteErrorMessage = ""
-            }
-        } message: {
-            Text(deleteErrorMessage)
-        }
-    }
-    
-    private func deleteAudiobook(deleteFromCloudKit: Bool) {
-        isDeleting = true
-        
-        Task {
-            do {
-                print("🗑️ [UI] Starting delete operation...")
-                print("   Title: \(audiobook.title)")
-                print("   Delete from iCloud: \(deleteFromCloudKit)")
-                
-                let service = AudiobookLibraryService(modelContext: modelContext)
-                try await service.deleteAudiobook(
-                    audiobook,
-                    deleteFromiCloud: deleteFromCloudKit
-                )
-                
-                await MainActor.run {
-                    print("✅ [UI] Audiobook deleted successfully")
-                    isDeleting = false
-                }
-            } catch {
-                await MainActor.run {
-                    print("❌ [UI] Delete failed: \(error)")
-                    print("   Error type: \(type(of: error))")
-                    print("   Error description: \(error.localizedDescription)")
-                    
-                    deleteErrorMessage = error.localizedDescription
-                    showDeleteError = true
-                    isDeleting = false
-                }
             }
         }
     }

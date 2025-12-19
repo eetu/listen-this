@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import SwiftData
+import MediaPlayer
 
 /// Watch-specific audio player service with background playback support
 @MainActor
@@ -28,6 +29,13 @@ final class WatchAudioPlayerService {
     var playbackRate: Double = 1.0
     var currentChapterIndex: Int = 0
     var loadError: Error?
+    
+    // MARK: - Computed Properties
+    
+    /// Get sorted chapters for the current audiobook
+    var sortedChapters: [Chapter] {
+        audiobook?.chapters?.sorted(by: { $0.index < $1.index }) ?? []
+    }
     
     // MARK: - Initialization
     
@@ -56,7 +64,7 @@ final class WatchAudioPlayerService {
         do {
             let audioSession = AVAudioSession.sharedInstance()
             
-            // watchOS-specific audio session configuration
+            // watchOS-specific audio session configuration with AirPods support
             try audioSession.setCategory(
                 .playback,
                 mode: .spokenAudio,
@@ -64,8 +72,91 @@ final class WatchAudioPlayerService {
                 options: []
             )
             try audioSession.setActive(true)
+            
+            // Register for audio interruption notifications (AirPods removal, calls, etc.)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAudioInterruption),
+                name: AVAudioSession.interruptionNotification,
+                object: audioSession
+            )
+            
+            // Register for route change notifications (AirPods connect/disconnect)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleRouteChange),
+                name: AVAudioSession.routeChangeNotification,
+                object: audioSession
+            )
+            
+            print("✅ [Audio Session] Configured with AirPods support")
         } catch {
-            print("Failed to setup audio session: \(error)")
+            print("❌ [Audio Session] Failed to setup: \(error)")
+        }
+    }
+    
+    // MARK: - Audio Interruption Handling
+    
+    @objc private func handleAudioInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        Task { @MainActor in
+            switch type {
+            case .began:
+                // Interruption began (call, Siri, AirPods removed, etc.)
+                print("🎧 [Audio Session] Interruption began - pausing playback")
+                await pause()
+                
+            case .ended:
+                // Interruption ended
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        // System suggests resuming playback
+                        print("🎧 [Audio Session] Interruption ended - resuming playback")
+                        await play()
+                    } else {
+                        print("🎧 [Audio Session] Interruption ended - not resuming")
+                    }
+                } else {
+                    print("🎧 [Audio Session] Interruption ended - staying paused")
+                }
+                
+            @unknown default:
+                break
+            }
+        }
+    }
+    
+    @objc private func handleRouteChange(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+        
+        Task { @MainActor in
+            switch reason {
+            case .oldDeviceUnavailable:
+                // AirPods or headphones were disconnected
+                print("🎧 [Audio Session] Audio device disconnected - pausing playback")
+                await pause()
+                
+            case .newDeviceAvailable:
+                // AirPods or headphones were connected
+                print("🎧 [Audio Session] New audio device connected")
+                // Don't auto-resume, let user decide
+                
+            case .categoryChange:
+                print("🎧 [Audio Session] Category changed")
+                
+            default:
+                print("🎧 [Audio Session] Route changed: \(reason.rawValue)")
+            }
         }
     }
     
@@ -225,6 +316,8 @@ final class WatchAudioPlayerService {
         }
         
         startPositionTracking()
+        setupRemoteCommandCenter()
+        updateNowPlayingInfo()
         print("✅ [Watch Player] Player initialized successfully")
     }
     
@@ -234,22 +327,32 @@ final class WatchAudioPlayerService {
         player?.play()
         isPlaying = true
         
+        // Update Now Playing info
+        updateNowPlayingInfo()
+        
         // Update last accessed date
         audiobook?.lastAccessedDate = Date()
         try? modelContext.save()
+        
+        print("▶️ [Watch Player] Playback started")
     }
     
     func pause() async {
         player?.pause()
         isPlaying = false
+        
+        // Update Now Playing info
+        updateNowPlayingInfo()
+        
         savePlaybackState()
+        print("⏸️ [Watch Player] Playback paused")
     }
     
     func setPlaybackRate(_ rate: Double) async {
         playbackRate = rate
         player?.rate = Float(rate)
     }
-    
+        
     func skip(by seconds: Double) async {
         guard let player = player else { return }
         
@@ -260,34 +363,63 @@ final class WatchAudioPlayerService {
         updateCurrentChapter()
     }
     
+    func seek(to position: Double) async {
+        guard let player = player else { return }
+        
+        let clampedPosition = max(0, min(duration, position))
+        
+        print("🎯 [Watch Player] Seeking to \(Int(clampedPosition))s")
+        await player.seek(to: CMTime(seconds: clampedPosition, preferredTimescale: 600))
+        
+        // Immediately update position and chapter
+        currentPosition = clampedPosition
+        updateCurrentChapter()
+        
+        print("✅ [Watch Player] Seek complete - Position: \(Int(currentPosition))s, Chapter: \(currentChapterIndex + 1)")
+    }
+    
     // MARK: - Chapter Navigation
     
     func nextChapter() async {
-        guard let chapters = audiobook?.chapters,
-              currentChapterIndex < chapters.count - 1 else { return }
+        guard !sortedChapters.isEmpty,
+              currentChapterIndex < sortedChapters.count - 1 else { return }
         
         currentChapterIndex += 1
-        let nextChapter = chapters[currentChapterIndex]
+        let nextChapter = sortedChapters[currentChapterIndex]
         
+        print("⏭️ [Watch Player] Next chapter: \(currentChapterIndex + 1)")
         await player?.seek(to: CMTime(seconds: nextChapter.startTime, preferredTimescale: 600))
+        currentPosition = nextChapter.startTime
     }
     
     func previousChapter() async {
-        guard let chapters = audiobook?.chapters else { return }
+        guard !sortedChapters.isEmpty else { return }
         
         // If more than 3 seconds into chapter, restart it
-        if currentPosition - chapters[currentChapterIndex].startTime > 3.0 {
-            await player?.seek(to: CMTime(seconds: chapters[currentChapterIndex].startTime, preferredTimescale: 600))
+        if currentPosition - sortedChapters[currentChapterIndex].startTime > 3.0 {
+            print("⏮️ [Watch Player] Restarting chapter \(currentChapterIndex + 1)")
+            await player?.seek(to: CMTime(seconds: sortedChapters[currentChapterIndex].startTime, preferredTimescale: 600))
+            currentPosition = sortedChapters[currentChapterIndex].startTime
         } else if currentChapterIndex > 0 {
             currentChapterIndex -= 1
-            let prevChapter = chapters[currentChapterIndex]
+            let prevChapter = sortedChapters[currentChapterIndex]
+            print("⏮️ [Watch Player] Previous chapter: \(currentChapterIndex + 1)")
             await player?.seek(to: CMTime(seconds: prevChapter.startTime, preferredTimescale: 600))
+            currentPosition = prevChapter.startTime
         }
     }
     
     func skipToChapter(_ chapter: Chapter) async {
+        print("⏭️ [Watch Player] Skipping to chapter \(chapter.index + 1): \(chapter.title)")
+        print("   Start time: \(chapter.startTime)s")
+        
         currentChapterIndex = chapter.index
         await player?.seek(to: CMTime(seconds: chapter.startTime, preferredTimescale: 600))
+        
+        // Immediately update currentPosition to reflect the seek (before time observer catches up)
+        currentPosition = chapter.startTime
+        
+        print("✅ [Watch Player] Seek complete - Chapter: \(currentChapterIndex + 1), Position: \(Int(currentPosition))s")
     }
     
     // MARK: - Position Tracking
@@ -303,6 +435,11 @@ final class WatchAudioPlayerService {
                 self.currentPosition = time.seconds
                 self.updateCurrentChapter()
                 
+                // Update Now Playing info periodically
+                if Int(time.seconds) % 5 == 0 {
+                    self.updateNowPlayingInfo()
+                }
+                
                 // Save state every 5 seconds while playing
                 if self.isPlaying && Int(time.seconds) % 5 == 0 {
                     self.savePlaybackState()
@@ -312,12 +449,141 @@ final class WatchAudioPlayerService {
         }
     }
     
-    private func updateCurrentChapter() {
-        guard let chapters = audiobook?.chapters else { return }
+    // MARK: - Remote Command Center (AirPods Controls)
+    
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
         
-        for (index, chapter) in chapters.enumerated().reversed() {
+        // Play command
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.play()
+            }
+            return .success
+        }
+        
+        // Pause command
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.pause()
+            }
+            return .success
+        }
+        
+        // Toggle play/pause command
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.isPlaying {
+                    await self.pause()
+                } else {
+                    await self.play()
+                }
+            }
+            return .success
+        }
+        
+        // Skip forward command (30 seconds)
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [30]
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.skip(by: 30)
+            }
+            return .success
+        }
+        
+        // Skip backward command (15 seconds)
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.preferredIntervals = [15]
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.skip(by: -15)
+            }
+            return .success
+        }
+        
+        // Next track command (next chapter)
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.nextChapter()
+            }
+            return .success
+        }
+        
+        // Previous track command (previous chapter)
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] event in
+            Task { @MainActor [weak self] in
+                await self?.previousChapter()
+            }
+            return .success
+        }
+        
+        // Change playback position command
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            Task { @MainActor [weak self] in
+                await self?.seek(to: event.positionTime)
+            }
+            return .success
+        }
+        
+        print("✅ [Remote Commands] Registered AirPods and remote control handlers")
+    }
+    
+    // MARK: - Now Playing Info
+    
+    private func updateNowPlayingInfo() {
+        guard let audiobook = audiobook else { return }
+        
+        var nowPlayingInfo = [String: Any]()
+        
+        // Basic info
+        nowPlayingInfo[MPMediaItemPropertyTitle] = audiobook.title
+        nowPlayingInfo[MPMediaItemPropertyArtist] = audiobook.author
+        
+        // Chapter info if available
+        if !sortedChapters.isEmpty && currentChapterIndex < sortedChapters.count {
+            let chapter = sortedChapters[currentChapterIndex]
+            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "Chapter \(chapter.index + 1): \(chapter.title)"
+        }
+        
+        // Playback info
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentPosition
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
+        
+        // Artwork
+        if let artworkData = audiobook.artworkData,
+           let image = UIImage(data: artworkData) {
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { size in
+                return image
+            }
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+        }
+        
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+    
+    private func updateCurrentChapter() {
+        guard !sortedChapters.isEmpty else { return }
+        
+        // Find the current chapter based on position
+        // Iterate in reverse to find the latest chapter that has started
+        for chapter in sortedChapters.reversed() {
             if currentPosition >= chapter.startTime {
-                currentChapterIndex = index
+                if currentChapterIndex != chapter.index {
+                    print("📖 [Watch Player] Chapter changed: \(currentChapterIndex) -> \(chapter.index)")
+                    currentChapterIndex = chapter.index
+                }
                 break
             }
         }

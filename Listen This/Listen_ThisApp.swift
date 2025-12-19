@@ -18,6 +18,11 @@ struct Listen_ThisApp: App {
     
     let modelContainer: ModelContainer
     
+    #if os(iOS)
+    // Watch Connectivity Manager
+    @State private var watchConnectivity = iOSWatchConnectivityManager.shared
+    #endif
+    
     init() {
         do {
             // Configure the model container with all models
@@ -56,14 +61,35 @@ struct Listen_ThisApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                #if os(iOS)
+                .environment(watchConnectivity)
+                #endif
                 .onAppear {
                     #if os(iOS)
+                    // Configure Watch Connectivity with model context
+                    if let context = modelContainer.mainContext as? ModelContext {
+                        watchConnectivity.configure(modelContext: context)
+                    }
+                    
+                    // Check for outstanding transfers
+                    watchConnectivity.checkOutstandingTransfers()
+                    
                     // Log WatchConnectivity status for debugging
-                    print("📱 [iOS App] View appeared")
+                    print("📱 [iOS App] Launched")
                     print("📱 [iOS App] Session state: \(WCSession.default.activationState.rawValue)")
                     print("📱 [iOS App] Watch paired: \(WCSession.default.isPaired)")
                     print("📱 [iOS App] Watch app installed: \(WCSession.default.isWatchAppInstalled)")
                     print("📱 [iOS App] Reachable: \(WCSession.default.isReachable)")
+                    
+                    if let session = WCSession.default as WCSession?, session.activationState == .activated {
+                        let outstanding = session.outstandingFileTransfers
+                        print("📱 [iOS App] Outstanding file transfers: \(outstanding.count)")
+                        for transfer in outstanding {
+                            if let title = transfer.file.metadata?["title"] as? String {
+                                print("   - \(title) (transferring: \(transfer.isTransferring))")
+                            }
+                        }
+                    }
                     #endif
                 }
         }
