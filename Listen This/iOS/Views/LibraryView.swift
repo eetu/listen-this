@@ -33,7 +33,7 @@ struct LibraryView: View {
                 if audiobooks.isEmpty {
                     emptyStateView
                 } else {
-                    libraryGrid
+                    libraryList
                 }
             }
             .navigationTitle("Library")
@@ -79,11 +79,12 @@ struct LibraryView: View {
     
     // MARK: - Library List
     
-    private var libraryGrid: some View {
+    private var libraryList: some View {
         List {
             ForEach(filteredAudiobooks) { book in
                 AudiobookCardWithMenu(audiobook: book)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowSeparator(.hidden)
                     .id(book.id) // Stabilize list item identity
             }
         }
@@ -107,6 +108,7 @@ struct AudiobookCardWithMenu: View {
     @State private var showDeleteError = false
     @State private var deleteErrorMessage = ""
     @State private var showWatchTransfer = false
+    @State private var showCloudKitTransfer = false
     @State private var pendingDeleteOption: Bool?
     
     @Environment(iOSWatchConnectivityManager.self) private var connectivity
@@ -130,16 +132,26 @@ struct AudiobookCardWithMenu: View {
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             // Delete button - opens sheet with options
-            Button(role: .destructive) {
-                // Add a small delay to allow swipe action to complete before showing sheet
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(100))
-                    showDeleteOptions = true
+            if audiobook.isFileCached {
+                Button {
+                    removeCacheFromiPhone()
+                } label: {
+                    Label("Remove", systemImage: "iphone.slash")
                 }
-            } label: {
-                Label("Delete", systemImage: "trash")
+                .tint(.orange)
             }
-            .tint(.red)
+            
+            // Delete from iCloud (more destructive, on leading edge)
+            if audiobook.iCloudRelativePath != nil {
+                Button(role: .destructive) {
+                    Task {
+                        await deleteAudiobook(audiobookId: audiobookId, deleteFromiCloud: true)
+                    }
+                } label: {
+                    Label("Delete", systemImage: "icloud.slash")
+                }
+                .tint(.red)
+            }
             
             // Transfer to Watch button or cancel button
             if connectivity.isPaired && connectivity.isWatchAppInstalled {
@@ -159,47 +171,24 @@ struct AudiobookCardWithMenu: View {
                         Label("Remove", systemImage: "applewatch.slash")
                     }
                     .tint(.orange)
-                } else if !audiobook.isFileCached {
-                    // Only show transfer option if file is not already cached locally
-                    // (If it's not on iPhone, it can't be on Watch either)
-                    Button {
-                        showWatchTransfer = true
-                    } label: {
-                        Label("Transfer", systemImage: "applewatch")
-                    }
-                    .tint(.purple)
                 } else {
-                    // File is cached on iPhone and NOT on Watch, show transfer option
+                    // Show both transfer options
+                    // CloudKit transfer (fast, recommended)
+                    Button {
+                        showCloudKitTransfer = true
+                    } label: {
+                        Label("CloudKit", systemImage: "icloud.and.arrow.up")
+                    }
+                    .tint(.blue)
+                    
+                    // Bluetooth transfer (legacy)
                     Button {
                         showWatchTransfer = true
                     } label: {
-                        Label("Transfer", systemImage: "applewatch")
+                        Label("Bluetooth", systemImage: "applewatch")
                     }
                     .tint(.purple)
                 }
-            }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            // Cache management on leading edge
-            if audiobook.isFileCached {
-                Button {
-                    removeCacheFromiPhone()
-                } label: {
-                    Label("Remove from iPhone", systemImage: "iphone.slash")
-                }
-                .tint(.orange)
-            }
-            
-            // Delete from iCloud (more destructive, on leading edge)
-            if audiobook.iCloudRelativePath != nil {
-                Button(role: .destructive) {
-                    Task {
-                        await deleteAudiobook(audiobookId: audiobookId, deleteFromiCloud: true)
-                    }
-                } label: {
-                    Label("Delete from iCloud", systemImage: "icloud.slash")
-                }
-                .tint(.red)
             }
         }
         .alert("Delete Failed", isPresented: $showDeleteError) {
@@ -213,6 +202,11 @@ struct AudiobookCardWithMenu: View {
             NavigationStack {
                 SingleAudiobookTransferView(audiobook: audiobook)
                     .environment(connectivity)
+            }
+        }
+        .sheet(isPresented: $showCloudKitTransfer) {
+            NavigationStack {
+                CloudKitTransferView(audiobook: audiobook)
             }
         }
         .sheet(isPresented: $showDeleteOptions) {
@@ -428,9 +422,8 @@ struct AudiobookCard: View {
                 // Title
                 Text(audiobook.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .foregroundStyle(.primary)
-
 
                 // Author
                 Text(audiobook.author)

@@ -139,8 +139,8 @@ struct AudiobookRowWithActions: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WatchConnectivityManager.self) private var connectivity
     
-    @State private var showingDeleteConfirm = false
     @State private var showingTransferSheet = false
+    @State private var showingCloudKitDownload = false
     
     // Capture audiobook ID at initialization
     private let audiobookId: UUID
@@ -155,27 +155,77 @@ struct AudiobookRowWithActions: View {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
     }
     
+    /// Verify file actually exists (not just metadata)
+    var isActuallyCached: Bool {
+        // Check file system directly
+        guard let cachePath = audiobook.expectedCachePath else { return false }
+        let fileExists = FileManager.default.fileExists(atPath: cachePath)
+        
+        // If CacheEntry exists but file doesn't, clean up the stale entry
+        if !fileExists && audiobook.cacheEntry != nil {
+            Task { @MainActor in
+                cleanupStaleCacheEntry()
+            }
+        }
+        
+        return fileExists
+    }
+    
     var body: some View {
         AudiobookRow(audiobook: audiobook)
             .onTapGesture {
-                onTap()
+                // Prevent opening player if file is not actually cached
+                if isActuallyCached {
+                    onTap()
+                } else {
+                    // File doesn't exist - trigger cleanup and show download options
+                    cleanupStaleCacheEntry()
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                // Delete button
-                if audiobook.isFileCached {
-                    Button(role: .destructive) {
-                        // Add small delay for watchOS gesture handling
+                if hasActiveTransfer {
+                    // Show status during transfer
+                    Button {
+                        // Do nothing, just show status
+                    } label: {
+                        Label("Downloading", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.gray)
+                    .disabled(true)
+                } else {
+                    // CloudKit download (fast, recommended)
+                    Button {
                         Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(150))
-                            showingDeleteConfirm = true
+                            showingCloudKitDownload = true
                         }
+                    } label: {
+                        Label("CloudKit", systemImage: "icloud")
+                    }
+                    .tint(.blue)
+                    
+                    // Request from iPhone (legacy, slower)
+                    Button {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(150))
+                            showingTransferSheet = true
+                        }
+                    } label: {
+                        Label("iPhone", systemImage: "iphone")
+                    }
+                    .tint(.purple)
+                }
+                // Delete button - show if cached
+                if isActuallyCached {
+                    Button(role: .destructive) {
+                        removeDownload(for: audiobook)
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
                     .tint(.red)
                 }
                 
-                // Cancel transfer button
+                // Cancel transfer button - show if transfer is active
                 if hasActiveTransfer {
                     Button(role: .destructive) {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
@@ -185,37 +235,44 @@ struct AudiobookRowWithActions: View {
                     .tint(.orange)
                 }
             }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                // Download button - only show if not cached and not transferring
-                if !audiobook.isFileCached && !hasActiveTransfer {
-                    Button {
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(150))
-                            showingTransferSheet = true
-                        }
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .tint(.blue)
-                }
-            }
-            .confirmationDialog(
-                "Delete \"\(audiobook.title)\"?",
-                isPresented: $showingDeleteConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Delete from Watch", role: .destructive) {
-                    removeDownload(for: audiobook)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This will remove the downloaded file from your Apple Watch.")
-            }
             .sheet(isPresented: $showingTransferSheet) {
                 NavigationStack {
                     WatchTransferStatusView(audiobook: audiobook)
                 }
             }
+            .sheet(isPresented: $showingCloudKitDownload) {
+                NavigationStack {
+                    CloudKitTransferView(audiobook: audiobook)
+                }
+            }
+            .onAppear {
+                // Clean up stale cache entries when view appears
+                if !isActuallyCached && audiobook.cacheEntry != nil {
+                    cleanupStaleCacheEntry()
+                }
+            }
+    }
+    
+    /// Clean up CacheEntry if file doesn't exist
+    private func cleanupStaleCacheEntry() {
+        guard let cacheEntry = audiobook.cacheEntry else { return }
+        
+        // Verify file really doesn't exist
+        let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        
+        print("⚠️ [WatchLibraryView] Cleaning up stale CacheEntry for: \(audiobook.title)")
+        
+        // Remove stale cache entry
+        audiobook.cacheEntry = nil
+        modelContext.delete(cacheEntry)
+        
+        do {
+            try modelContext.save()
+            print("✅ [WatchLibraryView] Stale cache entry removed")
+        } catch {
+            print("❌ [WatchLibraryView] Failed to remove stale cache entry: \(error)")
+        }
     }
     
     private func removeDownload(for audiobook: Audiobook) {
@@ -265,36 +322,77 @@ struct AudiobookRow: View {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
     }
     
+    var isActuallyCached: Bool {
+        guard let cachePath = audiobook.expectedCachePath else { return false }
+        return FileManager.default.fileExists(atPath: cachePath)
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 // Artwork thumbnail
-                if let artworkData = audiobook.artworkData,
-                   let uiImage = UIImage(data: artworkData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 50, height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                } else {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 50, height: 50)
-                        .overlay {
-                            Image(systemName: "book.fill")
-                                .foregroundStyle(.secondary)
-                        }
+                ZStack(alignment: .bottomTrailing) {
+                    if let artworkData = audiobook.artworkData,
+                       let uiImage = UIImage(data: artworkData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 50, height: 50)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 50, height: 50)
+                            .overlay {
+                                Image(systemName: "book.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                    }
+                    
+                    // Cache status badge
+                    if hasActiveTransfer {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white, .blue)
+                            .background(Circle().fill(.white).frame(width: 12, height: 12))
+                            .offset(x: 2, y: 2)
+                    } else if !isActuallyCached {
+                        Image(systemName: "icloud.and.arrow.down")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white, .orange)
+                            .background(Circle().fill(.white).frame(width: 10, height: 10))
+                            .offset(x: 2, y: 2)
+                    }
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(audiobook.title)
                         .font(.headline)
-                        .lineLimit(2)
+                        .lineLimit(2, reservesSpace: true)
                     
                     Text(audiobook.author)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    
+                    // Status indicator
+                    if hasActiveTransfer {
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Downloading")
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                        }
+                    } else if !isActuallyCached {
+                        HStack(spacing: 4) {
+                            Image(systemName: "icloud.and.arrow.down")
+                                .font(.system(size: 10))
+                            Text("Not Downloaded")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.orange)
+                    }
                 }
             }
         }

@@ -56,6 +56,7 @@
 				iOS/Managers/AudiobookCacheManager.swift,
 				iOS/Managers/iOSWatchConnectivityManager.swift,
 				iOS/Views/SingleAudiobookTransferView.swift,
+				Shared/Managers/CloudKitChunkedTransferManager.swift,
 				Shared/Models/Audiobook.swift,
 				Shared/Models/AudiobookError.swift,
 				Shared/Models/CacheEntry.swift,
@@ -65,6 +66,7 @@
 				Shared/Providers/iCloudDriveProvider.swift,
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
+				Shared/Views/CloudKitTransferView.swift,
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
 		};
