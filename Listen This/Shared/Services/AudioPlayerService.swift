@@ -169,8 +169,6 @@ final class AudioPlayerService {
             }
             return .success
         }
-        
-        print("🎮 [AudioPlayer] Remote Command Center configured")
     }
     
     @objc private func handleInterruption(notification: Notification) {
@@ -227,11 +225,9 @@ final class AudioPlayerService {
         if let cachedURL = audiobook.cacheFileURL {
             // Use cached file if available
             fileURL = cachedURL
-            print("🎵 [AudioPlayer] Using cached file: \(fileURL.path)")
         } else if let iCloudURL = audiobook.iCloudFileURL {
             // Use iCloud file
             fileURL = iCloudURL
-            print("🎵 [AudioPlayer] Using iCloud file: \(fileURL.path)")
         } else {
             throw AudiobookError.fileNotFound
         }
@@ -314,7 +310,7 @@ final class AudioPlayerService {
     
     // MARK: - Now Playing Info
     
-    private func updateNowPlayingInfo() {
+    func updateNowPlayingInfo() {
         guard let audiobook = audiobook else { return }
         
         var nowPlayingInfo = [String: Any]()
@@ -337,7 +333,7 @@ final class AudioPlayerService {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
         
         // Chapter info
-        if let chapter = currentChapter {
+        if currentChapter != nil {
             nowPlayingInfo[MPNowPlayingInfoPropertyChapterNumber] = currentChapterIndex + 1
             nowPlayingInfo[MPNowPlayingInfoPropertyChapterCount] = audiobook.chapters?.count ?? 0
         }
@@ -346,8 +342,6 @@ final class AudioPlayerService {
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        
-        print("📱 [AudioPlayer] Updated Now Playing info: \(audiobook.title)")
     }
     
     /// Start or resume playback

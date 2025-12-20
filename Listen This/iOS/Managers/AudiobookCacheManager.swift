@@ -49,37 +49,22 @@ final class AudiobookCacheManager {
         // Copy to cache
         try FileManager.default.copyItem(at: sourceURL, to: cacheURL)
         
-        print("💾 [Cache] Cached audiobook: \(audiobook.title)")
-        print("   Filename: \(originalFilename)")
-        print("   Path: \(cacheURL.path)")
-        
         return cacheURL
     }
     
     /// Delete cached file for an audiobook
     func deleteCachedFile(for audiobook: Audiobook) throws {
         guard let cachePath = audiobook.expectedCachePath else {
-            print("ℹ️ [Cache] No cache path available for: \(audiobook.title)")
             return
         }
         
         let cacheURL = URL(fileURLWithPath: cachePath)
         
-        print("🗑️ [Cache] Attempting to delete cache for: \(audiobook.title)")
-        print("   Cache path: \(cacheURL.path)")
-        if let filename = audiobook.filename {
-            print("   Filename: \(filename)")
-        }
-        
         guard FileManager.default.fileExists(atPath: cacheURL.path) else {
-            print("ℹ️ [Cache] No cache file to delete (file doesn't exist)")
-            
             // Check if there's a file with UUID fallback name
             let uuidBasedPath = Self.cacheDirectory.appendingPathComponent("\(audiobook.id.uuidString).m4b")
             if FileManager.default.fileExists(atPath: uuidBasedPath.path) {
-                print("ℹ️ [Cache] Found file with UUID-based name, deleting that instead")
                 try FileManager.default.removeItem(at: uuidBasedPath)
-                print("🗑️ [Cache] Deleted UUID-based cache file")
                 return
             }
             
@@ -87,7 +72,6 @@ final class AudiobookCacheManager {
         }
         
         try FileManager.default.removeItem(at: cacheURL)
-        print("✅ [Cache] Successfully deleted cache file")
     }
     
     /// Get all cached audiobook files
@@ -123,11 +107,8 @@ final class AudiobookCacheManager {
     
     /// Find and remove orphaned cache files (files without corresponding audiobook in database)
     func cleanupOrphanedCaches() async throws {
-        print("🧹 [Cache] Starting orphaned cache cleanup...")
-        
         // Get all cached files
         let cachedFiles = getAllCachedFiles()
-        print("🧹 [Cache] Found \(cachedFiles.count) cached file(s)")
         
         // Get all audiobook filenames from database
         let descriptor = FetchDescriptor<Audiobook>()
@@ -147,9 +128,6 @@ final class AudiobookCacheManager {
             }
         }
         
-        print("🧹 [Cache] Found \(audiobooks.count) audiobook(s) in database")
-        print("🧹 [Cache] Known filenames: \(knownFilenames.count)")
-        
         // Check each cached file
         var orphanedCount = 0
         var freedSpace: Int64 = 0
@@ -167,24 +145,12 @@ final class AudiobookCacheManager {
                 
                 try FileManager.default.removeItem(at: fileURL)
                 orphanedCount += 1
-                print("🗑️ [Cache] Deleted orphaned cache: \(filename)")
             }
-        }
-        
-        if orphanedCount > 0 {
-            let sizeString = ByteCountFormatter.string(fromByteCount: freedSpace, countStyle: .file)
-            print("✅ [Cache] Cleanup complete!")
-            print("   Removed: \(orphanedCount) orphaned file(s)")
-            print("   Freed: \(sizeString)")
-        } else {
-            print("✅ [Cache] No orphaned caches found")
         }
     }
     
     /// Clean up old cached files to free space
     func evictOldCaches(keepingCount: Int = 5) async throws {
-        print("🧹 [Cache] Evicting old caches (keeping \(keepingCount) most recent)...")
-        
         // Get all audiobooks with cached files
         let descriptor = FetchDescriptor<Audiobook>(
             sortBy: [SortDescriptor(\.lastAccessedDate, order: .reverse)]
@@ -193,7 +159,6 @@ final class AudiobookCacheManager {
         
         // Find cached audiobooks
         let cachedAudiobooks = audiobooks.filter { $0.isFileCached }
-        print("🧹 [Cache] Found \(cachedAudiobooks.count) cached audiobook(s)")
         
         // Keep only the most recent
         if cachedAudiobooks.count > keepingCount {
@@ -213,15 +178,7 @@ final class AudiobookCacheManager {
                 }
                 
                 try FileManager.default.removeItem(at: cacheURL)
-                print("🗑️ [Cache] Evicted: \(audiobook.title)")
             }
-            
-            let sizeString = ByteCountFormatter.string(fromByteCount: freedSpace, countStyle: .file)
-            print("✅ [Cache] Eviction complete!")
-            print("   Removed: \(toDelete.count) old cache(s)")
-            print("   Freed: \(sizeString)")
-        } else {
-            print("✅ [Cache] No eviction needed")
         }
     }
     
@@ -229,10 +186,7 @@ final class AudiobookCacheManager {
     func cleanupIfNeeded(maxSize: Int64 = 3_000_000_000) async throws {  // 3GB default
         let currentSize = getCacheSize()
         
-        print("📊 [Cache] Current size: \(ByteCountFormatter.string(fromByteCount: currentSize, countStyle: .file))")
-        
         if currentSize > maxSize {
-            print("⚠️ [Cache] Cache size exceeds limit, cleaning up...")
             try await evictOldCaches(keepingCount: 3)
         }
     }
@@ -281,14 +235,4 @@ extension Audiobook {
     func deleteCache(using cacheManager: AudiobookCacheManager) throws {
         try cacheManager.deleteCachedFile(for: self)
     }
-  
-    /*
-    /// Check if this audiobook has a valid cache file URL
-    var validCacheFileURL: URL? {
-        guard let cachePath = expectedCachePath else { return nil }
-        let url = URL(fileURLWithPath: cachePath)
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return url
-    }
-    */
 }

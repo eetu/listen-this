@@ -178,12 +178,10 @@ struct WatchTransferView: View {
         do {
             // First, ensure the file is cached on iPhone
             if !audiobook.isFileCached {
-                print("📥 [WatchTransfer] Downloading from iCloud first...")
                 _ = try await audiobook.downloadAndCache(using: cacheManager)
             }
             
             // Then transfer to Watch
-            print("📤 [WatchTransfer] Transferring to Watch...")
             try await connectivity.transferAudiobook(audiobook)
             
         } catch let error as WatchTransferError {

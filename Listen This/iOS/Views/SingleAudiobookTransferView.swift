@@ -87,11 +87,6 @@ struct SingleAudiobookTransferView: View {
         .onAppear {
             cacheManager = AudiobookCacheManager(modelContext: modelContext)
             connectivity.configure(modelContext: modelContext)
-            
-            // Check if there's already an active transfer for this audiobook
-            if hasActiveTransfer {
-                print("ℹ️ [iOS Transfer] Active transfer detected for: \(audiobook.title)")
-            }
         }
     }
     

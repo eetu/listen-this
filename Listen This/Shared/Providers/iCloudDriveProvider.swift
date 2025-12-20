@@ -39,38 +39,28 @@ final class iCloudDriveProvider: ContentSource {
     }
     
     func validateAccess() async throws -> Bool {
-        print("🔍 Checking iCloud Drive availability...")
-        
         // Check if ubiquity container is available with specific container ID
         let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This")
-        print("   Ubiquity container URL: \(ubiquityURL?.absoluteString ?? "❌ nil - iCloud not configured!")")
         
         guard isAvailable else {
-            print("   ❌ iCloud Drive is NOT available")
-            print("   💡 Fix: Enable iCloud Documents capability in Xcode")
+            print("⚠️ iCloud Drive is NOT available - Enable iCloud Documents capability in Xcode")
             return false
         }
-        
-        print("   ✅ iCloud Drive is available")
         
         guard let docsURL = documentsURL else {
-            print("   ❌ Documents URL is nil")
+            print("⚠️ iCloud Documents URL is nil")
             return false
         }
-        
-        print("   📁 Documents URL: \(docsURL.path)")
         
         // Ensure the documents directory exists
         do {
             try ensureDocumentsDirectoryExists()
-            print("   ✅ Documents directory ready")
         } catch {
-            print("   ❌ Failed to create documents directory: \(error)")
+            print("⚠️ Failed to create documents directory: \(error)")
             throw error
         }
         
         let exists = FileManager.default.fileExists(atPath: docsURL.path)
-        print("   Directory exists: \(exists)")
         
         return exists
     }
@@ -89,7 +79,7 @@ final class iCloudDriveProvider: ContentSource {
                 let metadata = try await extractMetadata(from: fileURL)
                 metadataList.append(metadata)
             } catch {
-                print("Failed to extract metadata from \(fileURL.lastPathComponent): \(error)")
+                print("⚠️ Failed to extract metadata from \(fileURL.lastPathComponent): \(error)")
                 // Continue with other files
             }
         }

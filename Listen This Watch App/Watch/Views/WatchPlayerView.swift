@@ -487,7 +487,6 @@ struct WatchPlayerView: View {
               player.currentChapterIndex < sortedChapters.count else {
             // Fallback to total duration if no chapters
             let result = (position: player.currentPosition, duration: player.duration)
-            print("📊 [Progress] No chapters - Total: \(Int(result.position))s / \(Int(result.duration))s")
             return result
         }
         
@@ -498,13 +497,7 @@ struct WatchPlayerView: View {
         let chapterDuration = currentChapter.duration
         
         let result = (position: chapterPosition, duration: chapterDuration)
-        
-        // Debug logging (only log every 5 seconds to avoid spam)
-        if Int(player.currentPosition) % 5 == 0 {
-            print("📊 [Progress] Chapter \(player.currentChapterIndex + 1): \(Int(result.position))s / \(Int(result.duration))s")
-            print("   Absolute position: \(Int(player.currentPosition))s, Chapter start: \(Int(currentChapter.startTime))s")
-        }
-        
+                
         return result
     }
     
@@ -536,9 +529,6 @@ struct WatchPlayerView: View {
         
         // Save changes
         try? modelContext.save()
-        
-        print("🗑️ [Watch Player] Removed download for: \(audiobook.title)")
-        print("   Kept localFilename: \(audiobook.localFilename ?? "nil")")
     }
     
     

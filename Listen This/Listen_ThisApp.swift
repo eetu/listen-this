@@ -74,16 +74,9 @@ struct Listen_ThisApp: App {
                     // Check for outstanding transfers
                     watchConnectivity.checkOutstandingTransfers()
                     
-                    // Log WatchConnectivity status for debugging
-                    print("📱 [iOS App] Launched")
-                    print("📱 [iOS App] Session state: \(WCSession.default.activationState.rawValue)")
-                    print("📱 [iOS App] Watch paired: \(WCSession.default.isPaired)")
-                    print("📱 [iOS App] Watch app installed: \(WCSession.default.isWatchAppInstalled)")
-                    print("📱 [iOS App] Reachable: \(WCSession.default.isReachable)")
-                    
                     if let session = WCSession.default as WCSession?, session.activationState == .activated {
                         let outstanding = session.outstandingFileTransfers
-                        print("📱 [iOS App] Outstanding file transfers: \(outstanding.count)")
+                        print("[iOS App] Outstanding file transfers: \(outstanding.count)")
                         for transfer in outstanding {
                             if let title = transfer.file.metadata?["title"] as? String {
                                 print("   - \(title) (transferring: \(transfer.isTransferring))")

@@ -36,7 +36,6 @@ final class WatchConnectivityManager: NSObject {
             session = WCSession.default
             session?.delegate = self
             session?.activate()
-            print("📱 [WatchConnectivity] Session activated")
         }
     }
     
@@ -44,23 +43,15 @@ final class WatchConnectivityManager: NSObject {
     
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
-        print("⌚ [WatchConnectivity] Configured with model context")
     }
     
     // MARK: - Check Pending Transfers
     
     /// Check for pending or ongoing transfers and restore their state
     func checkPendingTransfers() {
-        guard let session = session else {
-            print("⌚ [WatchConnectivity] No session available for checking transfers")
+        guard session != nil else {
             return
         }
-        
-        // Check if there are any file transfers that haven't been received yet
-        let hasTransfers = session.hasContentPending
-        
-        print("⌚ [WatchConnectivity] Checking pending transfers...")
-        print("⌚ [WatchConnectivity] Has content pending: \(hasTransfers)")
         
         // Unfortunately, WCSession doesn't provide a list of pending incoming transfers
         // But we can check if any audiobooks are marked as "in progress" in our database
@@ -69,18 +60,9 @@ final class WatchConnectivityManager: NSObject {
         // Look for audiobooks that might have been in the middle of downloading
         do {
             let descriptor = FetchDescriptor<Audiobook>()
-            let audiobooks = try modelContext.fetch(descriptor)
-            
-            let cachedCount = audiobooks.filter { $0.isFileCached }.count
-            let totalCount = audiobooks.count
-            
-            print("⌚ [WatchConnectivity] Library status:")
-            print("   Total audiobooks: \(totalCount)")
-            print("   Cached locally: \(cachedCount)")
-            print("   Pending: \(totalCount - cachedCount)")
-            
+            _ = try modelContext.fetch(descriptor)
         } catch {
-            print("❌ [WatchConnectivity] Failed to check audiobook status: \(error)")
+            // Failed to check audiobook status
         }
     }
     
@@ -88,22 +70,54 @@ final class WatchConnectivityManager: NSObject {
     
     func requestLibrarySync() {
         guard let session = session, session.isReachable else {
-            print("⚠️ [WatchConnectivity] iPhone not reachable")
             return
         }
         
         session.sendMessage(["command": "syncLibrary"], replyHandler: nil) { error in
             Task { @MainActor in
-                print("❌ [WatchConnectivity] Failed to request sync: \(error)")
                 self.lastError = error
             }
+        }
+    }
+    
+    /// Send list of cached audiobook IDs to iPhone
+    func sendCachedAudiobookList() {
+        guard let session = session else { return }
+        guard let modelContext = modelContext else { return }
+        
+        do {
+            // Fetch all audiobooks that have cached files on Watch
+            let descriptor = FetchDescriptor<Audiobook>()
+            let audiobooks = try modelContext.fetch(descriptor)
+            
+            // Get IDs of audiobooks with cached files
+            let cachedIds = audiobooks
+                .filter { $0.isFileCached }
+                .map { $0.id.uuidString }
+            
+            let message: [String: Any] = [
+                "command": "updateWatchCachedBooks",
+                "cachedAudiobookIds": cachedIds
+            ]
+            
+            // Try sending if reachable, otherwise update application context
+            if session.isReachable {
+                session.sendMessage(message, replyHandler: nil) { error in
+                    // Failed to send cached list
+                }
+            } else {
+                // Use application context for persistent state
+                try? session.updateApplicationContext(message)
+            }
+            
+        } catch {
+            // Failed to fetch cached books
         }
     }
     
     /// Request to download and transfer an audiobook from iPhone
     func requestDownload(audiobookId: UUID) {
         guard let session = session, session.isReachable else {
-            print("⚠️ [WatchConnectivity] iPhone not reachable")
             lastError = WatchTransferError.iPhoneNotReachable
             return
         }
@@ -113,15 +127,8 @@ final class WatchConnectivityManager: NSObject {
             "audiobookId": audiobookId.uuidString
         ]
         
-        print("📥 [WatchConnectivity] Requesting download: \(audiobookId)")
-        
-        session.sendMessage(message, replyHandler: { reply in
+        session.sendMessage(message, replyHandler: nil) { error in
             Task { @MainActor in
-                print("✅ [WatchConnectivity] Download request acknowledged")
-            }
-        }) { error in
-            Task { @MainActor in
-                print("❌ [WatchConnectivity] Failed to request download: \(error)")
                 self.lastError = error
             }
         }
@@ -130,7 +137,6 @@ final class WatchConnectivityManager: NSObject {
     /// Request to cancel an ongoing transfer from iPhone
     func cancelTransfer(audiobookId: UUID) {
         guard let session = session else {
-            print("⚠️ [WatchConnectivity] No session available")
             return
         }
         
@@ -144,20 +150,9 @@ final class WatchConnectivityManager: NSObject {
                 "audiobookId": audiobookId.uuidString
             ]
             
-            print("🛑 [WatchConnectivity] Requesting transfer cancellation: \(audiobookId)")
-            
-            session.sendMessage(message, replyHandler: { reply in
-                Task { @MainActor in
-                    print("✅ [WatchConnectivity] Cancel request acknowledged")
-                }
-            }) { error in
-                Task { @MainActor in
-                    print("⚠️ [WatchConnectivity] Failed to send cancel request: \(error)")
-                    // Still removed locally, so this is not critical
-                }
+            session.sendMessage(message, replyHandler: nil) { error in
+                // Failed to send cancel request
             }
-        } else {
-            print("⚠️ [WatchConnectivity] iPhone not reachable, cancelling locally only")
         }
     }
     
@@ -200,10 +195,6 @@ final class WatchConnectivityManager: NSObject {
         
         activeTransfers[audiobook.id.uuidString] = progress
         
-        print("📤 [WatchConnectivity] Starting transfer to iPhone: \(audiobook.title)")
-        print("   File: \(fileURL.lastPathComponent)")
-        print("   Size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
-        
         // Send notification message to iPhone
         if session.isReachable {
             let message: [String: Any] = [
@@ -213,14 +204,12 @@ final class WatchConnectivityManager: NSObject {
             ]
             
             session.sendMessage(message, replyHandler: nil) { error in
-                print("⚠️ [WatchConnectivity] Failed to notify iPhone: \(error)")
+                // Failed to notify iPhone
             }
         }
         
         // Start file transfer
         _ = session.transferFile(fileURL, metadata: metadata)
-        
-        print("✅ [WatchConnectivity] Transfer to iPhone initiated")
     }
 }
 
@@ -235,21 +224,18 @@ extension WatchConnectivityManager: WCSessionDelegate {
     ) {
         Task { @MainActor in
             if let error = error {
-                print("❌ [WatchConnectivity] Activation error: \(error)")
                 self.lastError = error
-            } else {
-                print("✅ [WatchConnectivity] Session activated: \(activationState.rawValue)")
             }
         }
     }
     
     #if os(iOS)
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
-        print("⚠️ [WatchConnectivity] Session became inactive")
+        // Session became inactive
     }
     
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        print("⚠️ [WatchConnectivity] Session deactivated, reactivating...")
+        // Session deactivated, reactivating
         session.activate()
     }
     #endif
@@ -257,7 +243,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
             self.isReachable = session.isReachable
-            print("📱 [WatchConnectivity] Reachability: \(session.isReachable)")
         }
     }
     
@@ -278,15 +263,13 @@ extension WatchConnectivityManager: WCSessionDelegate {
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
         Task { @MainActor in
-            handleMessage(message)
-            replyHandler(["status": "received"])
+            let reply = await handleMessageWithReply(message)
+            replyHandler(reply)
         }
     }
     
     private func handleMessage(_ message: [String: Any]) {
         guard let command = message["command"] as? String else { return }
-        
-        print("📨 [WatchConnectivity] Received command: \(command)")
         
         switch command {
         case "updateMetadata":
@@ -297,8 +280,29 @@ extension WatchConnectivityManager: WCSessionDelegate {
             handleTransferProgress(message)
         case "transferCancelled":
             handleTransferCancelled(message)
+        case "requestCachedList":
+            // iPhone is asking which books are cached on Watch
+            sendCachedAudiobookList()
+        case "deleteAudiobook":
+            // Delete is handled in handleMessageWithReply since it needs a response
+            break
         default:
-            print("⚠️ [WatchConnectivity] Unknown command: \(command)")
+            break
+        }
+    }
+    
+    private func handleMessageWithReply(_ message: [String: Any]) async -> [String: Any] {
+        guard let command = message["command"] as? String else {
+            return ["status": "error", "error": "No command specified"]
+        }
+        
+        switch command {
+        case "deleteAudiobook":
+            return await handleDeleteAudiobook(message)
+        default:
+            // For non-reply commands, handle normally
+            handleMessage(message)
+            return ["status": "received"]
         }
     }
     
@@ -308,12 +312,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
         _ session: WCSession,
         didReceive file: WCSessionFile
     ) {
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: file.fileURL.path)[.size] as? Int64) ?? 0
-
-        print("📥 [WatchConnectivity] ===== FILE RECEIVED =====")
-        print("📥 [WatchConnectivity] File: \(file.fileURL.lastPathComponent)")
-        print("📥 [WatchConnectivity] Size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
-        print("📥 [WatchConnectivity] Metadata: \(file.metadata ?? [:])")
+        _ = (try? FileManager.default.attributesOfItem(atPath: file.fileURL.path)[.size] as? Int64) ?? 0
 
         // CRITICAL: Must copy file IMMEDIATELY before it's deleted by system
         // WatchConnectivity deletes temp files after this method returns
@@ -326,8 +325,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
             in: .userDomainMask
         )[0].appendingPathComponent("Audiobooks")
 
-        print("📂 [WatchConnectivity] Cache directory: \(cachesDir.path)")
-
         // Create directory - don't swallow errors
         do {
             try FileManager.default.createDirectory(
@@ -335,9 +332,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 withIntermediateDirectories: true,
                 attributes: nil
             )
-            print("✅ [WatchConnectivity] Cache directory created/verified")
         } catch {
-            print("❌ [WatchConnectivity] Failed to create cache directory: \(error)")
             DispatchQueue.main.sync {
                 Task { @MainActor in
                     self.lastError = error
@@ -348,24 +343,15 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
         // Verify source file exists (must check NOW before system deletes it)
         guard FileManager.default.fileExists(atPath: file.fileURL.path) else {
-            print("❌ [WatchConnectivity] Source file doesn't exist: \(file.fileURL.path)")
             return
         }
 
-        print("✅ [WatchConnectivity] Source file exists: \(file.fileURL.path)")
-
         // Prepare destination
         let destinationURL = cachesDir.appendingPathComponent(file.fileURL.lastPathComponent)
-        print("📋 [WatchConnectivity] Destination: \(destinationURL.path)")
 
         // Remove existing file if present
         if FileManager.default.fileExists(atPath: destinationURL.path) {
-            do {
-                try FileManager.default.removeItem(at: destinationURL)
-                print("🗑️ [WatchConnectivity] Removed existing file")
-            } catch {
-                print("⚠️ [WatchConnectivity] Failed to remove existing: \(error)")
-            }
+            try? FileManager.default.removeItem(at: destinationURL)
         }
 
         // Try to move the file first (preferred)
@@ -373,23 +359,16 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
         do {
             try FileManager.default.moveItem(at: file.fileURL, to: destinationURL)
-            print("✅ [WatchConnectivity] File moved successfully")
             fileTransferred = true
         } catch {
-            print("⚠️ [WatchConnectivity] Move failed, trying copy: \(error)")
-
             // If move fails, try copy (watchOS might restrict moving from inbox)
             do {
                 try FileManager.default.copyItem(at: file.fileURL, to: destinationURL)
-                print("✅ [WatchConnectivity] File copied successfully")
                 fileTransferred = true
 
                 // Clean up source after successful copy
                 try? FileManager.default.removeItem(at: file.fileURL)
             } catch {
-                print("❌ [WatchConnectivity] Both move and copy failed: \(error)")
-                print("   Source: \(file.fileURL.path)")
-                print("   Destination: \(destinationURL.path)")
                 DispatchQueue.main.sync {
                     Task { @MainActor in
                         self.lastError = error
@@ -400,11 +379,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
         }
 
         guard fileTransferred else {
-            print("❌ [WatchConnectivity] File transfer failed")
             return
         }
-
-        print("✅ [WatchConnectivity] File saved to: \(destinationURL.path)")
 
         // CRITICAL: Use synchronous dispatch to ensure model update begins before method returns
         // This follows Apple's pattern from TransferringDataWithWatchConnectivity sample
@@ -433,7 +409,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
               let audiobookIdString = metadata["audiobookId"] as? String,
               let audiobookId = UUID(uuidString: audiobookIdString),
               let modelContext = modelContext else {
-            print("❌ [WatchConnectivity] Invalid file metadata")
             return
         }
         
@@ -444,11 +419,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
             )
             
             guard let audiobook = try modelContext.fetch(descriptor).first else {
-                print("❌ [WatchConnectivity] Audiobook not found: \(audiobookId)")
                 return
             }
-            
-            print("✅ [WatchConnectivity] File saved to: \(destinationURL.path)")
             
             // Update or create cache entry
             if audiobook.cacheEntry == nil {
@@ -471,10 +443,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
             // Clear transfer progress
             activeTransfers.removeValue(forKey: audiobookId.uuidString)
             
-            print("✅ [WatchConnectivity] Audiobook cached successfully")
+            // Notify iPhone that we now have this book cached
+            sendCachedAudiobookList()
             
         } catch {
-            print("❌ [WatchConnectivity] Failed to save file: \(error)")
             lastError = error
         }
     }
@@ -482,11 +454,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
     // MARK: - Handle Metadata Updates
     
     private func handleMetadataUpdate(_ message: [String: Any]) {
-        guard let modelContext = modelContext else { return }
+        guard modelContext != nil else { return }
         
         // Extract audiobook data from message
         // This would be sent from iPhone when a new book is added
-        print("📝 [WatchConnectivity] Processing metadata update")
         
         // Implementation depends on your metadata structure
         // For now, just log that we received it
@@ -504,11 +475,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
         )
         
         activeTransfers[audiobookId] = progress
-        
-        print("📤 [WatchConnectivity] Transfer started")
-        print("   Audiobook ID: \(audiobookId)")
-        print("   Total size: \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))")
-        print("   Active transfers count: \(activeTransfers.count)")
     }
     
     private func handleTransferProgress(_ message: [String: Any]) {
@@ -516,19 +482,55 @@ extension WatchConnectivityManager: WCSessionDelegate {
               let bytesTransferred = message["bytesTransferred"] as? Int64 else { return }
         
         activeTransfers[audiobookId]?.bytesTransferred = bytesTransferred
-        
-        if let progress = activeTransfers[audiobookId] {
-            let percent = Double(progress.bytesTransferred) / Double(progress.totalBytes) * 100
-            print("📊 [WatchConnectivity] Transfer progress: \(Int(percent))% (\(progress.progressText))")
-        }
     }
     
     private func handleTransferCancelled(_ message: [String: Any]) {
         guard let audiobookId = message["audiobookId"] as? String else { return }
         
         activeTransfers.removeValue(forKey: audiobookId)
+    }
+    
+    private func handleDeleteAudiobook(_ message: [String: Any]) async -> [String: Any] {
+        guard let audiobookIdString = message["audiobookId"] as? String,
+              let audiobookId = UUID(uuidString: audiobookIdString),
+              let modelContext = modelContext else {
+            return ["success": false, "error": "Invalid request"]
+        }
         
-        print("🛑 [WatchConnectivity] Transfer cancelled by iPhone: \(audiobookId)")
+        do {
+            // Fetch the audiobook
+            let descriptor = FetchDescriptor<Audiobook>(
+                predicate: #Predicate { $0.id == audiobookId }
+            )
+            
+            guard let audiobook = try modelContext.fetch(descriptor).first else {
+                return ["success": false, "error": "Audiobook not found"]
+            }
+            
+            // Remove the cache entry and file
+            if let cacheEntry = audiobook.cacheEntry {
+                // Delete file
+                let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+                try? FileManager.default.removeItem(at: fileURL)
+                
+                // Remove cache entry
+                modelContext.delete(cacheEntry)
+            }
+            
+            // Clear audiobook cache reference
+            audiobook.cacheEntry = nil
+            
+            // Save changes
+            try modelContext.save()
+            
+            // Update the cached book list sent to iPhone
+            sendCachedAudiobookList()
+            
+            return ["success": true]
+            
+        } catch {
+            return ["success": false, "error": error.localizedDescription]
+        }
     }
 }
 

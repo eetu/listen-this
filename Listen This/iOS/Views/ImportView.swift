@@ -29,19 +29,10 @@ struct ImportView: View {
                         Label("Import M4B File", systemImage: "doc.badge.plus")
                     }
                     .disabled(isImporting)
-                    
-                    Button {
-                        Task {
-                            await refreshFromiCloud()
-                        }
-                    } label: {
-                        Label("Scan iCloud Drive", systemImage: "arrow.clockwise.icloud")
-                    }
-                    .disabled(isImporting)
-                } header: {
+                                    } header: {
                     Text("Import Sources")
                 } footer: {
-                    Text("Import M4B audiobook files from your device or scan for files in your iCloud Drive Documents folder.")
+                    Text("Import M4B audiobook files from iCloud.")
                 }
                 
                 if let error = importError {
@@ -62,8 +53,7 @@ struct ImportView: View {
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Place M4B files in iCloud Drive/Documents", systemImage: "1.circle.fill")
-                            Label("Use 'Scan iCloud Drive' to import them", systemImage: "2.circle.fill")
-                            Label("Or use 'Import M4B File' to pick files", systemImage: "3.circle.fill")
+                            Label("Use 'Import M4B File' to pick files", systemImage: "3.circle.fill")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -90,11 +80,6 @@ struct ImportView: View {
                     await handleFileImport(result)
                 }
             }
-            .sheet(isPresented: $showingRefreshSheet) {
-                RefreshProgressView(
-                    isRefreshing: libraryService?.isRefreshing ?? false
-                )
-            }
             .overlay {
                 if isImporting {
                     ProgressView("Importing...")
@@ -113,21 +98,6 @@ struct ImportView: View {
     
     // MARK: - Actions
     
-    private func refreshFromiCloud() async {
-        guard let service = libraryService else { return }
-        
-        isImporting = true
-        importError = nil
-        
-        await service.refreshLibrary()
-        
-        if let error = service.lastError {
-            importError = error
-        }
-        
-        isImporting = false
-    }
-    
     private func handleFileImport(_ result: Result<[URL], Error>) async {
         isImporting = true
         importError = nil
@@ -141,21 +111,13 @@ struct ImportView: View {
                 print("❌ No URL selected")
                 return
             }
-            
-            print("✅ Selected file: \(url.lastPathComponent)")
-            print("   Path: \(url.path)")
-            
+                        
             guard let service = libraryService else {
                 print("❌ Library service is nil")
                 return
             }
             
-            print("📚 Starting import...")
-            let audiobook = try await service.importFile(from: url)
-            print("✅ Import successful!")
-            print("   Title: \(audiobook.title)")
-            print("   Author: \(audiobook.author)")
-            print("   Duration: \(audiobook.duration)s")
+            _ = try await service.importFile(from: url)
             
             // Success - dismiss after brief delay
             try? await Task.sleep(for: .seconds(0.5))

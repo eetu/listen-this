@@ -55,11 +55,7 @@ struct Listen_ThisWatchApp: App {
                     
                     // Check for any ongoing or pending transfers
                     watchConnectivityManager.checkPendingTransfers()
-                    
-                    print("⌚ [Watch App] Launched")
-                    print("⌚ [Watch App] Session state: \(WCSession.default.activationState.rawValue)")
-                    print("⌚ [Watch App] Reachable: \(WCSession.default.isReachable)")
-                    
+                                        
                     // Start periodic transfer status logging
                     startTransferMonitoring()
                 }
@@ -76,19 +72,7 @@ struct Listen_ThisWatchApp: App {
         // Log transfer status every 10 seconds
         transferCheckTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
-                let activeCount = watchConnectivityManager.activeTransfers.count
-                
-                if activeCount > 0 {
-                    print("⌚ [Watch App] Active transfers check: \(activeCount)")
-                    for (id, transfer) in watchConnectivityManager.activeTransfers {
-                        print("   - \(id): \(transfer.progressPercentage)% (\(transfer.progressText))")
-                    }
-                }
-                
-                // Check WCSession status
-                if WCSession.default.hasContentPending {
-                    print("⌚ [Watch App] WCSession has content pending")
-                }
+                _ = watchConnectivityManager.activeTransfers.count                
             }
         }
     }

@@ -38,19 +38,8 @@ struct WatchLibraryView: View {
         .onAppear {
             connectivity.configure(modelContext: modelContext)
             
-            // Log active transfers
-            print("⌚ [Watch Library] View appeared")
-            print("⌚ [Watch Library] Active transfers: \(connectivity.activeTransfers.count)")
-            for (audiobookId, _) in connectivity.activeTransfers {
-                print("   - \(audiobookId): transferring")
-            }
-            
-            // Check if WCSession has content pending
-            if WCSession.default.hasContentPending {
-                print("⌚ [Watch Library] WCSession reports content pending")
-            } else {
-                print("⌚ [Watch Library] No content pending in WCSession")
-            }
+            // Send cached book list to iPhone when view appears
+            connectivity.sendCachedAudiobookList()
         }
     }
     
@@ -93,20 +82,13 @@ struct WatchLibraryView: View {
     private var audiobookList: some View {
         List {
             ForEach(audiobooks) { audiobook in
-                AudiobookRow(audiobook: audiobook)
-                    .onTapGesture {
+                AudiobookRowWithActions(
+                    audiobook: audiobook,
+                    onTap: {
                         selectedAudiobook = audiobook
                         showingPlayer = true
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        if audiobook.isFileCached {
-                            Button(role: .destructive) {
-                                removeDownload(for: audiobook)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                    }
+                )
             }
         }
     }
@@ -114,26 +96,160 @@ struct WatchLibraryView: View {
     // MARK: - Actions
     
     private func removeDownload(for audiobook: Audiobook) {
-        // Remove the cache entry and file
-        if let cacheEntry = audiobook.cacheEntry {
-            // Delete file
-            let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
-            try? FileManager.default.removeItem(at: fileURL)
+        // Perform deletion with proper animation context
+        withAnimation {
+            // Remove the cache entry and file
+            if let cacheEntry = audiobook.cacheEntry {
+                // Delete file
+                let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+                try? FileManager.default.removeItem(at: fileURL)
+                
+                // IMPORTANT: Clear the relationship BEFORE deleting the entry
+                // This ensures SwiftData processes the changes in the correct order
+                audiobook.cacheEntry = nil
+                
+                // Remove cache entry
+                modelContext.delete(cacheEntry)
+            }
             
-            // Remove cache entry
-            modelContext.delete(cacheEntry)
+            // Save changes within the animation block
+            do {
+                try modelContext.save()
+            } catch {
+                // If save fails, the UI state will be inconsistent
+                // Force a save attempt without animation as fallback
+                try? modelContext.save()
+            }
         }
         
-        // Clear audiobook cache reference
-        audiobook.cacheEntry = nil
-        // DON'T clear localFilename - it's needed for future transfers!
-        // audiobook.localFilename = nil
+        // Update cached audiobook list sent to iPhone (after animation completes)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            connectivity.sendCachedAudiobookList()
+        }
+    }
+}
+
+// MARK: - Audiobook Row With Actions
+
+struct AudiobookRowWithActions: View {
+    let audiobook: Audiobook
+    let onTap: () -> Void
+    
+    @Environment(\.modelContext) private var modelContext
+    @Environment(WatchConnectivityManager.self) private var connectivity
+    
+    @State private var showingDeleteConfirm = false
+    @State private var showingTransferSheet = false
+    
+    // Capture audiobook ID at initialization
+    private let audiobookId: UUID
+    
+    init(audiobook: Audiobook, onTap: @escaping () -> Void) {
+        self.audiobook = audiobook
+        self.onTap = onTap
+        self.audiobookId = audiobook.id
+    }
+    
+    var hasActiveTransfer: Bool {
+        connectivity.activeTransfers[audiobookId.uuidString] != nil
+    }
+    
+    var body: some View {
+        AudiobookRow(audiobook: audiobook)
+            .onTapGesture {
+                onTap()
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                // Delete button
+                if audiobook.isFileCached {
+                    Button(role: .destructive) {
+                        // Add small delay for watchOS gesture handling
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(150))
+                            showingDeleteConfirm = true
+                        }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .tint(.red)
+                }
+                
+                // Cancel transfer button
+                if hasActiveTransfer {
+                    Button(role: .destructive) {
+                        connectivity.cancelTransfer(audiobookId: audiobook.id)
+                    } label: {
+                        Label("Cancel", systemImage: "xmark.circle")
+                    }
+                    .tint(.orange)
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                // Download button - only show if not cached and not transferring
+                if !audiobook.isFileCached && !hasActiveTransfer {
+                    Button {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(150))
+                            showingTransferSheet = true
+                        }
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
+                }
+            }
+            .confirmationDialog(
+                "Delete \"\(audiobook.title)\"?",
+                isPresented: $showingDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete from Watch", role: .destructive) {
+                    removeDownload(for: audiobook)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove the downloaded file from your Apple Watch.")
+            }
+            .sheet(isPresented: $showingTransferSheet) {
+                NavigationStack {
+                    WatchTransferStatusView(audiobook: audiobook)
+                }
+            }
+    }
+    
+    private func removeDownload(for audiobook: Audiobook) {
+        // Perform deletion with proper animation context
+        withAnimation {
+            // Remove the cache entry and file
+            if let cacheEntry = audiobook.cacheEntry {
+                // Delete file
+                let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+                try? FileManager.default.removeItem(at: fileURL)
+                
+                // IMPORTANT: Clear the relationship BEFORE deleting the entry
+                // This ensures SwiftData processes the changes in the correct order
+                audiobook.cacheEntry = nil
+                
+                // Remove cache entry
+                modelContext.delete(cacheEntry)
+            }
+            
+            // Save changes within the animation block
+            do {
+                try modelContext.save()
+            } catch {
+                // If save fails, the UI state will be inconsistent
+                // Force a save attempt without animation as fallback
+                try? modelContext.save()
+            }
+        }
         
-        // Save changes
-        try? modelContext.save()
-        
-        print("🗑️ [Watch Library] Removed download (swipe action): \(audiobook.title)")
-        print("   Kept localFilename: \(audiobook.localFilename ?? "nil")")
+        // Update cached audiobook list sent to iPhone (after animation completes)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            connectivity.sendCachedAudiobookList()
+        }
     }
 }
 
@@ -183,11 +299,6 @@ struct AudiobookRow: View {
             }
         }
         .padding(.vertical, 4)
-        .onAppear {
-            if hasActiveTransfer {
-                print("⌚ [Watch Row] Active transfer for '\(audiobook.title)'")
-            }
-        }
         .sheet(isPresented: $showingTransferSheet) {
             NavigationStack {
                 WatchTransferStatusView(audiobook: audiobook)

@@ -49,35 +49,22 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
                 self?.completeBackgroundTasks()
             }
         }
-
-        print("📡 [ExtensionDelegate] KVO observers configured for background task completion")
     }
 
     /// Handle background tasks, including Watch Connectivity session tasks
     func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
-        print("🔄 [ExtensionDelegate] ===== BACKGROUND TASK RECEIVED =====")
-        print("🔄 [ExtensionDelegate] Task count: \(backgroundTasks.count)")
-        print("🔄 [ExtensionDelegate] Time: \(Date())")
-
         for task in backgroundTasks {
             switch task {
             case let wcTask as WKWatchConnectivityRefreshBackgroundTask:
                 // Handle Watch Connectivity background refresh
-                print("📡 [ExtensionDelegate] ===== WATCH CONNECTIVITY TASK =====")
-                print("📡 [ExtensionDelegate] Task type: WKWatchConnectivityRefreshBackgroundTask")
 
                 // CRITICAL: Store the task, do NOT complete it yet
                 // The task will be completed when hasContentPending becomes false
                 wcBackgroundTasks.append(wcTask)
 
-                print("📡 [ExtensionDelegate] Stored WCSession task (total: \(wcBackgroundTasks.count))")
-                print("📡 [ExtensionDelegate] WCSession state: \(WCSession.default.activationState.rawValue)")
-                print("📡 [ExtensionDelegate] Has content pending: \(WCSession.default.hasContentPending)")
-                print("📡 [ExtensionDelegate] Is reachable: \(WCSession.default.isReachable)")
-
             case let snapshotTask as WKSnapshotRefreshBackgroundTask:
                 // Handle snapshot refresh - complete immediately
-                print("📸 [ExtensionDelegate] Handling snapshot refresh task")
+                print("[ExtensionDelegate] Handling snapshot refresh task")
                 snapshotTask.setTaskCompleted(
                     restoredDefaultState: true,
                     estimatedSnapshotExpiration: Date.distantFuture,
@@ -86,7 +73,7 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
 
             case let appRefreshTask as WKApplicationRefreshBackgroundTask:
                 // Handle app refresh - complete immediately
-                print("🔄 [ExtensionDelegate] Handling app refresh task")
+                print("[ExtensionDelegate] Handling app refresh task")
                 appRefreshTask.setTaskCompletedWithSnapshot(false)
 
             default:
@@ -110,13 +97,9 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
         // hasContentPending == false means all data has been received and processed
         guard WCSession.default.activationState == .activated,
               WCSession.default.hasContentPending == false else {
-            print("⏳ [ExtensionDelegate] Waiting for session (activated: \(WCSession.default.activationState == .activated), pending: \(WCSession.default.hasContentPending))")
+            print("[ExtensionDelegate] Waiting for session (activated: \(WCSession.default.activationState == .activated), pending: \(WCSession.default.hasContentPending))")
             return
         }
-
-        print("✅ [ExtensionDelegate] Completing \(wcBackgroundTasks.count) WCSession background tasks")
-        print("   Session state: \(WCSession.default.activationState.rawValue)")
-        print("   Has content pending: \(WCSession.default.hasContentPending)")
 
         // Complete all stored tasks
         wcBackgroundTasks.forEach { $0.setTaskCompletedWithSnapshot(false) }
@@ -135,38 +118,27 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching() {
-        print("🚀 [ExtensionDelegate] Watch app did finish launching")
-
         // Activate WCSession as early as possible to save background runtime budget
         if WCSession.isSupported() {
             let session = WCSession.default
             session.delegate = WatchConnectivityManager.shared
             session.activate()
-
-            print("📡 [ExtensionDelegate] WCSession activated on launch")
-            print("   Activation state: \(session.activationState.rawValue)")
-            print("   Has content pending: \(session.hasContentPending)")
         }
     }
 
     func applicationDidBecomeActive() {
-        print("✅ [ExtensionDelegate] Watch app did become active")
-
-        // Log current session state for debugging
-        if WCSession.isSupported() {
-            print("📡 [ExtensionDelegate] Session state: activated=\(WCSession.default.activationState == .activated), pending=\(WCSession.default.hasContentPending)")
-        }
+        print("[ExtensionDelegate] Watch app did become active")
     }
 
     func applicationWillResignActive() {
-        print("⏸️ [ExtensionDelegate] Watch app will resign active")
+        print("[ExtensionDelegate] Watch app will resign active")
     }
 
     func applicationDidEnterBackground() {
-        print("🌙 [ExtensionDelegate] Watch app entered background")
+        print("[ExtensionDelegate] Watch app entered background")
     }
 
     func applicationWillEnterForeground() {
-        print("🌅 [ExtensionDelegate] Watch app entering foreground")
+        print("[ExtensionDelegate] Watch app entering foreground")
     }
 }

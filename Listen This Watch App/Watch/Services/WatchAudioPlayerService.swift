@@ -88,8 +88,6 @@ final class WatchAudioPlayerService {
                 name: AVAudioSession.routeChangeNotification,
                 object: audioSession
             )
-            
-            print("✅ [Audio Session] Configured with AirPods support")
         } catch {
             print("❌ [Audio Session] Failed to setup: \(error)")
         }
@@ -108,7 +106,6 @@ final class WatchAudioPlayerService {
             switch type {
             case .began:
                 // Interruption began (call, Siri, AirPods removed, etc.)
-                print("🎧 [Audio Session] Interruption began - pausing playback")
                 await pause()
                 
             case .ended:
@@ -117,13 +114,8 @@ final class WatchAudioPlayerService {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         // System suggests resuming playback
-                        print("🎧 [Audio Session] Interruption ended - resuming playback")
                         await play()
-                    } else {
-                        print("🎧 [Audio Session] Interruption ended - not resuming")
                     }
-                } else {
-                    print("🎧 [Audio Session] Interruption ended - staying paused")
                 }
                 
             @unknown default:
@@ -143,19 +135,18 @@ final class WatchAudioPlayerService {
             switch reason {
             case .oldDeviceUnavailable:
                 // AirPods or headphones were disconnected
-                print("🎧 [Audio Session] Audio device disconnected - pausing playback")
                 await pause()
                 
             case .newDeviceAvailable:
                 // AirPods or headphones were connected
-                print("🎧 [Audio Session] New audio device connected")
                 // Don't auto-resume, let user decide
+                break
                 
             case .categoryChange:
-                print("🎧 [Audio Session] Category changed")
+                break
                 
             default:
-                print("🎧 [Audio Session] Route changed: \(reason.rawValue)")
+                break
             }
         }
     }
@@ -166,11 +157,6 @@ final class WatchAudioPlayerService {
         self.audiobook = audiobook
         loadError = nil
 
-        print("🎵 [Watch Player] Loading audiobook: \(audiobook.title)")
-        print("🎵 [Watch Player] Expected cache path: \(audiobook.expectedCachePath)")
-        print("🎵 [Watch Player] Has cache entry: \(audiobook.cacheEntry != nil)")
-        print("🎵 [Watch Player] iCloud path: \(audiobook.iCloudRelativePath ?? "none")")
-
         // Try different sources in priority order
         var fileURL: URL?
         var fileSource: String = "unknown"
@@ -178,7 +164,6 @@ final class WatchAudioPlayerService {
         // Priority 1: Check the computed expectedCachePath (most reliable on Watch)
         if audiobook.isFileCached,
            let cachedURL = audiobook.cacheFileURL {
-            print("✅ [Watch Player] Priority 1: Found file at expected cache path")
             fileURL = cachedURL
             fileSource = "local cache"
         }
@@ -190,7 +175,6 @@ final class WatchAudioPlayerService {
            !cacheEntry.filePath.hasPrefix("file:///private/var/mobile") {  // Skip iOS paths
             let url = URL(fileURLWithPath: cacheEntry.filePath)
             if FileManager.default.fileExists(atPath: cacheEntry.filePath) {
-                print("✅ [Watch Player] Priority 2: Found file via cache entry")
                 fileURL = url
                 fileSource = "cache entry"
             } else {
@@ -201,16 +185,12 @@ final class WatchAudioPlayerService {
         // Priority 3: Try iCloud container (read-only access if already downloaded)
         if fileURL == nil,
            let iCloudURL = audiobook.iCloudFileURL {
-            print("☁️ [Watch Player] Priority 3: Checking iCloud container...")
-            
             // Check if file exists (already downloaded by iCloud)
             if FileManager.default.fileExists(atPath: iCloudURL.path) {
-                print("✅ [Watch Player] Priority 3: Found file in iCloud container")
                 fileURL = iCloudURL
                 fileSource = "iCloud container"
             } else {
                 print("⚠️ [Watch Player] Priority 3: iCloud file not available on Watch")
-                print("💡 [Watch Player] Use WatchDownloadManager to download from iCloud on WiFi")
             }
         }
         
@@ -220,15 +200,12 @@ final class WatchAudioPlayerService {
             
             // Provide helpful error message
             if audiobook.iCloudRelativePath != nil {
-                print("💡 [Watch Player] This file needs to be downloaded via WiFi")
-                print("💡 [Watch Player] Use WatchDownloadManager to queue download")
                 loadError = NSError(
                     domain: "WatchPlayer",
                     code: 1,
                     userInfo: [NSLocalizedDescriptionKey: "File not downloaded. Connect to WiFi to download from iCloud."]
                 )
             } else {
-                print("💡 [Watch Player] No file location configured")
                 loadError = NSError(
                     domain: "WatchPlayer",
                     code: 1,
@@ -237,9 +214,6 @@ final class WatchAudioPlayerService {
             }
             return
         }
-        
-        print("✅ [Watch Player] Using file from: \(fileSource)")
-        print("✅ [Watch Player] File path: \(finalFileURL.path)")
         
         let localPath = finalFileURL.path
         
@@ -255,8 +229,7 @@ final class WatchAudioPlayerService {
         do {
             let attributes = try fileManager.attributesOfItem(atPath: localPath)
             if let fileSize = attributes[.size] as? UInt64 {
-                let sizeString = ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
-                print("📦 [Watch Player] File size: \(sizeString)")
+                _ = ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
                 if fileSize == 0 {
                     print("❌ [Watch Player] ERROR: File is empty")
                     loadError = NSError(domain: "WatchPlayer", code: 4, userInfo: [NSLocalizedDescriptionKey: "File is empty or corrupted"])
@@ -287,8 +260,6 @@ final class WatchAudioPlayerService {
                 loadError = NSError(domain: "WatchPlayer", code: 6, userInfo: [NSLocalizedDescriptionKey: "No audio tracks found in file"])
                 return
             }
-            
-            print("✅ [Watch Player] Asset is playable with \(tracks.count) track(s)")
         } catch {
             print("❌ [Watch Player] ERROR loading asset: \(error)")
             loadError = error
@@ -300,25 +271,18 @@ final class WatchAudioPlayerService {
         player = AVPlayer(playerItem: playerItem)
         duration = audiobook.duration
         
-        print("🎵 [Watch Player] Duration: \(Int(duration))s (\(Int(duration/60))min)")
-        
         // Restore playback position
         if let session = audiobook.playbackSession {
             currentChapterIndex = session.currentChapter
             currentPosition = session.currentPosition
             
-            print("📍 [Watch Player] Restoring position: \(Int(session.currentPosition))s at chapter \(session.currentChapter)")
-            
             let time = CMTime(seconds: session.currentPosition, preferredTimescale: 600)
             await player?.seek(to: time)
-        } else {
-            print("📍 [Watch Player] No playback session found, starting from beginning")
         }
         
         startPositionTracking()
         setupRemoteCommandCenter()
         updateNowPlayingInfo()
-        print("✅ [Watch Player] Player initialized successfully")
     }
     
     // MARK: - Playback Controls
@@ -333,8 +297,6 @@ final class WatchAudioPlayerService {
         // Update last accessed date
         audiobook?.lastAccessedDate = Date()
         try? modelContext.save()
-        
-        print("▶️ [Watch Player] Playback started")
     }
     
     func pause() async {
@@ -345,7 +307,6 @@ final class WatchAudioPlayerService {
         updateNowPlayingInfo()
         
         savePlaybackState()
-        print("⏸️ [Watch Player] Playback paused")
     }
     
     func setPlaybackRate(_ rate: Double) async {
@@ -368,14 +329,11 @@ final class WatchAudioPlayerService {
         
         let clampedPosition = max(0, min(duration, position))
         
-        print("🎯 [Watch Player] Seeking to \(Int(clampedPosition))s")
         await player.seek(to: CMTime(seconds: clampedPosition, preferredTimescale: 600))
         
         // Immediately update position and chapter
         currentPosition = clampedPosition
         updateCurrentChapter()
-        
-        print("✅ [Watch Player] Seek complete - Position: \(Int(currentPosition))s, Chapter: \(currentChapterIndex + 1)")
     }
     
     // MARK: - Chapter Navigation
@@ -387,7 +345,6 @@ final class WatchAudioPlayerService {
         currentChapterIndex += 1
         let nextChapter = sortedChapters[currentChapterIndex]
         
-        print("⏭️ [Watch Player] Next chapter: \(currentChapterIndex + 1)")
         await player?.seek(to: CMTime(seconds: nextChapter.startTime, preferredTimescale: 600))
         currentPosition = nextChapter.startTime
     }
@@ -397,29 +354,22 @@ final class WatchAudioPlayerService {
         
         // If more than 3 seconds into chapter, restart it
         if currentPosition - sortedChapters[currentChapterIndex].startTime > 3.0 {
-            print("⏮️ [Watch Player] Restarting chapter \(currentChapterIndex + 1)")
             await player?.seek(to: CMTime(seconds: sortedChapters[currentChapterIndex].startTime, preferredTimescale: 600))
             currentPosition = sortedChapters[currentChapterIndex].startTime
         } else if currentChapterIndex > 0 {
             currentChapterIndex -= 1
             let prevChapter = sortedChapters[currentChapterIndex]
-            print("⏮️ [Watch Player] Previous chapter: \(currentChapterIndex + 1)")
             await player?.seek(to: CMTime(seconds: prevChapter.startTime, preferredTimescale: 600))
             currentPosition = prevChapter.startTime
         }
     }
     
     func skipToChapter(_ chapter: Chapter) async {
-        print("⏭️ [Watch Player] Skipping to chapter \(chapter.index + 1): \(chapter.title)")
-        print("   Start time: \(chapter.startTime)s")
-        
         currentChapterIndex = chapter.index
         await player?.seek(to: CMTime(seconds: chapter.startTime, preferredTimescale: 600))
         
         // Immediately update currentPosition to reflect the seek (before time observer catches up)
         currentPosition = chapter.startTime
-        
-        print("✅ [Watch Player] Seek complete - Chapter: \(currentChapterIndex + 1), Position: \(Int(currentPosition))s")
     }
     
     // MARK: - Position Tracking
@@ -443,10 +393,39 @@ final class WatchAudioPlayerService {
                 // Save state every 5 seconds while playing
                 if self.isPlaying && Int(time.seconds) % 5 == 0 {
                     self.savePlaybackState()
-                    print("💾 [Watch Player] Auto-saved progress: \(Int(time.seconds))s")
                 }
             }
         }
+    }
+    
+    // MARK: - Now Playing Info
+    
+    private var nowPlayingInfo: [String: Any] {
+        guard let audiobook = audiobook else { return [:] }
+        
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: audiobook.title,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentPosition,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? playbackRate : 0.0
+        ]
+        
+        // Add author if available
+        if !audiobook.author.isEmpty {
+            info[MPMediaItemPropertyArtist] = audiobook.author
+        }
+        
+        // Add chapter information
+        if !sortedChapters.isEmpty, currentChapterIndex < sortedChapters.count {
+            let currentChapter = sortedChapters[currentChapterIndex]
+            info[MPMediaItemPropertyAlbumTitle] = currentChapter.title
+        }
+        
+        return info
+    }
+    
+    private func updateNowPlayingInfo() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
     // MARK: - Remote Command Center (AirPods Controls)
@@ -536,40 +515,6 @@ final class WatchAudioPlayerService {
             return .success
         }
         
-        print("✅ [Remote Commands] Registered AirPods and remote control handlers")
-    }
-    
-    // MARK: - Now Playing Info
-    
-    private func updateNowPlayingInfo() {
-        guard let audiobook = audiobook else { return }
-        
-        var nowPlayingInfo = [String: Any]()
-        
-        // Basic info
-        nowPlayingInfo[MPMediaItemPropertyTitle] = audiobook.title
-        nowPlayingInfo[MPMediaItemPropertyArtist] = audiobook.author
-        
-        // Chapter info if available
-        if !sortedChapters.isEmpty && currentChapterIndex < sortedChapters.count {
-            let chapter = sortedChapters[currentChapterIndex]
-            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "Chapter \(chapter.index + 1): \(chapter.title)"
-        }
-        
-        // Playback info
-        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentPosition
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
-        
-        // Artwork
-        if let artworkData = audiobook.artworkData,
-           let image = UIImage(data: artworkData) {
-            let artwork = MPMediaItemArtwork(boundsSize: image.size) { size in
-                return image
-            }
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
-        }
-        
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
@@ -581,7 +526,6 @@ final class WatchAudioPlayerService {
         for chapter in sortedChapters.reversed() {
             if currentPosition >= chapter.startTime {
                 if currentChapterIndex != chapter.index {
-                    print("📖 [Watch Player] Chapter changed: \(currentChapterIndex) -> \(chapter.index)")
                     currentChapterIndex = chapter.index
                 }
                 break
@@ -594,15 +538,12 @@ final class WatchAudioPlayerService {
     private func savePlaybackState() {
         guard let audiobook = audiobook else { return }
         
-        print("💾 [Watch Player] Saving state - Position: \(Int(currentPosition))s, Chapter: \(currentChapterIndex)")
-        
         // Create or update playback session
         if audiobook.playbackSession == nil {
             let session = PlaybackSession()
             session.audiobook = audiobook
             audiobook.playbackSession = session
             modelContext.insert(session)
-            print("💾 [Watch Player] Created new playback session")
         }
         
         audiobook.playbackSession?.currentPosition = currentPosition
@@ -613,7 +554,6 @@ final class WatchAudioPlayerService {
         
         do {
             try modelContext.save()
-            print("✅ [Watch Player] State saved successfully - Progress: \(Int((currentPosition / duration) * 100))%")
         } catch {
             print("❌ [Watch Player] Failed to save state: \(error)")
         }
