@@ -62,6 +62,7 @@ struct PlayerControlsView: View {
     private var progressView: some View {
         VStack(spacing: 2) {
 
+            /*
             #if os(watchOS)
             ProgressView(
                 value: chapterProgress.elapsed,
@@ -71,6 +72,7 @@ struct PlayerControlsView: View {
             #endif
 
             #if os(iOS)
+             */
             Slider(
                 value: Binding(
                     get: {
@@ -85,7 +87,7 @@ struct PlayerControlsView: View {
                 ),
                 in: 0...max(chapterProgress.duration, 0.01)
             )
-            #endif
+            //#endif
 
             HStack {
                 Text(formatTime(chapterProgress.elapsed))
