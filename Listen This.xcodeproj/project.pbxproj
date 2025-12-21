@@ -36,6 +36,7 @@
 
 /* Begin PBXFileReference section */
 		C25538952EEFD37200874394 /* Listen This.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C270F6192EF889E8008500DF /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = .gitignore; sourceTree = "<group>"; };
 		C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Transfer.xcodeproj; sourceTree = "<group>"; };
 		C2B59A642EEFD84300090C62 /* Listen This Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2EE209C2EEFDAC60008D70C /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
@@ -110,6 +111,7 @@
 		C255388C2EEFD37200874394 = {
 			isa = PBXGroup;
 			children = (
+				C270F6192EF889E8008500DF /* .gitignore */,
 				C2EE209C2EEFDAC60008D70C /* CLAUDE.md */,
 				C2EE209D2EEFDAC60008D70C /* README.md */,
 				C25538972EEFD37200874394 /* Listen This */,
