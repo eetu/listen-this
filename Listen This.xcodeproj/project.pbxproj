@@ -53,9 +53,7 @@
 		C25DBDDA2EEFD9A000FD4952 /* Exceptions for "Listen This" folder in "Listen This Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				iOS/Managers/AudiobookCacheManager.swift,
-				iOS/Managers/iOSWatchConnectivityManager.swift,
-				iOS/Views/SingleAudiobookTransferView.swift,
+				Shared/Managers/AudiobookCacheManager.swift,
 				Shared/Managers/CloudKitChunkedTransferManager.swift,
 				Shared/Models/Audiobook.swift,
 				Shared/Models/AudiobookError.swift,
@@ -66,7 +64,9 @@
 				Shared/Providers/iCloudDriveProvider.swift,
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
+				Shared/Views/ChapterTitleView.swift,
 				Shared/Views/CloudKitTransferView.swift,
+				Shared/Views/PlayerControlsView.swift,
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
 		};

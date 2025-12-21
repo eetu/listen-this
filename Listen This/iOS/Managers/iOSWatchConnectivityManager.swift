@@ -10,7 +10,6 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 
-#if os(iOS)
 /// Manages communication between iPhone and Apple Watch
 /// Handles audiobook file transfers and sync
 @MainActor
@@ -529,4 +528,3 @@ enum WatchTransferError: LocalizedError {
         }
     }
 }
-#endif

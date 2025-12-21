@@ -209,7 +209,7 @@ final class WatchConnectivityManager: NSObject {
         }
         
         // Start file transfer
-        _ = session.transferFile(fileURL, metadata: metadata)
+        session.transferFile(fileURL, metadata: metadata)
     }
 }
 
@@ -228,17 +228,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
             }
         }
     }
-    
-    #if os(iOS)
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
-        // Session became inactive
-    }
-    
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        // Session deactivated, reactivating
-        session.activate()
-    }
-    #endif
     
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
