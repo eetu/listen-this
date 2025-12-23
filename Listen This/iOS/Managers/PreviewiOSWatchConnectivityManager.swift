@@ -8,6 +8,8 @@
 import Foundation
 import SwiftData
 
+import WatchConnectivity
+
 @MainActor
 @Observable
 final class PreviewiOSWatchConnectivity: iOSWatchConnectivity {
@@ -17,7 +19,8 @@ final class PreviewiOSWatchConnectivity: iOSWatchConnectivity {
     var activeTransfers: [String: WatchTransferProgress] = [:]
     var watchCachedAudiobookIds: Set<String> = []
     var lastError: Error?
-    
+    var session: WCSession? = nil
+
     private var modelContext: ModelContext?
     
     func configure(modelContext: ModelContext) {

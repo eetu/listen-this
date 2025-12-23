@@ -9,14 +9,46 @@ import SwiftUI
 import SwiftData
 import WatchConnectivity
 
+// MARK: - Production Wrapper (for Navigation)
+
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Audiobook.lastAccessedDate, order: .reverse) private var audiobooks: [Audiobook]
+    @State private var connectivity: iOSWatchConnectivityManager?
+
+    var body: some View {
+        Group {
+            if let connectivity {
+                LibraryViewContent(
+                    audiobooks: audiobooks,
+                    connectivity: connectivity,
+                    modelContext: modelContext
+                )
+            } else {
+                ProgressView("Loading...")
+            }
+        }
+        .task {
+            if connectivity == nil {
+                let manager = iOSWatchConnectivityManager.shared
+                manager.configure(modelContext: modelContext)
+                connectivity = manager
+            }
+        }
+    }
+}
+
+// MARK: - Generic Content View (Injectable)
+
+struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View {
+    let audiobooks: [Audiobook]
+    @Bindable var connectivity: Connectivity
+    let modelContext: ModelContext
 
     @State private var searchText = ""
     @State private var showingAddBook = false
     @State private var showingSettings = false
-    
+
     var filteredAudiobooks: [Audiobook] {
         if searchText.isEmpty {
             return audiobooks
@@ -26,7 +58,7 @@ struct LibraryView: View {
             book.author.localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     var body: some View {
         NavigationStack {
             Group {
@@ -45,7 +77,7 @@ struct LibraryView: View {
                     } label: {
                         Label("Add Book", systemImage: "plus")
                     }
-                    
+
                     Button {
                         showingSettings = true
                     } label: {
@@ -60,10 +92,11 @@ struct LibraryView: View {
                 SettingsView()
             }
         }
+        .environment(connectivity)
     }
-    
+
     // MARK: - Empty State
-    
+
     private var emptyStateView: some View {
         ContentUnavailableView {
             Label("No Audiobooks", systemImage: "book.closed")
@@ -76,16 +109,16 @@ struct LibraryView: View {
             .buttonStyle(.borderedProminent)
         }
     }
-    
+
     // MARK: - Library List
-    
+
     private var libraryList: some View {
         List {
             ForEach(filteredAudiobooks) { book in
-                AudiobookCardWithMenu(audiobook: book)
+                AudiobookCardWithMenu(audiobook: book, connectivity: connectivity, modelContext: modelContext)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowSeparator(.hidden)
-                    .id(book.id) // Stabilize list item identity
+                    .id(book.id)
             }
         }
         .listStyle(.plain)
@@ -99,10 +132,11 @@ struct LibraryView: View {
 // MARK: - Audiobook Card
 
 // Wrapper view that manages the card, navigation, and context menu together
-struct AudiobookCardWithMenu: View {
+struct AudiobookCardWithMenu<Connectivity: iOSWatchConnectivity & Observable>: View {
     let audiobook: Audiobook
-    @Environment(\.modelContext) private var modelContext
-    
+    var connectivity: Connectivity
+    let modelContext: ModelContext
+
     @State private var showDeleteOptions = false
     @State private var isDeleting = false
     @State private var showDeleteError = false
@@ -110,18 +144,18 @@ struct AudiobookCardWithMenu: View {
     @State private var showWatchTransfer = false
     @State private var showCloudKitTransfer = false
     @State private var pendingDeleteOption: Bool?
-    
-    @Environment(iOSWatchConnectivityManager.self) private var connectivity
-    
+
     // CRITICAL: Capture audiobook ID at initialization to prevent SwiftData identity issues
     private let audiobookId: UUID
-    
+
     // Cache the transfer states to prevent unnecessary re-renders
     @State private var hasActiveTransfer = false
     @State private var isOnWatch = false
-    
-    init(audiobook: Audiobook) {
+
+    init(audiobook: Audiobook, connectivity: Connectivity, modelContext: ModelContext) {
         self.audiobook = audiobook
+        self.connectivity = connectivity
+        self.modelContext = modelContext
         self.audiobookId = audiobook.id // Capture ID immediately
     }
     
@@ -446,7 +480,24 @@ struct AudiobookCard: View {
     }
 }
 
-#Preview {
-    LibraryView()
-        .modelContainer(for: [Audiobook.self, Chapter.self, PlaybackSession.self, CacheEntry.self])
+// MARK: - Previews
+
+#Preview("Library with Books") {
+    @Previewable @State var connectivity = PreviewiOSWatchConnectivity()
+
+    return LibraryViewContent(
+        audiobooks: PreviewData.audiobooks,
+        connectivity: connectivity,
+        modelContext: PreviewModelContext.shared
+    )
+}
+
+#Preview("Empty Library") {
+    @Previewable @State var connectivity = PreviewiOSWatchConnectivity()
+
+    return LibraryViewContent(
+        audiobooks: [],
+        connectivity: connectivity,
+        modelContext: PreviewModelContext.shared
+    )
 }
