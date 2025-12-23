@@ -17,9 +17,25 @@ import UIKit
 import WatchKit
 #endif
 
+// MARK: - Public Protocol (View-Facing)
+
+@MainActor
+protocol CloudKitTransferManager: AnyObject {
+    var activeUploads: [String: ChunkTransferProgress] { get }
+    var activeDownloads: [String: ChunkTransferProgress] { get }
+    
+    func uploadAudiobook(_ audiobook: Audiobook) async throws
+    func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL
+    func deleteAudiobookFromCloud(audiobookId: String) async throws
+    func uploadAvailability(for audiobook: Audiobook) async -> UploadAvailability
+    func cancelTransfer(audiobookId: String)
+}
+
+// MARK: - Concrete Implementation
+
 @MainActor
 @Observable
-final class CloudKitChunkedTransferManager {
+final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     // MARK: - Configuration
 
@@ -917,3 +933,104 @@ enum ChunkTransferError: LocalizedError {
         }
     }
 }
+// MARK: - Mock Implementation (Previews & Testing)
+
+@MainActor
+@Observable
+final class MockCloudKitTransferManager: CloudKitTransferManager {
+    var activeUploads: [String: ChunkTransferProgress] = [:]
+    var activeDownloads: [String: ChunkTransferProgress] = [:]
+    
+    private var uploadedBooks: Set<String> = []
+    
+    func uploadAudiobook(_ audiobook: Audiobook) async throws {
+        let audiobookId = audiobook.id.uuidString
+        
+        // Simulate upload
+        let progress = ChunkTransferProgress(
+            audiobookId: audiobookId,
+            totalBytes: 50_000_000,
+            totalChunks: 10,
+            completedChunks: 0,
+            bytesTransferred: 0,
+            isUploading: true
+        )
+        activeUploads[audiobookId] = progress
+        
+        // Simulate chunk uploads
+        for i in 1...10 {
+            try await Task.sleep(nanoseconds: 200_000_000)
+            if var currentProgress = activeUploads[audiobookId] {
+                currentProgress.completedChunks = i
+                currentProgress.bytesTransferred = Int64(i) * 5_000_000
+                activeUploads[audiobookId] = currentProgress
+            }
+        }
+        
+        activeUploads.removeValue(forKey: audiobookId)
+        uploadedBooks.insert(audiobookId)
+    }
+    
+    func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL {
+        let audiobookId = audiobook.id.uuidString
+        
+        // Check if uploaded
+        guard uploadedBooks.contains(audiobookId) else {
+            throw ChunkTransferError.fileNotAvailable
+        }
+        
+        // Simulate download
+        let progress = ChunkTransferProgress(
+            audiobookId: audiobookId,
+            totalBytes: 50_000_000,
+            totalChunks: 10,
+            completedChunks: 0,
+            bytesTransferred: 0,
+            isUploading: false
+        )
+        activeDownloads[audiobookId] = progress
+        
+        // Simulate chunk downloads
+        for i in 1...10 {
+            try await Task.sleep(nanoseconds: 200_000_000)
+            if var currentProgress = activeDownloads[audiobookId] {
+                currentProgress.completedChunks = i
+                currentProgress.bytesTransferred = Int64(i) * 5_000_000
+                activeDownloads[audiobookId] = currentProgress
+            }
+        }
+        
+        activeDownloads.removeValue(forKey: audiobookId)
+        
+        // Return mock URL
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(audiobookId).m4b")
+    }
+    
+    func deleteAudiobookFromCloud(audiobookId: String) async throws {
+        uploadedBooks.remove(audiobookId)
+        try await Task.sleep(nanoseconds: 500_000_000)
+    }
+    
+    func uploadAvailability(for audiobook: Audiobook) async -> UploadAvailability {
+        let audiobookId = audiobook.id.uuidString
+        
+        if uploadedBooks.contains(audiobookId) {
+            return .fullyUploaded
+        }
+        
+        // Randomly return partial for testing
+        if Bool.random() {
+            return .partiallyUploaded(existingChunks: Set([0, 1, 2, 3]))
+        }
+        
+        return .notUploaded
+    }
+    
+    func cancelTransfer(audiobookId: String) {
+        activeUploads.removeValue(forKey: audiobookId)
+        activeDownloads.removeValue(forKey: audiobookId)
+    }
+}
+
+

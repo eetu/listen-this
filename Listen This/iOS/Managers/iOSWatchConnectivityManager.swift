@@ -10,11 +10,31 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 
+// MARK: - Public Protocol (View-Facing)
+
+@MainActor
+protocol iOSWatchConnectivity: AnyObject {
+    var isReachable: Bool { get }
+    var isPaired: Bool { get }
+    var isWatchAppInstalled: Bool { get }
+    var activeTransfers: [String: WatchTransferProgress] { get }
+    var watchCachedAudiobookIds: Set<String> { get }
+    var lastError: Error? { get }
+    
+    func configure(modelContext: ModelContext)
+    func transferAudiobook(_ audiobook: Audiobook) async throws
+    func cancelTransfer(for audiobookId: String)
+    func requestWatchCachedList()
+    func checkOutstandingTransfers()
+}
+
+// MARK: - Concrete Implementation
+
 /// Manages communication between iPhone and Apple Watch
 /// Handles audiobook file transfers and sync
 @MainActor
 @Observable
-final class iOSWatchConnectivityManager: NSObject {
+final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
     static let shared = iOSWatchConnectivityManager()
     
     // MARK: - Observable State

@@ -8,9 +8,26 @@
 import Foundation
 import SwiftData
 
+// MARK: - Public Protocol (View-Facing)
+
+@MainActor
+protocol CacheManager: AnyObject {
+    static var cacheDirectory: URL { get }
+    
+    func cacheAudiobook(_ audiobook: Audiobook, from sourceURL: URL) throws -> URL
+    func deleteCachedFile(for audiobook: Audiobook) throws
+    func getAllCachedFiles() -> [URL]
+    func getCacheSize() -> Int64
+    func cleanupOrphanedCaches() async throws
+    func evictOldCaches(keepingCount: Int) async throws
+    func cleanupIfNeeded(maxSize: Int64) async throws
+}
+
+// MARK: - Concrete Implementation
+
 /// Manages local audiobook cache files
 @MainActor
-final class AudiobookCacheManager {
+final class AudiobookCacheManager: CacheManager {
     
     private let modelContext: ModelContext
     
@@ -236,3 +253,67 @@ extension Audiobook {
         try cacheManager.deleteCachedFile(for: self)
     }
 }
+// MARK: - Mock Implementation (Previews & Testing)
+
+@MainActor
+final class MockCacheManager: CacheManager {
+    static var cacheDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("MockAudiobooks")
+    }
+    
+    var cachedFiles: [URL] = []
+    var totalCacheSize: Int64 = 0
+    private var fileCache: [String: URL] = [:]
+    
+    func cacheAudiobook(_ audiobook: Audiobook, from sourceURL: URL) throws -> URL {
+        let cacheURL = Self.cacheDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+        cachedFiles.append(cacheURL)
+        fileCache[audiobook.id.uuidString] = cacheURL
+        
+        // Mock file size
+        totalCacheSize += 100_000_000
+        
+        return cacheURL
+    }
+    
+    func deleteCachedFile(for audiobook: Audiobook) throws {
+        if let url = fileCache[audiobook.id.uuidString],
+           let index = cachedFiles.firstIndex(of: url) {
+            cachedFiles.remove(at: index)
+            fileCache.removeValue(forKey: audiobook.id.uuidString)
+            totalCacheSize = max(0, totalCacheSize - 100_000_000)
+        }
+    }
+    
+    func getAllCachedFiles() -> [URL] {
+        return cachedFiles
+    }
+    
+    func getCacheSize() -> Int64 {
+        return totalCacheSize
+    }
+    
+    func cleanupOrphanedCaches() async throws {
+        // Mock: cleaned up orphans
+        if cachedFiles.count > 0 {
+            cachedFiles.removeFirst()
+            totalCacheSize = max(0, totalCacheSize - 100_000_000)
+        }
+    }
+    
+    func evictOldCaches(keepingCount: Int = 5) async throws {
+        if cachedFiles.count > keepingCount {
+            let toRemove = cachedFiles.count - keepingCount
+            cachedFiles.removeLast(toRemove)
+            totalCacheSize = max(0, totalCacheSize - (Int64(toRemove) * 100_000_000))
+        }
+    }
+    
+    func cleanupIfNeeded(maxSize: Int64 = 3_000_000_000) async throws {
+        if totalCacheSize > maxSize {
+            try await evictOldCaches(keepingCount: 3)
+        }
+    }
+}
+
+
