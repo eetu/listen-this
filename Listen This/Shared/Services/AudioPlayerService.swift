@@ -1,6 +1,6 @@
 //
 //  AudioPlayerService.swift
-//  listen this (iOS + watchOS)
+//  Listen This (iOS + watchOS)
 //
 //  Single, compiling, cross-platform audio player service
 //
@@ -10,13 +10,43 @@ import AVFoundation
 import MediaPlayer
 import SwiftData
 
-#if os(iOS)
-import UIKit
-#endif
+// MARK: - Public Protocol (View-Facing)
+
+@MainActor
+protocol AudioPlayer: AnyObject {
+
+    var isPlaying: Bool { get }
+    var currentPosition: Double { get }
+    var duration: Double { get }
+    var playbackRate: Double { get }
+    var currentChapterIndex: Int { get }
+    var loadError: Error? { get }
+
+    var sleepTimerRemaining: TimeInterval { get }
+    var isSleepTimerActive: Bool { get }
+
+    var sortedChapters: [Chapter] { get }
+
+    func load(audiobook: Audiobook) async
+
+    func play() async
+    func pause() async
+    func seek(to position: Double) async -> Double
+    func skip(by seconds: Double) async
+    func setPlaybackRate(_ rate: Double)
+
+    func nextChapter() async
+    func previousChapter() async
+
+    func setSleepTimer(minutes: Int)
+    func cancelSleepTimer()
+}
+
+// MARK: - Concrete Implementation
 
 @MainActor
 @Observable
-final class AudioPlayerService {
+final class AudioPlayerService: AudioPlayer {
 
     // MARK: - Diagnostics (DEBUG only)
 
@@ -47,7 +77,8 @@ final class AudioPlayerService {
 
         static func deactivate() {
             do {
-                try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                try AVAudioSession.sharedInstance()
+                    .setActive(false, options: .notifyOthersOnDeactivation)
             } catch {
                 PlaybackDiagnostics.log("Failed to deactivate audio session: \(error)")
             }
@@ -93,7 +124,6 @@ final class AudioPlayerService {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        //cleanup()
     }
 
     // MARK: - Chapters
@@ -107,7 +137,6 @@ final class AudioPlayerService {
     private func setupAudioSession() {
         do {
             try AudioSessionController.configure()
-            PlaybackDiagnostics.log("Audio session configured")
         } catch {
             PlaybackDiagnostics.log("Audio session configuration failed: \(error)")
         }
@@ -115,12 +144,10 @@ final class AudioPlayerService {
 
     private func activateAudioSession() throws {
         try AudioSessionController.activate()
-        PlaybackDiagnostics.log("Audio session activated")
     }
 
     private func deactivateAudioSession() {
         AudioSessionController.deactivate()
-        PlaybackDiagnostics.log("Audio session deactivated")
     }
 
     // MARK: - Notifications
@@ -263,7 +290,10 @@ final class AudioPlayerService {
 
     private func startTimeObserver() {
         let interval = CMTime(seconds: 1, preferredTimescale: 600)
-        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+        timeObserver = player?.addPeriodicTimeObserver(
+            forInterval: interval,
+            queue: .main
+        ) { [weak self] time in
             guard let self else { return }
             self.currentPosition = time.seconds
             self.updateCurrentChapter()
@@ -275,7 +305,7 @@ final class AudioPlayerService {
         }
     }
 
-    // MARK: - Now Playing
+    // MARK: - Now Playing / Remote Commands
 
     private func updateNowPlayingInfo() {
         guard let audiobook else { return }
@@ -292,13 +322,15 @@ final class AudioPlayerService {
         }
 
         if currentChapterIndex < sortedChapters.count {
-            info[MPMediaItemPropertyAlbumTitle] = sortedChapters[currentChapterIndex].title
+            info[MPMediaItemPropertyAlbumTitle] =
+                sortedChapters[currentChapterIndex].title
         }
 
         #if os(iOS)
         if let data = audiobook.artworkData,
            let image = UIImage(data: data) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            info[MPMediaItemPropertyArtwork] =
+                MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
         #endif
 
@@ -308,19 +340,16 @@ final class AudioPlayerService {
     private func setupRemoteCommandCenter() {
         let center = MPRemoteCommandCenter.shared()
 
-        center.playCommand.isEnabled = true
         center.playCommand.addTarget { [weak self] _ in
             Task { await self?.play() }
             return .success
         }
 
-        center.pauseCommand.isEnabled = true
         center.pauseCommand.addTarget { [weak self] _ in
             Task { await self?.pause() }
             return .success
         }
 
-        center.togglePlayPauseCommand.isEnabled = true
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task {
                 guard let self else { return }
@@ -344,8 +373,10 @@ final class AudioPlayerService {
             case .began:
                 await pause()
             case .ended:
-                if let rawOptions = info[AVAudioSessionInterruptionOptionKey] as? UInt,
-                   AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
+                if let rawOptions =
+                    info[AVAudioSessionInterruptionOptionKey] as? UInt,
+                   AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+                       .contains(.shouldResume) {
                     await play()
                 }
             @unknown default:
@@ -390,7 +421,8 @@ final class AudioPlayerService {
         session.currentChapter = currentChapterIndex
         session.playbackRate = playbackRate
         session.lastPlayed = Date()
-        session.progressPercentage = duration > 0 ? (currentPosition / duration) * 100 : 0
+        session.progressPercentage =
+            duration > 0 ? (currentPosition / duration) * 100 : 0
 
         if duration - currentPosition < 30 {
             session.isCompleted = true
@@ -417,11 +449,16 @@ final class AudioPlayerService {
 
     func setSleepTimer(minutes: Int) {
         cancelSleepTimer()
-        sleepTimerEndTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepTimerEndTime =
+            Date().addingTimeInterval(TimeInterval(minutes * 60))
 
-        sleepTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        sleepTimer = Timer.scheduledTimer(
+            withTimeInterval: 1,
+            repeats: true
+        ) { [weak self] _ in
             guard let self else { return }
-            let remaining = self.sleepTimerEndTime?.timeIntervalSinceNow ?? 0
+            let remaining =
+                self.sleepTimerEndTime?.timeIntervalSinceNow ?? 0
             if remaining <= 0 {
                 Task { await self.pause() }
                 self.cancelSleepTimer()

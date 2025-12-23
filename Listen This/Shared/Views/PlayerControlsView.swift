@@ -7,8 +7,10 @@
 
 import SwiftUI
 
-struct PlayerControlsView: View {
-    @Bindable var player: AudioPlayerService
+// MARK: - View
+
+struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
+    @Bindable var player: Player
     let chapters: [Chapter]
 
     /// Feature flags
@@ -62,20 +64,18 @@ struct PlayerControlsView: View {
     private var progressView: some View {
         VStack(spacing: 2) {
 
-            #if os(watchOS)
+#if os(watchOS)
             ProgressView(
                 value: chapterProgress.elapsed,
                 total: chapterProgress.duration
             )
             .controlSize(.mini)
-            #endif
+#endif
 
-            #if os(iOS)
+#if os(iOS)
             Slider(
                 value: Binding(
-                    get: {
-                        chapterProgress.elapsed
-                    },
+                    get: { chapterProgress.elapsed },
                     set: { newValue in
                         let chapterStart = currentChapter?.startTime ?? 0
                         Task {
@@ -85,7 +85,7 @@ struct PlayerControlsView: View {
                 ),
                 in: 0...max(chapterProgress.duration, 0.01)
             )
-            #endif
+#endif
 
             HStack {
                 Text(formatTime(chapterProgress.elapsed))
@@ -96,7 +96,9 @@ struct PlayerControlsView: View {
             .monospacedDigit()
             .foregroundStyle(.secondary)
         }
+        .padding(.bottom, 8)
     }
+
     // MARK: - Buttons
 
     private var playbackButtons: some View {
@@ -185,4 +187,57 @@ struct PlayerControlsView: View {
         let secs = total % 60
         return String(format: "%d:%02d", minutes, secs)
     }
+}
+
+//
+// MARK: - Previews (Modern #Preview)
+//
+
+#Preview("Paused · Middle Chapter") {
+    PlayerControlsView(
+        player: PreviewAudioPlayerService(
+            isPlaying: false,
+            currentPosition: 180,
+            duration: 510,
+            currentChapterIndex: 1
+        ),
+        chapters: PreviewData.chapters,
+        showsChapterSkipButtons: true
+    )
+    .padding()
+}
+
+#Preview("Playing · First Chapter") {
+    PlayerControlsView(
+        player: PreviewAudioPlayerService(
+            isPlaying: true,
+            currentPosition: 45,
+            duration: 510,
+            currentChapterIndex: 0
+        ),
+        chapters: PreviewData.chapters,
+        showsChapterSkipButtons: true
+    )
+    .padding()
+}
+
+#Preview("Error State · No Chapter Buttons") {
+    PlayerControlsView(
+        player: PreviewAudioPlayerService(
+            isPlaying: false,
+            currentPosition: 0,
+            duration: 0,
+            currentChapterIndex: 0,
+            loadError: NSError(
+                domain: "Preview",
+                code: -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to load audio"
+                ]
+            )
+        ),
+        chapters: PreviewData.chapters,
+        showsChapterSkipButtons: false
+    )
+    .padding()
 }

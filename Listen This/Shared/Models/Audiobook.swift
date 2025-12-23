@@ -52,7 +52,8 @@ final class Audiobook {
         lastAccessedDate: Date = Date(),
         lastSyncedDate: Date = Date(),
         chapterCount: Int = 0,
-        isArchived: Bool = false
+        isArchived: Bool = false,
+        chapters: [Chapter] = []
     ) {
         self.id = id
         self.title = title
@@ -68,7 +69,7 @@ final class Audiobook {
         self.lastSyncedDate = lastSyncedDate
         self.chapterCount = chapterCount
         self.isArchived = isArchived
-        self.chapters = []  // Initialize empty chapters array
+        self.chapters = chapters
     }
     
     // MARK: - Computed Properties (Not Stored, Not Synced)
