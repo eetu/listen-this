@@ -174,16 +174,17 @@ struct CloudKitStorageView: View {
     
     private func deleteFromCloud(_ audiobookId: String) async {
         guard let manager = transferManager else { return }
-        
+
         do {
+            // Delete chunks and manifest from CloudKit
             try await manager.deleteAudiobookFromCloud(audiobookId: audiobookId)
-            
+
             await MainActor.run {
                 uploadedAudiobooks.removeAll { $0.audiobookId == audiobookId }
                 // Recalculate total storage
                 totalStorageUsed = uploadedAudiobooks.reduce(0) { $0 + $1.fileSize }
             }
-            
+
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to delete from CloudKit: \(error.localizedDescription)"

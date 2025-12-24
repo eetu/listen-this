@@ -36,8 +36,8 @@ final class CloudKitTransferViewModel {
     private let cacheManager: AudiobookCacheManager
 
     var state: TransferState = .idle
-    var uploadButtonTitle: String = "Upload"
-    var isUploadDisabled: Bool = false
+    var actionButtonTitle: String
+    var isActionDisabled: Bool = false
 
     init(
         audiobook: Audiobook,
@@ -49,6 +49,9 @@ final class CloudKitTransferViewModel {
         self.modelContext = modelContext
         self.transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
         self.cacheManager = AudiobookCacheManager(modelContext: modelContext)
+
+        // Initialize button title based on mode
+        self.actionButtonTitle = mode == .upload ? "Upload" : "Download"
     }
 
     var activeProgress: ChunkTransferProgress? {
@@ -60,24 +63,48 @@ final class CloudKitTransferViewModel {
         }
     }
     
-    func checkUploadAvailability() async {
-        guard mode == .upload else { return }
-        
-        let availability = await transferManager.uploadAvailability(for: audiobook)
-        
-        print("[CloudKitTransferView] Upload availability: \(availability)")
-        switch availability {
-        case .fullyUploaded:
-            isUploadDisabled = true
-            uploadButtonTitle = "Already Uploaded"
-            
-        case .partiallyUploaded:
-            uploadButtonTitle = "Resume Upload"
-            isUploadDisabled = false
-            
-        case .notUploaded:
-            uploadButtonTitle = "Upload"
-            isUploadDisabled = false
+    /// Check CloudKit chunk availability for both upload (iPhone) and download (Watch)
+    func checkChunkAvailability() async {
+        let availability = await transferManager.checkCloudKitChunks(for: audiobook)
+
+        print("[CloudKitTransferView] Chunk availability for \(mode == .upload ? "upload" : "download"): \(availability)")
+
+        switch mode {
+        case .upload:
+            // iPhone: Check if already uploaded
+            switch availability {
+            case .fullyUploaded:
+                isActionDisabled = true
+                actionButtonTitle = "Already Uploaded"
+
+            case .partiallyUploaded:
+                actionButtonTitle = "Resume Upload"
+                isActionDisabled = false
+
+            case .notUploaded:
+                actionButtonTitle = "Upload"
+                isActionDisabled = false
+            }
+
+        case .download:
+            // Watch: Check if chunks exist before allowing download
+            switch availability {
+            case .fullyUploaded:
+                actionButtonTitle = "Download"
+                isActionDisabled = false
+
+            case .partiallyUploaded:
+                // Partial upload - not safe to download
+                actionButtonTitle = "Upload Incomplete"
+                isActionDisabled = true
+                state = .error("Audiobook upload is incomplete. Please complete upload from iPhone first.")
+
+            case .notUploaded:
+                // No chunks available
+                actionButtonTitle = "Not Available"
+                isActionDisabled = true
+                state = .error("Audiobook not uploaded to CloudKit. Please upload from iPhone first.")
+            }
         }
     }
     
@@ -162,11 +189,14 @@ struct CloudKitTransferView: View {
         Group {
             if let viewModel {
                 #if os(watchOS)
-                VStack(spacing: 12) {
+                // Compact single-screen layout for Watch
+                VStack(spacing: 8) {
                     content(viewModel)
                 }
-                .padding()
+                .padding(.horizontal, 4)
+                .padding(.vertical, 8)
                 #else
+                // Scrollable layout for iOS with more spacing
                 ScrollView {
                     VStack(spacing: 24) {
                         content(viewModel)
@@ -179,7 +209,9 @@ struct CloudKitTransferView: View {
             }
         }
         .navigationTitle(mode == .upload ? "Upload" : "Download")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(viewModel?.state == .complete ? "Done" : "Cancel") {
@@ -200,12 +232,10 @@ struct CloudKitTransferView: View {
                     modelContext: modelContext
                 )
                 viewModel = vm
-                
-                // Check upload availability for upload mode
-                if mode == .upload {
-                    Task {
-                        await vm.checkUploadAvailability()
-                    }
+
+                // Check chunk availability for both upload and download modes
+                Task {
+                    await vm.checkChunkAvailability()
                 }
             }
         }
@@ -220,6 +250,11 @@ struct CloudKitTransferView: View {
 
     @ViewBuilder
     private func content(_ viewModel: CloudKitTransferViewModel) -> some View {
+        #if os(iOS)
+        // iOS: Structured layout with sections
+        iOSContent(viewModel)
+        #else
+        // Watch: Compact vertical stack
         header(viewModel)
 
         switch viewModel.state {
@@ -231,11 +266,7 @@ struct CloudKitTransferView: View {
                 .font(.caption)
 
         case .transferring(let progress):
-            #if os(watchOS)
             watchProgressView(viewModel, progress)
-            #else
-            progressCard(viewModel, progress)
-            #endif
 
         case .complete:
             completionCard
@@ -243,6 +274,111 @@ struct CloudKitTransferView: View {
         case .error:
             EmptyView()
         }
+        #endif
+    }
+
+    // MARK: - iOS Content
+
+    @ViewBuilder
+    private func iOSContent(_ viewModel: CloudKitTransferViewModel) -> some View {
+        header(viewModel)
+
+        // Explanation section
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                viewModel.mode == .upload ? "Fast Watch Transfer" : "Download from iPhone",
+                systemImage: "bolt.fill"
+            )
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.blue)
+
+            Text(viewModel.mode == .upload
+                 ? "Faster than Bluetooth file transfer. Uses temporary iCloud space to sync audiobook to your Apple Watch over WiFi."
+                 : "Download audiobook chunks that were uploaded from your iPhone.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .background(Color.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+        // Main action/status section
+        switch viewModel.state {
+        case .idle:
+            actionSection(viewModel)
+
+        case .preparing:
+            ProgressView("Preparing...")
+                .padding()
+
+        case .transferring(let progress):
+            progressCard(viewModel, progress)
+
+        case .complete:
+            completionCard
+
+        case .error:
+            EmptyView()
+        }
+
+        // Info section
+        if viewModel.state == .idle {
+            infoSection(viewModel)
+        }
+    }
+
+    @ViewBuilder
+    private func actionSection(_ viewModel: CloudKitTransferViewModel) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: viewModel.mode == .upload
+                  ? "icloud.and.arrow.up"
+                  : "icloud.and.arrow.down")
+                .font(.system(size: 50))
+                .foregroundStyle(viewModel.isActionDisabled ? .gray : .blue)
+                .symbolRenderingMode(.hierarchical)
+
+            Button {
+                viewModel.start()
+            } label: {
+                Label(viewModel.actionButtonTitle, systemImage: viewModel.mode == .upload ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.isActionDisabled)
+            .controlSize(.large)
+        }
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func infoSection(_ viewModel: CloudKitTransferViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("How it works")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            if viewModel.mode == .upload {
+                InfoRow(icon: "1.circle.fill", text: "Audiobook is split into 100MB chunks")
+                InfoRow(icon: "2.circle.fill", text: "Chunks upload to your private iCloud")
+                InfoRow(icon: "3.circle.fill", text: "Watch downloads chunks over WiFi")
+                InfoRow(icon: "4.circle.fill", text: "Chunks auto-delete after download")
+            } else {
+                InfoRow(icon: "1.circle.fill", text: "Downloads from your private iCloud")
+                InfoRow(icon: "2.circle.fill", text: "Reconstructs audiobook from chunks")
+                InfoRow(icon: "3.circle.fill", text: "Chunks cleaned up automatically")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding()
+        #if os(iOS)
+        .background(Color(.systemGray6))
+        #endif
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Header
@@ -277,11 +413,12 @@ struct CloudKitTransferView: View {
     }
 
     private func watchHeader(_ viewModel: CloudKitTransferViewModel) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             Text(viewModel.audiobook.title)
-                .font(.headline)
+                .font(.footnote)
+                .fontWeight(.semibold)
                 .multilineTextAlignment(.center)
-                .lineLimit(1)
+                .lineLimit(2)
 
             Text(ByteCountFormatter.string(
                 fromByteCount: viewModel.audiobook.fileSize,
@@ -292,30 +429,25 @@ struct CloudKitTransferView: View {
         }
     }
 
-    // MARK: - Action Card
+    // MARK: - Action Card (Watch only)
 
     private func actionCard(_ viewModel: CloudKitTransferViewModel) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             Image(systemName: viewModel.mode == .upload
                   ? "icloud.and.arrow.up"
                   : "icloud.and.arrow.down")
-                .font(.system(size: 40))
-                .foregroundStyle(viewModel.isUploadDisabled ? .gray : .blue)
+                .font(.system(size: 28))
+                .foregroundStyle(viewModel.isActionDisabled ? .gray : .blue)
 
-            Text(viewModel.mode == .upload
-                 ? "Upload to CloudKit"
-                 : "Download from CloudKit")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            
             Button {
                 viewModel.start()
             } label: {
-                Text(viewModel.uploadButtonTitle)
+                Text(viewModel.actionButtonTitle)
+                    .font(.footnote)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isUploadDisabled)
+            .disabled(viewModel.isActionDisabled)
         }
     }
 
@@ -325,58 +457,120 @@ struct CloudKitTransferView: View {
         _ viewModel: CloudKitTransferViewModel,
         _ progress: ChunkTransferProgress
     ) -> some View {
-        VStack(spacing: 12) {
-            ProgressView(value: progress.progress)
+        VStack(spacing: 16) {
+            // Progress percentage and bar
+            VStack(spacing: 8) {
+                Text("\(progress.progressPercentage)%")
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.blue)
 
-            Text(progress.statusText)
+                ProgressView(value: progress.progress)
+                    .progressViewStyle(.linear)
+                    .tint(.blue)
+            }
+
+            // Transfer details (simplified)
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Chunks")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(progress.completedChunks) / \(progress.totalChunks)")
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                }
                 .font(.subheadline)
 
-            Text("\(progress.completedChunks) / \(progress.totalChunks) chunks")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                HStack {
+                    Text("Transferred")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(progress.progressText)
+                        .fontWeight(.medium)
+                }
+                .font(.subheadline)
+            }
 
             Button("Cancel Transfer", role: .destructive) {
                 viewModel.cancel()
                 dismiss()
             }
+            .controlSize(.large)
         }
-        .padding()
-        .background(Color.blue.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(20)
+        #if os(iOS)
+        .background(Color(.systemBackground))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+        #endif
     }
 
     private func watchProgressView(
         _ viewModel: CloudKitTransferViewModel,
         _ progress: ChunkTransferProgress
     ) -> some View {
-        VStack(spacing: 6) {
-            ProgressView(value: progress.progress)
-
+        VStack(spacing: 8) {
             Text("\(progress.progressPercentage)%")
+                .font(.title3)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+
+            ProgressView(value: progress.progress)
+                .progressViewStyle(.linear)
+
+            Text("\(progress.completedChunks)/\(progress.totalChunks) chunks")
                 .font(.caption2)
+                .foregroundStyle(.secondary)
 
             Button("Cancel", role: .destructive) {
                 viewModel.cancel()
                 dismiss()
             }
-            .font(.caption2)
+            .font(.caption)
+            .controlSize(.small)
         }
     }
 
     // MARK: - Completion
 
     private var completionCard: some View {
-        VStack(spacing: 12) {
+        #if os(watchOS)
+        VStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 50))
+                .font(.system(size: 36))
                 .foregroundStyle(.green)
 
-            Text("Transfer Complete")
-                .font(.headline)
+            Text("Complete")
+                .font(.footnote)
+                .fontWeight(.semibold)
         }
-        .padding()
-        .background(Color.green.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        #else
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(.green)
+                .symbolEffect(.bounce, value: true)
+
+            VStack(spacing: 8) {
+                Text("Transfer Complete")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                Text("Audiobook is now available on your \(mode == .upload ? "Apple Watch" : "device")")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(Color.green.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        #endif
     }
 
     // MARK: - Error Handling
@@ -396,6 +590,25 @@ struct CloudKitTransferView: View {
             return message
         }
         return ""
+    }
+}
+
+// MARK: - Helper Views
+
+struct InfoRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(.blue)
+                .frame(width: 20)
+
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

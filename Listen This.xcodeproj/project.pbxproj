@@ -56,6 +56,7 @@
 			membershipExceptions = (
 				Shared/Managers/AudiobookCacheManager.swift,
 				Shared/Managers/CloudKitChunkedTransferManager.swift,
+				Shared/Managers/PreviewAudiobookCacheManager.swift,
 				Shared/Models/Audiobook.swift,
 				Shared/Models/AudiobookError.swift,
 				Shared/Models/CacheEntry.swift,

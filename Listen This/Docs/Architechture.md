@@ -148,6 +148,43 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 - Realistic audiobook cache: 2-8GB
 - Target: 1-5 books cached simultaneously
 
+#### Three-Layer Storage Architecture
+
+The app uses three distinct storage layers, each serving a specific purpose:
+
+**1. iCloud Drive (Source of Truth)**
+- Original audiobook files imported by user
+- Path stored in `Audiobook.iCloudRelativePath` (e.g., "Documents/Audiobooks/book.m4b")
+- Synced across all user's devices via iCloud Drive
+- Never deleted by app
+- Primary use: iPhone can play directly from iCloud Drive, source for caching
+
+**2. Local Device Cache (Per-Device)**
+- Managed by `AudiobookCacheManager`
+- Location: `~/Library/Caches/Audiobooks/` on each device
+- Platform-specific: iPhone cache ≠ Watch cache (different file system, different storage constraints)
+- Can be cleared and re-downloaded from iCloud Drive
+- Primary use: Offline playback, faster access than iCloud Drive
+
+**3. CloudKit Chunked Transfer (Temporary)**
+- Managed by `CloudKitChunkedTransferManager`
+- Files split into 100MB chunks stored in CloudKit Private Database
+- Purpose: Fast audiobook transfers from iPhone → Watch over WiFi
+- Lifecycle: iPhone uploads chunks → Watch downloads chunks → chunks auto-deleted after successful Watch download
+- Not permanent storage: Multi-watch edge case requires re-upload
+- Primary use: Overcome WatchConnectivity transfer speed limitations
+
+**Storage Decision Matrix:**
+```
+iPhone: iCloud Drive (source) → Local Cache (playback) → CloudKit Chunks (upload for Watch)
+Watch:  CloudKit Chunks (download) → Local Cache (playback)
+```
+
+**Why Three Layers?**
+- iCloud Drive: User's permanent library, accessible from any Apple device
+- Local Cache: Fast access, offline capability, respects device storage limits
+- CloudKit Chunks: Solves Watch transfer problem (iCloud Drive not accessible on Watch, WatchConnectivity too slow)
+
 #### Cleanup Policy (Priority Order)
 
 Removal priority from lowest to highest:
@@ -163,6 +200,24 @@ Removal priority from lowest to highest:
 ## Sync Architecture
 
 ### CloudKit Sync Strategy
+
+**SwiftData CloudKit Configuration:**
+
+All models sync via CloudKit Private Database in a single configuration:
+  - `Audiobook` - metadata, artwork, paths
+  - `Chapter` - chapter information
+  - `PlaybackSession` - playback position and state
+  - `CacheEntry` - cache metadata (syncs but is optional per-device)
+
+**Cache Entry Sync Behavior:**
+
+While `CacheEntry` syncs via CloudKit, each device manages its cache independently:
+- The `cacheEntry` relationship is optional on `Audiobook`
+- Each device can have different cache states (one device cached, another not)
+- Deleting a cache entry on one device doesn't affect other devices' files
+- CloudKit only syncs the metadata about what's cached, not the actual files
+
+**Important:** Using multiple ModelConfigurations (one for CloudKit, one local-only) causes SwiftData to create duplicate entity instances, leading to "ID occurs multiple times" errors in ForEach loops.
 
 #### Sync Triggers
 - Playback position update (debounced, every 30 seconds)
@@ -226,10 +281,10 @@ func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackSta
 - Works when devices not nearby
 - Handles conflicts automatically
 - Batch updates
-- **NEW: Chunked file transfers** (200MB chunks)
+- **NEW: Chunked file transfers** (100MB chunks)
 
 **CloudKit Chunked File Transfer** (Recommended for large audiobooks)
-- Files split into 200MB chunks (under CloudKit's 250MB asset limit)
+- Files split into 100MB chunks (well under CloudKit's 250MB asset limit)
 - iPhone uploads chunks to CloudKit Private Database
 - Watch downloads chunks independently over WiFi
 - Files reconstructed from chunks on destination device
@@ -237,6 +292,8 @@ func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackSta
 - No device proximity required
 - Can resume interrupted transfers
 - Works while Watch is charging
+- **Chunk lifecycle**: Auto-deleted after successful Watch download to free iCloud storage
+- **Chunk verification**: Both iPhone and Watch use `checkCloudKitChunks()` to verify availability before upload/download
 
 **WatchConnectivity (Legacy/Fallback)**
 - Direct device-to-device transfers

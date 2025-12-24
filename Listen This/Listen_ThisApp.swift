@@ -25,31 +25,30 @@ struct Listen_ThisApp: App {
     
     init() {
         do {
-            // Configure the model container with all models
+            // All models in a single schema with CloudKit sync
+            // Note: CacheEntry will sync via CloudKit, but this is acceptable
+            // because the relationship is optional and device-specific cleanup
+            // won't affect other devices' ability to maintain their own cache entries
             let schema = Schema([
                 Audiobook.self,
                 Chapter.self,
                 PlaybackSession.self,
                 CacheEntry.self
             ])
-            
-            // Try CloudKit first, fall back to local-only if it fails
-            let modelConfiguration: ModelConfiguration
-            
-            // In release, require CloudKit
-            modelConfiguration = ModelConfiguration(
+
+            let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false,
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
-            
+
             let container = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
-            
+
             modelContainer = container
-            
+
         } catch {
             // Provide more helpful error message
             print("ModelContainer initialization error: \(error)")

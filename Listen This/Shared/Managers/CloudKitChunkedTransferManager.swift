@@ -26,8 +26,9 @@ protocol CloudKitTransferManager: AnyObject {
     
     func uploadAudiobook(_ audiobook: Audiobook) async throws
     func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL
+    func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws
     func deleteAudiobookFromCloud(audiobookId: String) async throws
-    func uploadAvailability(for audiobook: Audiobook) async -> UploadAvailability
+    func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability
     func cancelTransfer(audiobookId: String)
 }
 
@@ -39,7 +40,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     // MARK: - Configuration
 
-    static let chunkSize = 200 * 1024 * 1024
+    static let chunkSize = 100 * 1024 * 1024
     private let maxRetryCount = 3
     private let retryBaseDelay: UInt64 = 500_000_000
 
@@ -86,17 +87,10 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         let chunkCount = Int(ceil(Double(fileSize) / Double(Self.chunkSize)))
         let audiobookId = audiobook.id.uuidString
 
-        let availability = await uploadAvailability(for: audiobook)
+        let availability = await checkCloudKitChunks(for: audiobook)
 
         if case .fullyUploaded = availability {
             throw ChunkTransferError.alreadyUploaded
-        }
-
-        let chunksToUpload: [Int]
-        if case .partiallyUploaded(let existing) = availability {
-            chunksToUpload = Array(0..<chunkCount).filter { !existing.contains($0) }
-        } else {
-            chunksToUpload = Array(0..<chunkCount)
         }
 
         let manifest = try await createOrFetchManifest(
@@ -106,11 +100,27 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
             chunkCount: chunkCount
         )
 
+        // Check which chunks already exist for resume capability (iPhone only)
+        let existingChunks: Set<Int>
+        do {
+            existingChunks = try await fetchExistingChunkIndexes(
+                audiobookId: audiobookId,
+                expectedChunkCount: chunkCount
+            )
+        } catch {
+            existingChunks = []
+        }
+
+        let chunksToUpload = Array(0..<chunkCount).filter { !existingChunks.contains($0) }
+        let alreadyUploadedChunks = chunkCount - chunksToUpload.count
+        let bytesAlreadyTransferred = Int64(alreadyUploadedChunks) * Int64(Self.chunkSize)
+
         activeUploads[audiobookId] = ChunkTransferProgress(
             audiobookId: audiobookId,
             totalBytes: fileSize,
             totalChunks: chunkCount,
-            completedChunks: chunkCount - chunksToUpload.count,
+            completedChunks: alreadyUploadedChunks,
+            bytesTransferred: min(bytesAlreadyTransferred, fileSize),
             isUploading: true
         )
 
@@ -128,6 +138,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
             )
 
             activeUploads[audiobookId]?.completedChunks += 1
+            activeUploads[audiobookId]?.bytesTransferred += Int64(data.count)
         }
 
         try await markManifestComplete(manifest)
@@ -189,13 +200,26 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         persistCacheEntry()
         activeDownloads.removeValue(forKey: audiobookId)
 
+        // Clean up chunks and manifest from iCloud after successful download
+        // This frees up iCloud storage since the file is now on the Watch
+        Task {
+            do {
+                try await deleteAudiobookFromCloud(audiobook)
+            } catch {
+                // Log error but don't fail the download since file is already saved
+                print("[CloudKitChunkedTransferManager] Failed to cleanup from iCloud: \(error)")
+            }
+        }
+
         return outputURL
     }
-    
-    func deleteAudiobookFromCloud(audiobookId: String) async throws {
+
+    func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
+        let audiobookId = audiobook.id.uuidString
+
         // Fetch manifest
         let manifest = try await fetchManifest(audiobookId: audiobookId)
-        
+
         // Delete all chunks
         var recordsToDelete: [CKRecord.ID] = []
         
@@ -231,6 +255,45 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
                     }
                 }
                 
+                database.add(operation)
+            }
+        }
+    }
+
+    /// Delete audiobook chunks by ID (for storage management views)
+    func deleteAudiobookFromCloud(audiobookId: String) async throws {
+        let manifest = try await fetchManifest(audiobookId: audiobookId)
+        var recordsToDelete: [CKRecord.ID] = []
+
+        for chunkIndex in 0..<manifest.chunkCount {
+            let chunkRecordId = CKRecord.ID(
+                recordName: "\(audiobookId)-chunk-\(chunkIndex)"
+            )
+            recordsToDelete.append(chunkRecordId)
+        }
+
+        recordsToDelete.append(manifest.recordId)
+
+        let batchSize = 400
+        for startIndex in stride(from: 0, to: recordsToDelete.count, by: batchSize) {
+            let endIndex = min(startIndex + batchSize, recordsToDelete.count)
+            let batch = Array(recordsToDelete[startIndex..<endIndex])
+
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let operation = CKModifyRecordsOperation(
+                    recordsToSave: nil,
+                    recordIDsToDelete: batch
+                )
+
+                operation.modifyRecordsResultBlock = { result in
+                    switch result {
+                    case .success:
+                        continuation.resume()
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+
                 database.add(operation)
             }
         }
@@ -309,6 +372,26 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     // MARK: - Manifest
 
+    func fetchManifest(audiobookId: String) async throws -> AudiobookManifest {
+        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
+        let record = try await database.record(for: recordId)
+
+        guard
+            let fileSize = record["fileSize"] as? Int64,
+            let chunkCount = record["chunkCount"] as? Int,
+            (record["isComplete"] as? Int64 ?? 0) == 1
+        else {
+            throw ChunkTransferError.incompleteUpload
+        }
+
+        return AudiobookManifest(
+            recordId: recordId,
+            audiobookId: audiobookId,
+            fileSize: fileSize,
+            chunkCount: chunkCount
+        )
+    }
+
     private func createOrFetchManifest(
         audiobookId: String,
         title: String,
@@ -337,26 +420,6 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         manifest["isComplete"] = Int64(1)
         manifest["completionDate"] = Date()
         _ = try await database.save(manifest)
-    }
-
-    private func fetchManifest(audiobookId: String) async throws -> AudiobookManifest {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
-        let record = try await database.record(for: recordId)
-
-        guard
-            let fileSize = record["fileSize"] as? Int64,
-            let chunkCount = record["chunkCount"] as? Int,
-            (record["isComplete"] as? Int64 ?? 0) == 1
-        else {
-            throw ChunkTransferError.incompleteUpload
-        }
-
-        return AudiobookManifest(
-            recordId: recordId,
-            audiobookId: audiobookId,
-            fileSize: fileSize,
-            chunkCount: chunkCount
-        )
     }
 
     // MARK: - Chunk Operations
@@ -414,24 +477,28 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         return try Data(contentsOf: url)
     }
 
-    private func fetchExistingChunkIndexes(audiobookId: String) async throws -> Set<Int> {
-        let predicate = NSPredicate(
-            format: "recordID BEGINSWITH %@",
-            "\(audiobookId)-chunk-"
-        )
+    private func fetchExistingChunkIndexes(audiobookId: String, expectedChunkCount: Int) async throws -> Set<Int> {
+        print("[CloudKitChunkedTransferManager] Fetching existing chunk indexes for: \(audiobookId)")
+        print("[CloudKitChunkedTransferManager] Expected chunk count: \(expectedChunkCount)")
 
-        let query = CKQuery(recordType: "AudiobookChunk", predicate: predicate)
         var indexes = Set<Int>()
 
-        let (results, _) = try await database.records(matching: query)
+        // Check each chunk individually since batch fetch seems to hang on watchOS
+        // This is slower but more reliable
+        for chunkIndex in 0..<expectedChunkCount {
+            let chunkRecordId = CKRecord.ID(recordName: "\(audiobookId)-chunk-\(chunkIndex)")
 
-        for (_, result) in results {
-            if case .success(let record) = result,
-               let index = record["chunkIndex"] as? Int {
-                indexes.insert(index)
+            do {
+                print("[CloudKitChunkedTransferManager] Checking chunk \(chunkIndex)...")
+                _ = try await database.record(for: chunkRecordId)
+                indexes.insert(chunkIndex)
+                print("[CloudKitChunkedTransferManager] ✓ Chunk \(chunkIndex) exists")
+            } catch {
+                print("[CloudKitChunkedTransferManager] ✗ Chunk \(chunkIndex) not found: \(error.localizedDescription)")
             }
         }
 
+        print("[CloudKitChunkedTransferManager] Found \(indexes.count) of \(expectedChunkCount) chunks")
         return indexes
     }
 
@@ -460,403 +527,33 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         try? modelContext.save()
     }
 
-    // MARK: - Upload Availability
+    // MARK: - Chunk Availability Check
 
-    func uploadAvailability(for audiobook: Audiobook) async -> UploadAvailability {
+    /// Check if audiobook chunks exist in CloudKit and their upload status
+    /// Used by both iPhone (before upload) and Watch (before download)
+    func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability {
         do {
             let manifest = try await fetchManifest(audiobookId: audiobook.id.uuidString)
-            let chunks = try await fetchExistingChunkIndexes(
-                audiobookId: audiobook.id.uuidString
-            )
 
-            return chunks.count == manifest.chunkCount
-                ? .fullyUploaded
-                : .partiallyUploaded(existingChunks: chunks)
+            // If the manifest exists and is marked complete, we trust that all chunks are uploaded
+            // fetchManifest already validates isComplete == 1, so we don't need to check individual chunks
+            // This avoids CloudKit query issues on watchOS
+            return .fullyUploaded
+
         } catch {
             return .notUploaded
         }
     }
 }
 
-enum UploadAvailability {
-    case notUploaded
-    case partiallyUploaded(existingChunks: Set<Int>)
-    case fullyUploaded
-}
-/*
-import Foundation
-import CloudKit
-import SwiftData
-
-/// Manages chunked file uploads and downloads via CloudKit
-@MainActor
-@Observable
-final class CloudKitChunkedTransferManager {
-    
-    // MARK: - Configuration
-    
-    /// Size of each chunk (200MB leaves headroom under CloudKit's 250MB limit)
-    static let chunkSize = 200 * 1024 * 1024 // 200 MB
-    
-    /// CloudKit container
-    private let container: CKContainer
-    private let database: CKDatabase
-    
-    /// Model context for tracking
-    private let modelContext: ModelContext
-    
-    // MARK: - Observable State
-    
-    /// Active uploads: audiobookId -> progress
-    var activeUploads: [String: ChunkTransferProgress] = [:]
-    
-    /// Active downloads: audiobookId -> progress
-    var activeDownloads: [String: ChunkTransferProgress] = [:]
-    
-    // MARK: - Initialization
-    
-    init(modelContext: ModelContext) {
-        self.modelContext = modelContext
-        self.container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
-        self.database = container.privateCloudDatabase
-    }
-    
-    // MARK: - Upload (iPhone)
-    
-    /// Upload an audiobook file in chunks to CloudKit
-    func uploadAudiobook(_ audiobook: Audiobook) async throws {
-        guard let fileURL = audiobook.validCacheFileURL else {
-            throw ChunkTransferError.fileNotAvailable
-        }
-        
-        // Get file size
-        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-        guard let fileSize = attributes[.size] as? Int64 else {
-            throw ChunkTransferError.invalidFile
-        }
-        
-        // Calculate number of chunks
-        let chunkCount = Int(ceil(Double(fileSize) / Double(Self.chunkSize)))
-        
-        // Initialize progress
-        let audiobookId = audiobook.id.uuidString
-        let progress = ChunkTransferProgress(
-            audiobookId: audiobookId,
-            totalBytes: fileSize,
-            totalChunks: chunkCount,
-            completedChunks: 0,
-            isUploading: true
-        )
-        activeUploads[audiobookId] = progress
-        
-        // Create manifest record
-        let manifestRecord = try await createManifestRecord(
-            audiobookId: audiobookId,
-            title: audiobook.title,
-            fileSize: fileSize,
-            chunkCount: chunkCount
-        )
-        
-        // Upload chunks
-        let fileHandle = try FileHandle(forReadingFrom: fileURL)
-        defer { try? fileHandle.close() }
-        
-        for chunkIndex in 0..<chunkCount {
-            // Read chunk data
-            let chunkData = try readChunk(
-                from: fileHandle,
-                chunkIndex: chunkIndex,
-                totalSize: fileSize
-            )
-            
-            // Upload chunk
-            try await uploadChunk(
-                chunkData: chunkData,
-                chunkIndex: chunkIndex,
-                manifestRecordId: manifestRecord.recordID,
-                audiobookId: audiobookId
-            )
-            
-            // Update progress
-            if var currentProgress = activeUploads[audiobookId] {
-                currentProgress.completedChunks += 1
-                activeUploads[audiobookId] = currentProgress
-            }
-        }
-        
-        // Mark manifest as complete
-        try await markManifestComplete(manifestRecord)
-        
-        // Remove from active uploads
-        activeUploads.removeValue(forKey: audiobookId)
-    }
-    
-    // MARK: - Download (Watch)
-    
-    /// Download an audiobook from CloudKit chunks and reconstruct
-    func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL {
-        let audiobookId = audiobook.id.uuidString
-        
-        // Fetch manifest
-        let manifest = try await fetchManifest(audiobookId: audiobookId)
-        
-        // Initialize progress
-        let progress = ChunkTransferProgress(
-            audiobookId: audiobookId,
-            totalBytes: manifest.fileSize,
-            totalChunks: manifest.chunkCount,
-            completedChunks: 0,
-            isUploading: false
-        )
-        activeDownloads[audiobookId] = progress
-        
-        // Create output file
-        guard let expectedPath = audiobook.expectedCachePath else {
-            throw ChunkTransferError.fileNotAvailable
-        }
-        let outputURL = URL(fileURLWithPath: expectedPath)
-        
-        let directoryURL = outputURL.deletingLastPathComponent()
-
-        try FileManager.default.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-        
-        FileManager.default.createFile(atPath: expectedPath, contents: nil)
-        let fileHandle = try FileHandle(forWritingTo: outputURL)
-        
-        // Download and write chunks sequentially
-        var totalBytesWritten: Int64 = 0
-        for chunkIndex in 0..<manifest.chunkCount {
-            let chunkData = try await downloadChunk(
-                chunkIndex: chunkIndex,
-                manifestRecordId: manifest.recordId,
-                audiobookId: audiobookId
-            )
-            
-            // Write chunk to file
-            try fileHandle.write(contentsOf: chunkData)
-            totalBytesWritten += Int64(chunkData.count)
-            
-            // Update progress
-            if var currentProgress = activeDownloads[audiobookId] {
-                currentProgress.completedChunks += 1
-                currentProgress.bytesTransferred = totalBytesWritten
-                activeDownloads[audiobookId] = currentProgress
-            }
-        }
-        
-        // Close the file handle explicitly before creating cache entry
-        try fileHandle.close()
-        
-        // Create or update cache entry for the audiobook
-        if audiobook.cacheEntry == nil {
-            let cacheEntry = CacheEntry(
-                filePath: expectedPath,
-                fileSize: totalBytesWritten,
-                downloadedDate: Date()
-            )
-            cacheEntry.audiobook = audiobook
-            audiobook.cacheEntry = cacheEntry
-            modelContext.insert(cacheEntry)
-        } else {
-            // Update existing cache entry
-            audiobook.cacheEntry?.filePath = expectedPath
-            audiobook.cacheEntry?.fileSize = totalBytesWritten
-            audiobook.cacheEntry?.downloadedDate = Date()
-            audiobook.cacheEntry?.lastAccessedDate = Date()
-        }
-        
-        // Save the model context to persist cache entry
-        try modelContext.save()
-        
-        // Remove from active downloads
-        activeDownloads.removeValue(forKey: audiobookId)
-        
-        return outputURL
-    }
-    
-    /// Check if audiobook is available in CloudKit
-    func isAudiobookAvailableInCloud(audiobookId: String) async -> Bool {
-        do {
-            _ = try await fetchManifest(audiobookId: audiobookId)
-            return true
-        } catch {
-            return false
-        }
-    }
-    
-    /// Cancel an active upload or download
-    func cancelTransfer(audiobookId: String) {
-        activeUploads.removeValue(forKey: audiobookId)
-        activeDownloads.removeValue(forKey: audiobookId)
-    }
-    
-    // MARK: - Cleanup
-    
-    /// Delete audiobook chunks from CloudKit
-    func deleteAudiobookFromCloud(audiobookId: String) async throws {
-        // Fetch manifest
-        let manifest = try await fetchManifest(audiobookId: audiobookId)
-        
-        // Delete all chunks
-        var recordsToDelete: [CKRecord.ID] = []
-        
-        for chunkIndex in 0..<manifest.chunkCount {
-            let chunkRecordId = CKRecord.ID(
-                recordName: "\(audiobookId)-chunk-\(chunkIndex)"
-            )
-            recordsToDelete.append(chunkRecordId)
-        }
-        
-        // Delete manifest
-        recordsToDelete.append(manifest.recordId)
-        
-        // Batch delete (CloudKit allows up to 400 operations)
-        let batchSize = 400
-        for startIndex in stride(from: 0, to: recordsToDelete.count, by: batchSize) {
-            let endIndex = min(startIndex + batchSize, recordsToDelete.count)
-            let batch = Array(recordsToDelete[startIndex..<endIndex])
-            
-            // Use modern async API to properly await deletion
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                let operation = CKModifyRecordsOperation(
-                    recordsToSave: nil,
-                    recordIDsToDelete: batch
-                )
-                
-                operation.modifyRecordsResultBlock = { result in
-                    switch result {
-                    case .success:
-                        continuation.resume()
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
-                    }
-                }
-                
-                database.add(operation)
-            }
-        }
-    }
-    
-    // MARK: - Private Helpers - Manifest
-    
-    private func createManifestRecord(
-        audiobookId: String,
-        title: String,
-        fileSize: Int64,
-        chunkCount: Int
-    ) async throws -> CKRecord {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
-        let record = CKRecord(recordType: "AudiobookManifest", recordID: recordId)
-        
-        record["audiobookId"] = audiobookId
-        record["title"] = title
-        record["fileSize"] = fileSize
-        record["chunkCount"] = chunkCount
-        record["isComplete"] = Int64(0) // Store as Int64: 0 = false, 1 = true
-        record["uploadDate"] = Date()
-        
-        return try await database.save(record)
-    }
-    
-    private func markManifestComplete(_ manifest: CKRecord) async throws {
-        manifest["isComplete"] = Int64(1) // Store as Int64: 1 = true
-        manifest["completionDate"] = Date()
-        _ = try await database.save(manifest)
-    }
-    
-    private func fetchManifest(audiobookId: String) async throws -> AudiobookManifest {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
-        let record = try await database.record(for: recordId)
-        
-        guard let fileSize = record["fileSize"] as? Int64,
-              let chunkCount = record["chunkCount"] as? Int else {
-            throw ChunkTransferError.incompleteUpload
-        }
-        
-        // Check isComplete - it's stored as Int64, not Bool
-        let isCompleteValue = record["isComplete"] as? Int64 ?? 0
-        let isComplete = isCompleteValue == 1
-        
-        guard isComplete else {
-            throw ChunkTransferError.incompleteUpload
-        }
-        
-        return AudiobookManifest(
-            recordId: recordId,
-            audiobookId: audiobookId,
-            fileSize: fileSize,
-            chunkCount: chunkCount
-        )
-    }
-    
-    // MARK: - Private Helpers - Chunks
-    
-    private func readChunk(
-        from fileHandle: FileHandle,
-        chunkIndex: Int,
-        totalSize: Int64
-    ) throws -> Data {
-        let offset = Int64(chunkIndex) * Int64(Self.chunkSize)
-        try fileHandle.seek(toOffset: UInt64(offset))
-        
-        let remainingBytes = totalSize - offset
-        let bytesToRead = min(Int64(Self.chunkSize), remainingBytes)
-        
-        guard let data = try fileHandle.read(upToCount: Int(bytesToRead)) else {
-            throw ChunkTransferError.readFailed
-        }
-        
-        return data
-    }
-    
-    private func uploadChunk(
-        chunkData: Data,
-        chunkIndex: Int,
-        manifestRecordId: CKRecord.ID,
-        audiobookId: String
-    ) async throws {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-chunk-\(chunkIndex)")
-        let record = CKRecord(recordType: "AudiobookChunk", recordID: recordId)
-        
-        // Create temporary file for the chunk (CloudKit requires file URLs for assets)
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(audiobookId)-chunk-\(chunkIndex).tmp")
-        try chunkData.write(to: tempURL)
-        
-        defer {
-            try? FileManager.default.removeItem(at: tempURL)
-        }
-        
-        let asset = CKAsset(fileURL: tempURL)
-        record["chunkData"] = asset
-        record["chunkIndex"] = chunkIndex
-        record["manifestId"] = CKRecord.Reference(recordID: manifestRecordId, action: .deleteSelf)
-        
-        _ = try await database.save(record)
-    }
-    
-    private func downloadChunk(
-        chunkIndex: Int,
-        manifestRecordId: CKRecord.ID,
-        audiobookId: String
-    ) async throws -> Data {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-chunk-\(chunkIndex)")
-        let record = try await database.record(for: recordId)
-        
-        guard let asset = record["chunkData"] as? CKAsset,
-              let fileURL = asset.fileURL else {
-            throw ChunkTransferError.chunkNotFound
-        }
-        
-        return try Data(contentsOf: fileURL)
-    }
+/// Represents the availability status of audiobook chunks in CloudKit
+/// Used to determine if chunks can be uploaded (iPhone) or downloaded (Watch)
+enum ChunkAvailability: Equatable {
+    case notUploaded           // No chunks in CloudKit - Watch cannot download
+    case partiallyUploaded(existingChunks: Set<Int>)  // Some chunks exist - can resume upload
+    case fullyUploaded         // All chunks in CloudKit - Watch can download
 }
 
-*/
 // MARK: - Supporting Types
 
 struct AudiobookManifest {
@@ -1007,23 +704,28 @@ final class MockCloudKitTransferManager: CloudKitTransferManager {
             .appendingPathComponent("\(audiobookId).m4b")
     }
     
+    func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
+        uploadedBooks.remove(audiobook.id.uuidString)
+        try await Task.sleep(nanoseconds: 500_000_000)
+    }
+
     func deleteAudiobookFromCloud(audiobookId: String) async throws {
         uploadedBooks.remove(audiobookId)
         try await Task.sleep(nanoseconds: 500_000_000)
     }
     
-    func uploadAvailability(for audiobook: Audiobook) async -> UploadAvailability {
+    func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability {
         let audiobookId = audiobook.id.uuidString
-        
+
         if uploadedBooks.contains(audiobookId) {
             return .fullyUploaded
         }
-        
+
         // Randomly return partial for testing
         if Bool.random() {
             return .partiallyUploaded(existingChunks: Set([0, 1, 2, 3]))
         }
-        
+
         return .notUploaded
     }
     

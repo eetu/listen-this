@@ -36,6 +36,8 @@ final class Audiobook {
     
     @Relationship(deleteRule: .cascade) var chapters: [Chapter]?
     @Relationship(deleteRule: .cascade) var playbackSession: PlaybackSession?
+    // CacheEntry is device-specific and should not sync via CloudKit
+    // Each device maintains its own cache state independently
     @Relationship(deleteRule: .cascade) var cacheEntry: CacheEntry?
     
     init(
@@ -97,7 +99,9 @@ final class Audiobook {
     /// Check if file is cached locally (computed on-demand)
     var isFileCached: Bool {
         guard let cachePath = expectedCachePath else { return false }
-        return FileManager.default.fileExists(atPath: cachePath)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: cachePath)
+        guard let fileSize = attributes?[.size] as? Int64 else { return false }
+        return fileSize > 0
     }
     
     /// Get the cache file URL if it exists
