@@ -8,7 +8,8 @@
 import Foundation
 
 /// Protocol defining how to access audiobook content from various sources
-protocol ContentSource {
+@MainActor
+protocol ContentSource: AnyObject {
     // MARK: - Authentication
     
     /// Authenticate with the content source using provided credentials
@@ -105,3 +106,105 @@ struct AudiobookMetadata {
         self.artworkURL = artworkURL
     }
 }
+// MARK: - Mock Implementation (Previews & Testing)
+
+@MainActor
+final class MockContentSource: ContentSource {
+    var isAuthenticated = false
+    var mockLibrary: [AudiobookMetadata] = []
+    
+    init() {
+        // Create some mock audiobooks
+        mockLibrary = [
+            AudiobookMetadata(
+                identifier: "mock-1",
+                title: "The Great Gatsby",
+                author: "F. Scott Fitzgerald",
+                narrator: "Jake Gyllenhaal",
+                duration: 14400,
+                fileSize: 150_000_000,
+                sourceType: "icloud",
+                sourceURL: "mock://book1.m4b",
+                chapterCount: 9,
+                addedDate: Date()
+            ),
+            AudiobookMetadata(
+                identifier: "mock-2",
+                title: "1984",
+                author: "George Orwell",
+                narrator: "Simon Prebble",
+                duration: 36000,
+                fileSize: 350_000_000,
+                sourceType: "icloud",
+                sourceURL: "mock://book2.m4b",
+                chapterCount: 23,
+                addedDate: Date().addingTimeInterval(-86400)
+            ),
+            AudiobookMetadata(
+                identifier: "mock-3",
+                title: "To Kill a Mockingbird",
+                author: "Harper Lee",
+                narrator: "Sissy Spacek",
+                duration: 43200,
+                fileSize: 420_000_000,
+                sourceType: "icloud",
+                sourceURL: "mock://book3.m4b",
+                chapterCount: 31,
+                addedDate: Date().addingTimeInterval(-172800)
+            )
+        ]
+    }
+    
+    func authenticate(credentials: Credentials) async throws {
+        try await Task.sleep(nanoseconds: 500_000_000)
+        isAuthenticated = true
+    }
+    
+    func validateAccess() async throws -> Bool {
+        return isAuthenticated
+    }
+    
+    func fetchLibrary() async throws -> [AudiobookMetadata] {
+        try await Task.sleep(nanoseconds: 300_000_000)
+        return mockLibrary
+    }
+    
+    func getAudiobookMetadata(identifier: String) async throws -> AudiobookMetadata {
+        guard let metadata = mockLibrary.first(where: { $0.identifier == identifier }) else {
+            throw AudiobookError.fileNotFound
+        }
+        return metadata
+    }
+    
+    func searchLibrary(query: String) async throws -> [AudiobookMetadata] {
+        let lowercaseQuery = query.lowercased()
+        return mockLibrary.filter {
+            $0.title.lowercased().contains(lowercaseQuery) ||
+            $0.author.lowercased().contains(lowercaseQuery) ||
+            ($0.narrator?.lowercased().contains(lowercaseQuery) ?? false)
+        }
+    }
+    
+    func getStreamURL(identifier: String) async throws -> URL {
+        return URL(fileURLWithPath: "/mock/\(identifier).m4b")
+    }
+    
+    func getDownloadURL(identifier: String) async throws -> URL {
+        return URL(fileURLWithPath: "/mock/\(identifier).m4b")
+    }
+    
+    func getArtwork(identifier: String) async throws -> Data {
+        // Return empty data for mock
+        return Data()
+    }
+    
+    func syncProgress(identifier: String, position: Double) async throws {
+        // Mock: Progress synced
+    }
+    
+    func getProgress(identifier: String) async throws -> Double? {
+        return nil
+    }
+}
+
+

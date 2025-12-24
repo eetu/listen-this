@@ -8,8 +8,6 @@
 import SwiftUI
 import SwiftData
 
-#if os(iOS)
-
 struct WatchTransferView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -278,5 +276,3 @@ struct AudiobookTransferRow: View {
         .modelContainer(for: [Audiobook.self])
         .environment(iOSWatchConnectivityManager.shared)
 }
-
-#endif

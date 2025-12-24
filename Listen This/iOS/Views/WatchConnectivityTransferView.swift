@@ -1,16 +1,15 @@
 //
-//  SingleAudiobookTransferView.swift
+//  WatchConnectivityTransferView.swift
 //  Listen This
 //
-//  Quick transfer view for a single audiobook to Apple Watch
+//  Direct device-to-device transfer to Apple Watch via WatchConnectivity
+//  Uses Bluetooth/WiFi Direct for file transfer (alternative to CloudKit)
 //
 
 import SwiftUI
 import SwiftData
 
-#if os(iOS)
-
-struct SingleAudiobookTransferView: View {
+struct WatchConnectivityTransferView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(iOSWatchConnectivityManager.self) private var connectivity
@@ -223,78 +222,29 @@ struct SingleAudiobookTransferView: View {
     private var transferActionCard: some View {
         VStack(spacing: 16) {
             if audiobook.isFileCached {
-                VStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(.green)
-                    
-                    Text("Ready to Transfer")
-                        .font(.headline)
-                    
-                    Text("This audiobook is downloaded and ready to transfer to your Apple Watch")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                
                 Button {
                     Task {
                         await transferAudiobook()
                     }
                 } label: {
-                    HStack {
-                        if isTransferring || hasActiveTransfer {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                        Image(systemName: hasActiveTransfer ? "arrow.clockwise" : "arrow.down.circle.fill")
-                        Text(buttonText)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(buttonBackground)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .disabled(isTransferring || hasActiveTransfer || !connectivity.isPaired || !connectivity.isWatchAppInstalled)
-                
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "icloud.and.arrow.down")
-                        .font(.largeTitle)
-                        .foregroundStyle(.blue)
-                    
-                    Text("Download Required")
+                    Label(buttonText, systemImage: hasActiveTransfer ? "arrow.clockwise" : "applewatch.and.arrow.forward")
                         .font(.headline)
-                    
-                    Text("This audiobook will be downloaded from iCloud and then transferred to your Apple Watch")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding()
-                
+                .buttonStyle(.borderedProminent)
+                .disabled(isTransferring || hasActiveTransfer || !connectivity.isPaired || !connectivity.isWatchAppInstalled)
+                                
+            } else {
                 Button {
                     Task {
                         await downloadAndTransfer()
                     }
                 } label: {
-                    HStack {
-                        if isTransferring || hasActiveTransfer {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                        Image(systemName: hasActiveTransfer ? "arrow.clockwise" : "arrow.down.circle.fill")
-                        Text(buttonText)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(buttonBackground)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Label(buttonText, systemImage: hasActiveTransfer ? "arrow.clockwise" : "arrow.down.circle.fill")
+                        .font(.headline)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
                 }
                 .disabled(isTransferring || hasActiveTransfer || !connectivity.isPaired || !connectivity.isWatchAppInstalled)
             }
@@ -392,7 +342,7 @@ struct SingleAudiobookTransferView: View {
 
 #Preview {
     NavigationStack {
-        SingleAudiobookTransferView(
+        WatchConnectivityTransferView(
             audiobook: Audiobook(
                 title: "The Hobbit",
                 author: "J.R.R. Tolkien",
@@ -403,5 +353,3 @@ struct SingleAudiobookTransferView: View {
     .modelContainer(for: [Audiobook.self])
     .environment(iOSWatchConnectivityManager.shared)
 }
-
-#endif

@@ -36,6 +36,7 @@
 
 /* Begin PBXFileReference section */
 		C25538952EEFD37200874394 /* Listen This.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C270F6192EF889E8008500DF /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Transfer.xcodeproj; sourceTree = "<group>"; };
 		C2B59A642EEFD84300090C62 /* Listen This Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2EE209C2EEFDAC60008D70C /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
@@ -53,18 +54,23 @@
 		C25DBDDA2EEFD9A000FD4952 /* Exceptions for "Listen This" folder in "Listen This Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				iOS/Managers/AudiobookCacheManager.swift,
-				iOS/Managers/iOSWatchConnectivityManager.swift,
-				iOS/Views/SingleAudiobookTransferView.swift,
+				Shared/Managers/AudiobookCacheManager.swift,
+				Shared/Managers/CloudKitChunkedTransferManager.swift,
+				Shared/Managers/PreviewAudiobookCacheManager.swift,
 				Shared/Models/Audiobook.swift,
 				Shared/Models/AudiobookError.swift,
 				Shared/Models/CacheEntry.swift,
 				Shared/Models/Chapter.swift,
 				Shared/Models/PlaybackSession.swift,
+				Shared/Preview/PreviewData.swift,
 				Shared/Providers/ContentSource.swift,
 				Shared/Providers/iCloudDriveProvider.swift,
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
+				Shared/Services/PreviewAudioPlayerService.swift,
+				Shared/Views/ChapterTitleView.swift,
+				Shared/Views/CloudKitTransferView.swift,
+				Shared/Views/PlayerControlsView.swift,
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
 		};
@@ -108,6 +114,7 @@
 		C255388C2EEFD37200874394 = {
 			isa = PBXGroup;
 			children = (
+				C270F6192EF889E8008500DF /* .gitignore */,
 				C2EE209C2EEFDAC60008D70C /* CLAUDE.md */,
 				C2EE209D2EEFDAC60008D70C /* README.md */,
 				C25538972EEFD37200874394 /* Listen This */,

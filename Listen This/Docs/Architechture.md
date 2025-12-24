@@ -95,10 +95,17 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 
 **In Progress:**
 - Full AVPlayer playback integration
-- Watch receiver for file transfers
-- watchOS application
+- watchOS application enhancements
+
+**Completed:**
+- CloudKit chunked file transfer system
+- iOS upload to CloudKit functionality
+- watchOS download from CloudKit functionality
+- CloudKit storage management UI
 
 **Planned:**
+- Transfer method auto-selection based on file size
+- Background transfer support for large files
 - Additional content sources (Jellyfin, AudiobookShelf)
 - Enhanced playback features (bookmarks, sleep timer)
 - CarPlay integration
@@ -141,6 +148,43 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 - Realistic audiobook cache: 2-8GB
 - Target: 1-5 books cached simultaneously
 
+#### Three-Layer Storage Architecture
+
+The app uses three distinct storage layers, each serving a specific purpose:
+
+**1. iCloud Drive (Source of Truth)**
+- Original audiobook files imported by user
+- Path stored in `Audiobook.iCloudRelativePath` (e.g., "Documents/Audiobooks/book.m4b")
+- Synced across all user's devices via iCloud Drive
+- Never deleted by app
+- Primary use: iPhone can play directly from iCloud Drive, source for caching
+
+**2. Local Device Cache (Per-Device)**
+- Managed by `AudiobookCacheManager`
+- Location: `~/Library/Caches/Audiobooks/` on each device
+- Platform-specific: iPhone cache ≠ Watch cache (different file system, different storage constraints)
+- Can be cleared and re-downloaded from iCloud Drive
+- Primary use: Offline playback, faster access than iCloud Drive
+
+**3. CloudKit Chunked Transfer (Temporary)**
+- Managed by `CloudKitChunkedTransferManager`
+- Files split into 100MB chunks stored in CloudKit Private Database
+- Purpose: Fast audiobook transfers from iPhone → Watch over WiFi
+- Lifecycle: iPhone uploads chunks → Watch downloads chunks → chunks auto-deleted after successful Watch download
+- Not permanent storage: Multi-watch edge case requires re-upload
+- Primary use: Overcome WatchConnectivity transfer speed limitations
+
+**Storage Decision Matrix:**
+```
+iPhone: iCloud Drive (source) → Local Cache (playback) → CloudKit Chunks (upload for Watch)
+Watch:  CloudKit Chunks (download) → Local Cache (playback)
+```
+
+**Why Three Layers?**
+- iCloud Drive: User's permanent library, accessible from any Apple device
+- Local Cache: Fast access, offline capability, respects device storage limits
+- CloudKit Chunks: Solves Watch transfer problem (iCloud Drive not accessible on Watch, WatchConnectivity too slow)
+
 #### Cleanup Policy (Priority Order)
 
 Removal priority from lowest to highest:
@@ -156,6 +200,24 @@ Removal priority from lowest to highest:
 ## Sync Architecture
 
 ### CloudKit Sync Strategy
+
+**SwiftData CloudKit Configuration:**
+
+All models sync via CloudKit Private Database in a single configuration:
+  - `Audiobook` - metadata, artwork, paths
+  - `Chapter` - chapter information
+  - `PlaybackSession` - playback position and state
+  - `CacheEntry` - cache metadata (syncs but is optional per-device)
+
+**Cache Entry Sync Behavior:**
+
+While `CacheEntry` syncs via CloudKit, each device manages its cache independently:
+- The `cacheEntry` relationship is optional on `Audiobook`
+- Each device can have different cache states (one device cached, another not)
+- Deleting a cache entry on one device doesn't affect other devices' files
+- CloudKit only syncs the metadata about what's cached, not the actual files
+
+**Important:** Using multiple ModelConfigurations (one for CloudKit, one local-only) causes SwiftData to create duplicate entity instances, leading to "ID occurs multiple times" errors in ForEach loops.
 
 #### Sync Triggers
 - Playback position update (debounced, every 30 seconds)
@@ -212,26 +274,54 @@ func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackSta
 
 #### Communication Strategy
 
-**CloudKit (Primary Sync)**
+**CloudKit (Primary Sync & File Transfer)**
 - Playback position and state
 - Library metadata
 - Cache manifests
 - Works when devices not nearby
 - Handles conflicts automatically
 - Batch updates
+- **NEW: Chunked file transfers** (100MB chunks)
 
-**WatchConnectivity (File Transfers)**
-- Direct file transfers from iPhone to Watch
-- Faster than re-downloading from iCloud
-- Progress tracking
-- Uses iPhone's cached copy when available
-- Falls back to iCloud if needed
+**CloudKit Chunked File Transfer** (Recommended for large audiobooks)
+- Files split into 100MB chunks (well under CloudKit's 250MB asset limit)
+- iPhone uploads chunks to CloudKit Private Database
+- Watch downloads chunks independently over WiFi
+- Files reconstructed from chunks on destination device
+- Much faster than WatchConnectivity for large files
+- No device proximity required
+- Can resume interrupted transfers
+- Works while Watch is charging
+- **Chunk lifecycle**: Auto-deleted after successful Watch download to free iCloud storage
+- **Chunk verification**: Both iPhone and Watch use `checkCloudKitChunks()` to verify availability before upload/download
+
+**WatchConnectivity (Direct Transfer - Alternative)**
+- Direct device-to-device transfers via Bluetooth/WiFi Direct
+- Slower for large files (100+ MB)
+- Requires devices nearby and paired
+- Real-time progress tracking via `WatchTransferProgress`
+- Useful fallback when WiFi unavailable or CloudKit issues
+- Implemented in `WatchConnectivityTransferView` (iOS) and `WatchTransferStatusView` (Watch)
+
+**Transfer Views:**
+- `CloudKitTransferView` (Shared) - Modern MVVM-based view for chunked CloudKit transfers
+  - Works on both iOS and watchOS
+  - Auto-detects upload vs download mode based on platform
+  - Shows chunk-by-chunk progress
+  - Handles availability checking and error states
+
+- `WatchConnectivityTransferView` (iOS-only) - Direct device transfer via WatchConnectivity
+  - Alternative to CloudKit when WiFi unavailable
+  - Requires iPhone and Watch to be nearby
+  - Handles download-then-transfer if file not cached
+  - Uses WatchConnectivity framework for Bluetooth/WiFi Direct transfer
 
 **Communication Decision Matrix:**
-- Metadata updates → CloudKit
-- Playback state → CloudKit
-- File transfers → WatchConnectivity
-- Direct downloads → Watch downloads from iCloud independently
+- Metadata updates → CloudKit sync (automatic)
+- Playback state → CloudKit sync (automatic)
+- Large file transfers (>50MB) → **CloudKit Chunked Transfer** (recommended)
+- When WiFi unavailable → WatchConnectivity Bluetooth transfer (fallback)
+- Direct downloads → Watch downloads from iCloud independently (if available)
 
 ---
 
@@ -635,21 +725,30 @@ protocol ContentSource {
 - Single source of truth approach (requires constant connectivity)
 - Manual cache state management (error-prone, stale data)
 
-### 7. Watch Connectivity
-**Decision**: Hybrid approach - WatchConnectivity for transfers, CloudKit for metadata
+### 7. Watch Connectivity & File Transfer
+**Decision**: CloudKit chunked transfers for large files, optional WatchConnectivity for small files
 **Rationale**:
-- WatchConnectivity enables direct file transfers from iPhone's cache
-- Faster than re-downloading from iCloud on Watch
-- CloudKit syncs audiobook metadata and playback state
-- Watch can still download directly from iCloud when iPhone unavailable
+- CloudKit chunked transfers are much faster for large audiobooks (200MB+ files)
+- No device proximity required - Watch can download independently
+- Chunking (200MB pieces) enables reliable transfers with resume capability
+- CloudKit Private Database keeps transfers private and secure
+- WatchConnectivity can be used as fallback for smaller files
 
 **Implementation Benefits**:
-- User can quickly send books to Watch from iPhone
-- No duplicate downloads (use iPhone's cached copy)
-- Watch remains independent (can download from iCloud directly)
-- Progress tracking during transfers
+- 5-10x faster than WatchConnectivity for large files
+- Watch can download while charging overnight
+- Works over WiFi without iPhone nearby
+- Chunks can be downloaded in parallel for speed
+- Reliable resume on network interruptions
+- Progress tracking per chunk
 
-**Current Status**: Implemented iPhone → Watch transfers with progress tracking and NSFileCoordinator for iCloud file safety. Watch receiver pending implementation.
+**CloudKit Considerations**:
+- Each user gets 1GB free CloudKit storage
+- Chunks automatically deleted after successful download (or manual cleanup)
+- 250MB asset limit per chunk (200MB gives headroom)
+- Uses CloudKit Private Database (user-scoped, secure)
+
+**Current Status**: CloudKit chunked transfer implementation ready. WatchConnectivity fallback available for edge cases.
 
 ### Watch Transfer Implementation Details
 

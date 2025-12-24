@@ -132,7 +132,7 @@ struct WatchTransferStatusView: View {
         VStack(spacing: 16) {
             if connectivity.isReachable {
                 VStack(spacing: 12) {
-                    Image(systemName: "iphone.and.arrow.forward")
+                    Image(systemName: "iphone.and.arrow.right.outward")
                         .font(.system(size: 40))
                         .foregroundStyle(.blue)
                     

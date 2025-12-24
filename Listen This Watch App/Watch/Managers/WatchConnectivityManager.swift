@@ -9,11 +9,30 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 
+// MARK: - Public Protocol (View-Facing)
+
+@MainActor
+protocol WatchConnectivity: AnyObject {
+    var isReachable: Bool { get }
+    var activeTransfers: [String: TransferProgress] { get }
+    var lastError: Error? { get }
+    
+    func configure(modelContext: ModelContext)
+    func checkPendingTransfers()
+    func requestLibrarySync()
+    func sendCachedAudiobookList()
+    func requestDownload(audiobookId: UUID)
+    func cancelTransfer(audiobookId: UUID)
+    func transferToiPhone(_ audiobook: Audiobook) async throws
+}
+
+// MARK: - Concrete Implementation
+
 /// Manages communication between iPhone and Watch
 /// Handles file transfers and metadata sync
 @MainActor
 @Observable
-final class WatchConnectivityManager: NSObject {
+final class WatchConnectivityManager: NSObject, WatchConnectivity {
     static let shared = WatchConnectivityManager()
     
     // MARK: - Observable State
@@ -209,7 +228,7 @@ final class WatchConnectivityManager: NSObject {
         }
         
         // Start file transfer
-        _ = session.transferFile(fileURL, metadata: metadata)
+        session.transferFile(fileURL, metadata: metadata)
     }
 }
 
@@ -228,17 +247,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
             }
         }
     }
-    
-    #if os(iOS)
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
-        // Session became inactive
-    }
-    
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        // Session deactivated, reactivating
-        session.activate()
-    }
-    #endif
     
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
@@ -589,4 +597,71 @@ enum WatchTransferError: LocalizedError {
         }
     }
 }
+
+// MARK: - Mock Implementation (Previews & Testing)
+@MainActor
+@Observable
+final class MockWatchConnectivity: WatchConnectivity {
+    var isReachable = true
+    var activeTransfers: [String: TransferProgress] = [:]
+    var lastError: Error?
+    
+    private var modelContext: ModelContext?
+    
+    func configure(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+    
+    func checkPendingTransfers() {
+        // Mock: No pending transfers
+    }
+    
+    func requestLibrarySync() {
+        // Mock: Sync request sent
+    }
+    
+    func sendCachedAudiobookList() {
+        // Mock: List sent
+    }
+    
+    func requestDownload(audiobookId: UUID) {
+        // Mock: Simulate download progress
+        let progress = TransferProgress(
+            audiobookId: audiobookId.uuidString,
+            bytesTransferred: 0,
+            totalBytes: 50_000_000
+        )
+        activeTransfers[audiobookId.uuidString] = progress
+        
+        // Simulate progress updates
+        Task {
+            for i in 1...10 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if var currentProgress = activeTransfers[audiobookId.uuidString] {
+                    currentProgress.bytesTransferred = Int64(i) * 5_000_000
+                    activeTransfers[audiobookId.uuidString] = currentProgress
+                }
+            }
+            activeTransfers.removeValue(forKey: audiobookId.uuidString)
+        }
+    }
+    
+    func cancelTransfer(audiobookId: UUID) {
+        activeTransfers.removeValue(forKey: audiobookId.uuidString)
+    }
+    
+    func transferToiPhone(_ audiobook: Audiobook) async throws {
+        // Mock: Simulate transfer
+        let progress = TransferProgress(
+            audiobookId: audiobook.id.uuidString,
+            bytesTransferred: 0,
+            totalBytes: 50_000_000
+        )
+        activeTransfers[audiobook.id.uuidString] = progress
+        
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        activeTransfers.removeValue(forKey: audiobook.id.uuidString)
+    }
+}
+
 

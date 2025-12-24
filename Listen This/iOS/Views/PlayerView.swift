@@ -1,326 +1,162 @@
-//
-//  PlayerView.swift
-//  listen this
-//
-//  Created on 13.12.2025.
-//
-
 import SwiftUI
 import SwiftData
+import AVKit
+
+// MARK: - Production Wrapper (for Navigation)
 
 struct PlayerView: View {
     let audiobook: Audiobook
     
     @Environment(\.modelContext) private var modelContext
-    @State private var playerService: AudioPlayerService?
-    @State private var showingChapters = false
-    @State private var showingSpeedPicker = false
-    @State private var showingSleepTimer = false
-    @State private var loadError: AudiobookError?
-    
-    var formattedPosition: String {
-        formatTime(currentChapterPosition)
-    }
-    
-    var formattedDuration: String {
-        formatTime(currentChapterDuration)
-    }
-    
-    var currentChapter: Chapter? {
-        guard let chapters = audiobook.chapters?.sorted(by: { $0.index < $1.index }),
-              let index = playerService?.currentChapterIndex,
-              index >= 0 && index < chapters.count else {
-            return nil
-        }
-        return chapters[index]
-    }
-    
-    var currentChapterPosition: Double {
-        guard let chapter = currentChapter,
-              let position = playerService?.currentPosition else {
-            return 0
-        }
-        // Position within the current chapter
-        return max(0, position - chapter.startTime)
-    }
-    
-    var currentChapterDuration: Double {
-        currentChapter?.duration ?? audiobook.duration
-    }
-    
-    var currentChapterIndex: Int {
-        playerService?.currentChapterIndex ?? (audiobook.playbackSession?.currentChapter ?? 0)
-    }
-    
-    var isPlaying: Bool {
-        playerService?.isPlaying ?? false
-    }
+    @State private var player: AudioPlayerService?
     
     var body: some View {
-            VStack(spacing: 24) {
-                // Artwork
-                artworkView
-                
-                // Book Info
-                bookInfoSection
-                
-                Spacer()
-
-                // Progress Slider
-                progressSection
-                
-                // Playback Controls
-                playbackControlsSection
-                
+        Group {
+            if let player {
+                PlayerViewContent(audiobook: audiobook, player: player)
+            } else {
+                ProgressView("Loading...")
             }
-            .padding()
-        .navigationBarTitleDisplayMode(.inline)
+        }
         .toolbar {
-            // Bottom toolbar items
-            ToolbarItemGroup(placement: .bottomBar) {
-                // Chapters button
-                Button {
-                    showingChapters = true
-                } label: {
-                    Label("Chapters", systemImage: "list.bullet")
-                }
-                
-                Spacer()
-                
-                // Playback Speed
-                Button {
-                    showingSpeedPicker = true
-                } label: {
-                    let currentRate = playerService?.playbackRate ?? 1.0
-                    if abs(currentRate - 1.0) < 0.01 {
-                        // Show just the icon when at 1.0x
-                        Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
-                    } else {
-                        // Show rate when it's not 1.0x
-                        Label("\(currentRate, specifier: "%.1f")x", 
-                              systemImage: "gauge.with.dots.needle.67percent")
-                    }
-                }
-                
-                Spacer()
-                
-                // Sleep Timer
-                Button {
-                    showingSleepTimer = true
-                } label: {
-                    Label("Sleep Timer", systemImage: "moon")
-                }
-            }
-        }
-        .sheet(isPresented: $showingChapters) {
-            ChaptersListView(audiobook: audiobook, playerService: playerService)
-                .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showingSpeedPicker) {
-            PlaybackSpeedPickerView(playerService: playerService)
-                .presentationDetents([.height(220)])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showingSleepTimer) {
-            SleepTimerView(playerService: playerService)
-                .presentationDetents([.height(playerService?.isSleepTimerActive == true ? 400 : 330)])
-                .presentationDragIndicator(.visible)
-        }
-        .alert("Playback Error", isPresented: .constant(loadError != nil)) {
-            Button("OK") {
-                loadError = nil
-            }
-        } message: {
-            if let error = loadError {
-                Text(error.userMessage)
-            }
+            AirPlayButton()
         }
         .task {
-            await loadAudiobook()
-        }
-        .onDisappear {
-            playerService?.pause()
-        }
-    }
-    
-    // MARK: - Artwork View
-    
-    private var artworkView: some View {
-        Group {
-            if let artworkData = audiobook.artworkData,
-               let uiImage = UIImage(data: artworkData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.tertiary).aspectRatio(contentMode: .fit)
-                    
-                    Image(systemName: "book.closed")
-                        .font(.system(size: 80))
-                        .foregroundStyle(.secondary)
-                }
+            if player == nil {
+                let service = AudioPlayerService(modelContext: modelContext)
+                player = service
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(radius: 10)
-    }
-    
-    // MARK: - Book Info Section
-    
-    private var bookInfoSection: some View {
-        VStack(spacing: 8) {
-            // Chapter title as main heading
-            if let chapter = currentChapter {
-                Text(chapter.title)
-                    .font(.title2.bold())
-                    .multilineTextAlignment(.center)
-                
-                Text("Chapter \(chapter.index + 1) of \(audiobook.chapterCount)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(audiobook.title)
-                    .font(.title2.bold())
-                    .multilineTextAlignment(.center)
-            }
-        }
-    }
-    
-    // MARK: - Progress Section
-    
-    private var progressSection: some View {
-        VStack(spacing: 8) {
-            Slider(
-                value: Binding(
-                    get: { 
-                        currentChapterPosition
-                    },
-                    set: { newValue in
-                        // Convert chapter position back to absolute position
-                        guard let chapter = currentChapter else { return }
-                        let absolutePosition = chapter.startTime + newValue
-                        Task {
-                            await playerService?.seek(to: absolutePosition)
-                        }
-                    }
-                ),
-                in: 0...max(currentChapterDuration, 1)
-            )
-            .tint(.accentColor)
-            
-            HStack {
-                Text(formattedPosition)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                
-                Spacer()
-                
-                Text(formattedDuration)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        }
-    }
-    
-    // MARK: - Playback Controls
-    
-    private var playbackControlsSection: some View {
-        HStack(spacing: 40) {
-            // Previous Chapter
-            Button {
-                Task {
-                    await playerService?.previousChapter()
-                }
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 30))
-            }
-            .disabled(currentChapterIndex == 0)
-            
-            // Skip Back 15s
-            Button {
-                Task {
-                    await playerService?.skipBackward()
-                }
-            } label: {
-                Image(systemName: "gobackward.15")
-                    .font(.system(size: 30))
-            }
-            
-            // Play/Pause
-            Button {
-                playerService?.togglePlayback()
-            } label: {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 50))
-            }
-            
-            // Skip Forward 30s
-            Button {
-                Task {
-                    await playerService?.skipForward()
-                }
-            } label: {
-                Image(systemName: "goforward.30")
-                    .font(.system(size: 30))
-            }
-            
-            // Next Chapter
-            Button {
-                Task {
-                    await playerService?.nextChapter()
-                }
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 30))
-            }
-            .disabled(currentChapterIndex >= audiobook.chapterCount - 1)
-        }
-        .foregroundStyle(.primary)
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func loadAudiobook() async {
-        // Initialize player service if needed
-        if playerService == nil {
-            playerService = AudioPlayerService(modelContext: modelContext)
-        }
-        
-        // Load the audiobook
-        do {
-            try await playerService?.loadAudiobook(audiobook)
-        } catch let error as AudiobookError {
-            loadError = error
-        } catch {
-            loadError = .unknown(error)
-        }
-    }
-    
-    private func formatTime(_ seconds: Double) -> String {
-        let hours = Int(seconds) / 3600
-        let minutes = (Int(seconds) % 3600) / 60
-        let secs = Int(seconds) % 60
-        
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, secs)
-        } else {
-            return String(format: "%d:%02d", minutes, secs)
         }
     }
 }
 
-// MARK: - Chapters List View
+// MARK: - Generic Content View (Injectable)
 
-struct ChaptersListView: View {
+struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     let audiobook: Audiobook
-    let playerService: AudioPlayerService?
-    @Environment(\.dismiss) private var dismiss
     
+    @Bindable var player: Player
+    @State private var showingChapters = false
+    @State private var showingSpeedPicker = false
+    @State private var showingSleepTimer = false
+
+    
+    var sortedChapters: [Chapter]? {
+        audiobook.chapters?.sorted(by: { $0.index < $1.index })
+    }
+    
+    var isPlaying: Bool {
+        player.isPlaying
+    }
+
+    var currentChapter: Chapter? {
+        guard
+            let chapters = sortedChapters,
+            player.currentChapterIndex >= 0,
+            player.currentChapterIndex < chapters.count
+        else { return nil }
+        return chapters[player.currentChapterIndex]
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            artworkView
+                .padding(.top, 8)
+            Spacer()
+            if let sortedChapters {
+                PlayerControlsView(
+                    player: player,
+                    chapters: sortedChapters,
+                    showsChapterSkipButtons: true
+                )
+                .padding(.bottom, 16)
+            }
+        }
+        .padding(.all, 16)
+        .task {
+            await player.load(audiobook: audiobook)
+        }
+        .onDisappear {
+            Task { await player.pause() }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button{ showingChapters = true }
+                    label: {
+                        Label("Chapters", systemImage: "list.bullet")
+                    }
+                Spacer()
+                Button{ showingSpeedPicker = true }
+                    label: {
+                        Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
+                    }
+                Spacer()
+                Button { showingSleepTimer = true }
+                    label: {
+                        Label("Sleep Timer", systemImage: "moon")
+                    }
+            }
+        }
+        .sheet(isPresented: $showingChapters) {
+            PlayerChaptersSheet(player: player, audiobook: audiobook)
+        }
+        .sheet(isPresented: $showingSpeedPicker) {
+            PlayerSpeedSheet(player: player)
+                .presentationDetents([.height(250)])
+        }
+        .sheet(isPresented: $showingSleepTimer) {
+            PlayerSleepTimerSheet(player: player)
+                .presentationDetents([.height(250)])
+        }
+    }
+
+    // MARK: - Artwork
+
+    private var artworkView: some View {
+        Group {
+            if let data = audiobook.artworkData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.tertiary)
+                    .overlay(Image(systemName: "book.closed").font(.largeTitle))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - AirPlay Button
+
+private struct AirPlayButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let routePickerView = AVRoutePickerView()
+        routePickerView.tintColor = UIColor(Color.primary)
+        routePickerView.activeTintColor = UIColor(Color.primary)
+        routePickerView.prioritizesVideoDevices = false
+
+        // Constrain the size to match other toolbar icons
+        routePickerView.setContentHuggingPriority(.required, for: .horizontal)
+        routePickerView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        return routePickerView
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        // No updates needed
+    }
+}
+
+// MARK: - Generic Sheet Wrappers
+
+private struct PlayerChaptersSheet<Player: AudioPlayer & Observable>: View {
+    @Bindable var player: Player
+    let audiobook: Audiobook
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         NavigationStack {
             List {
@@ -328,7 +164,7 @@ struct ChaptersListView: View {
                     ForEach(chapters.sorted(by: { $0.index < $1.index })) { chapter in
                         Button {
                             Task {
-                                await playerService?.jumpToChapter(at: chapter.index)
+                                await player.seek(to: chapter.startTime)
                                 dismiss()
                             }
                         } label: {
@@ -336,18 +172,17 @@ struct ChaptersListView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(chapter.title)
                                         .font(.headline)
-                                    
+
                                     Text("Chapter \(chapter.index + 1)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                
+
                                 Spacer()
-                                
-                                // Show checkmark if this is current chapter
-                                if chapter.index == (playerService?.currentChapterIndex ?? 0) {
+
+                                if chapter.index == player.currentChapterIndex {
                                     Image(systemName: "checkmark")
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(.tint)
                                 }
                             }
                         }
@@ -356,160 +191,110 @@ struct ChaptersListView: View {
                     ContentUnavailableView(
                         "No Chapters",
                         systemImage: "list.bullet",
-                        description: Text("This audiobook doesn't have chapter information")
+                        description: Text("This audiobook has no chapter metadata.")
                     )
                 }
             }
             .navigationTitle("Chapters")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
         }
     }
 }
 
-// MARK: - Playback Speed Picker View
-
-struct PlaybackSpeedPickerView: View {
-    let playerService: AudioPlayerService?
-    @Environment(\.dismiss) private var dismiss
-    
+private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
+    @Bindable var player: Player
     @State private var selectedSpeed: Double
-    
-    // Common speed presets
-    let speedPresets: [Double] = [0.5, 1.0, 1.2, 1.5, 1.7, 2.0]
-    
-    init(playerService: AudioPlayerService?) {
-        self.playerService = playerService
-        _selectedSpeed = State(initialValue: playerService?.playbackRate ?? 1.0)
+
+    private let presets: [Double] = [0.75, 1.0, 1.25, 1.5, 2.0]
+
+    init(player: Player) {
+        self.player = player
+        _selectedSpeed = State(initialValue: player.playbackRate)
     }
-    
+
     var body: some View {
         VStack(spacing: 24) {
-            // Header
-            HStack(spacing: 12) {
-                Text("Speed")
-                    .font(.system(size: 20))
-                    .monospacedDigit()
+            HStack {
+                Text("Playback Speed")
+                    .font(.headline)
                 Spacer()
-                Text("\(selectedSpeed, specifier: "%.1f")x")
-                    .font(.system(size: 20, weight: .bold))
+                Text("\(selectedSpeed, specifier: "%.2f")x")
                     .monospacedDigit()
-                    .contentTransition(.numericText())
             }
-            .padding(.top)
             .padding(.horizontal)
-            
-            // Slider
-            VStack(spacing: 12) {
-                HStack {
-                    Text("0.5")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
 
-                    Slider(
-                        value: $selectedSpeed,
-                        in: 0.5...3.0,
-                        step: 0.05
-                    )
-                    .onChange(of: selectedSpeed) { _, newValue in
-                        playerService?.setPlaybackRate(newValue)
-                    }
-                    .tint(.accentColor)
-                    
-                    Text("3.0")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
+            Slider(
+                value: $selectedSpeed,
+                in: 0.5...2.5,
+                step: 0.05
+            )
+            .onChange(of: selectedSpeed) { _, newValue in
+                player.setPlaybackRate(newValue)
             }
-                        
-            // Preset buttons
-            VStack(alignment: .leading, spacing: 12) {
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 12) {
-                    ForEach(speedPresets, id: \.self) { speed in
-                        Button {
-                            withAnimation(.snappy) {
-                                selectedSpeed = speed
-                                playerService?.setPlaybackRate(speed)
-                            }
-                        } label: {
-                            HStack {
-                                Text("\(speed, specifier: "%.1f")")
-                                    .font(.body.weight(.medium))
-                            }
+            .padding(.horizontal)
+
+            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 5), spacing: 12) {
+                ForEach(presets, id: \.self) { speed in
+                    Button {
+                        selectedSpeed = speed
+                        player.setPlaybackRate(speed)
+                    } label: {
+                        Text("\(speed, specifier: "%.2f")")
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 10)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(abs(selectedSpeed - speed) < 0.05 ? Color.accentColor : Color(.systemGray5))
+                                    .fill(abs(selectedSpeed - speed) < 0.01 ? Color.accentColor : Color(.systemGray5))
                             )
-                            .foregroundStyle(abs(selectedSpeed - speed) < 0.05 ? .white : .primary)
-                        }
-                        .buttonStyle(.plain)
+                            .foregroundStyle(abs(selectedSpeed - speed) < 0.01 ? .white : .primary)
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal)
             }
+            .padding(.horizontal)
+
+            Spacer()
         }
+        .padding(.top)
     }
 }
 
-// MARK: - Sleep Timer View
-
-struct SleepTimerView: View {
-    let playerService: AudioPlayerService?
+private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
+    @Bindable var player: Player
     @Environment(\.dismiss) private var dismiss
-    
-    // Timer presets in minutes
-    let timerPresets: [Int] = [5, 10, 15, 30, 45, 60]
-    
+
+    private let presets: [Int] = [5, 10, 15, 30, 45, 60]
+
     var body: some View {
         VStack(spacing: 24) {
-            // Header
             HStack {
                 Text("Sleep Timer")
                     .font(.headline)
-                
+
                 Spacer()
-                
-                if playerService?.isSleepTimerActive == true {
-                    Text(formattedTimeRemaining)
-                        .font(.system(size: 20, weight: .bold))
+
+                if player.isSleepTimerActive {
+                    Text(formattedRemaining)
                         .monospacedDigit()
                         .foregroundStyle(.tint)
                 }
             }
-            .padding(.top)
             .padding(.horizontal)
-            
-            // Timer preset buttons
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 12) {
-                ForEach(timerPresets, id: \.self) { minutes in
+
+            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 3), spacing: 12) {
+                ForEach(presets, id: \.self) { minutes in
                     Button {
-                        playerService?.setSleepTimer(minutes: minutes)
+                        player.setSleepTimer(minutes: minutes)
                         dismiss()
                     } label: {
                         VStack(spacing: 4) {
                             Text("\(minutes)")
-                                .font(.title2.weight(.semibold))
-                            Text(minutes == 1 ? "minute" : "minutes")
+                                .font(.title2.bold())
+                            Text("minutes")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -524,69 +309,75 @@ struct SleepTimerView: View {
                 }
             }
             .padding(.horizontal)
-                        
-            // Special options
-            VStack(spacing: 12) {
-                Button {
-                    playerService?.setSleepTimerEndOfChapter()
+
+            if player.isSleepTimerActive {
+                Button(role: .destructive) {
+                    player.cancelSleepTimer()
                     dismiss()
                 } label: {
-                    HStack {
-                        Image(systemName: "book.closed")
-                        Text("End of Chapter")
-                        Spacer()
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray5))
-                    )
-                }
-                .buttonStyle(.plain)
-                
-                if playerService?.isSleepTimerActive == true {
-                    Button(role: .destructive) {
-                        playerService?.cancelSleepTimer()
-                        dismiss()
-                    } label: {
-                        HStack {
-                            Image(systemName: "xmark.circle")
-                            Text("Cancel Timer")
-                            Spacer()
-                        }
-                        .padding()
+                    Text("Cancel Sleep Timer")
                         .frame(maxWidth: .infinity)
+                        .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.red.opacity(0.1))
+                                .fill(Color.red.opacity(0.15))
                         )
-                        .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
+
             Spacer()
         }
+        .padding(.top)
     }
-    
-    private var formattedTimeRemaining: String {
-        let remaining = playerService?.sleepTimerRemaining ?? 0
-        let minutes = Int(remaining) / 60
-        let seconds = Int(remaining) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+
+    private var formattedRemaining: String {
+        let remaining = Int(player.sleepTimerRemaining)
+        return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }
 }
 
-#Preview {
-    NavigationStack {
-        PlayerView(audiobook: Audiobook(
-            title: "Sample Audiobook",
-            author: "John Doe",
-            narrator: "Jane Smith",
-            duration: 36000,
-        ))
-    }
-    .modelContainer(for: [Audiobook.self, Chapter.self, PlaybackSession.self])
+// MARK: - Previews
+
+#Preview("Playing with Chapters") {
+    PlayerViewContent(
+        audiobook: PreviewData.audiobook,
+        player: PreviewAudioPlayerService(
+            isPlaying: true,
+            currentPosition: 145,
+            duration: 510,
+            currentChapterIndex: 1
+        )
+    )
 }
+
+#Preview("Paused at Start") {
+    PlayerViewContent(
+        audiobook: PreviewData.audiobook,
+        player: PreviewAudioPlayerService(
+            isPlaying: false,
+            currentPosition: 0,
+            duration: 510,
+            currentChapterIndex: 0
+        )
+    )
+}
+
+#Preview("Error State") {
+    PlayerViewContent(
+        audiobook: PreviewData.audiobook,
+        player: PreviewAudioPlayerService(
+            isPlaying: false,
+            currentPosition: 0,
+            duration: 0,
+            currentChapterIndex: 0,
+            loadError: NSError(
+                domain: "Preview",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to load audio file"]
+            )
+        )
+    )
+}
+
+

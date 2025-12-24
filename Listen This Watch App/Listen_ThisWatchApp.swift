@@ -23,19 +23,23 @@ struct Listen_ThisWatchApp: App {
     
     init() {
         do {
+            // All models in a single schema with CloudKit sync
+            // Note: CacheEntry will sync via CloudKit, but this is acceptable
+            // because the relationship is optional and device-specific cleanup
+            // won't affect other devices' ability to maintain their own cache entries
             let schema = Schema([
                 Audiobook.self,
                 Chapter.self,
                 PlaybackSession.self,
                 CacheEntry.self
             ])
-            
+
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false,
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
-            
+
             modelContainer = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
