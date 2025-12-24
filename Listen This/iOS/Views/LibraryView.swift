@@ -198,7 +198,7 @@ struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View
             if let id = bluetoothAudiobookId,
                let audiobook = audiobooks.first(where: { $0.id == id }) {
                 NavigationStack {
-                    SingleAudiobookTransferView(audiobook: audiobook)
+                    WatchConnectivityTransferView(audiobook: audiobook)
                         .environment(connectivity)
                 }
             }
@@ -246,7 +246,7 @@ struct AudiobookCardWithMenu<Connectivity: iOSWatchConnectivity & Observable>: V
             NavigationLink(value: audiobook) {
                 AudiobookCard(audiobook: audiobook)
             }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 // Transfer to Watch
                 if connectivity.isPaired && connectivity.isWatchAppInstalled {
                     if hasActiveTransfer {
@@ -267,7 +267,7 @@ struct AudiobookCardWithMenu<Connectivity: iOSWatchConnectivity & Observable>: V
                         Button {
                             onTransferTapped(audiobook)
                         } label: {
-                            Label("Send to Watch", systemImage: "applewatch")
+                            Label("Transfer", systemImage: "applewatch")
                         }
                         .tint(.blue)
                     }
@@ -332,7 +332,7 @@ struct AudiobookCardWithMenu<Connectivity: iOSWatchConnectivity & Observable>: V
                 Button {
                     onTransferTapped(audiobook)
                 } label: {
-                    Label("Send to Watch", systemImage: "applewatch")
+                    Label("Transfer", systemImage: "applewatch")
                 }
             }
 
@@ -514,7 +514,7 @@ struct TransferMethodSheet: View {
                             onSelectBluetooth()
                         } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: "iphone.and.arrow.forward")
+                                Image(systemName: "iphone.and.arrow.right.outward")
                                     .font(.title2)
                                     .foregroundStyle(.purple)
                                     .frame(width: 32)

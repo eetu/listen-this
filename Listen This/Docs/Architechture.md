@@ -295,18 +295,32 @@ func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackSta
 - **Chunk lifecycle**: Auto-deleted after successful Watch download to free iCloud storage
 - **Chunk verification**: Both iPhone and Watch use `checkCloudKitChunks()` to verify availability before upload/download
 
-**WatchConnectivity (Legacy/Fallback)**
-- Direct device-to-device transfers
+**WatchConnectivity (Direct Transfer - Alternative)**
+- Direct device-to-device transfers via Bluetooth/WiFi Direct
 - Slower for large files (100+ MB)
-- Requires devices nearby
-- Progress tracking
-- Useful for small files or when offline
+- Requires devices nearby and paired
+- Real-time progress tracking via `WatchTransferProgress`
+- Useful fallback when WiFi unavailable or CloudKit issues
+- Implemented in `WatchConnectivityTransferView` (iOS) and `WatchTransferStatusView` (Watch)
+
+**Transfer Views:**
+- `CloudKitTransferView` (Shared) - Modern MVVM-based view for chunked CloudKit transfers
+  - Works on both iOS and watchOS
+  - Auto-detects upload vs download mode based on platform
+  - Shows chunk-by-chunk progress
+  - Handles availability checking and error states
+
+- `WatchConnectivityTransferView` (iOS-only) - Direct device transfer via WatchConnectivity
+  - Alternative to CloudKit when WiFi unavailable
+  - Requires iPhone and Watch to be nearby
+  - Handles download-then-transfer if file not cached
+  - Uses WatchConnectivity framework for Bluetooth/WiFi Direct transfer
 
 **Communication Decision Matrix:**
-- Metadata updates → CloudKit
-- Playback state → CloudKit
-- Large file transfers (>50MB) → **CloudKit Chunked Transfer**
-- Small file transfers (<50MB) → WatchConnectivity (optional)
+- Metadata updates → CloudKit sync (automatic)
+- Playback state → CloudKit sync (automatic)
+- Large file transfers (>50MB) → **CloudKit Chunked Transfer** (recommended)
+- When WiFi unavailable → WatchConnectivity Bluetooth transfer (fallback)
 - Direct downloads → Watch downloads from iCloud independently (if available)
 
 ---

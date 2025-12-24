@@ -449,8 +449,8 @@ struct AudiobookRow: View {
             // Status indicator
             if hasActiveTransfer {
                 HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.mini)
+                    Image(systemName: "icloud.and.arrow.down")
+                        .font(.system(size: 10))
                     Text("Downloading")
                         .font(.caption2)
                         .foregroundStyle(.blue)
@@ -546,19 +546,15 @@ struct DownloadOptionsSheet: View {
                     icon: "icloud.and.arrow.down.fill",
                     title: "iCloud WiFi",
                     subtitle: cloudKitAvailabilityText,
-                    badge: "Fast",
-                    badgeColor: .blue,
                     isAvailable: cloudKitAvailability == .fullyUploaded,
                     action: onSelectCloudKit
                 )
 
                 // Bluetooth option
                 DownloadOptionButton(
-                    icon: "iphone.and.arrow.forward",
+                    icon: "iphone.and.arrow.right.outward",
                     title: "From iPhone",
                     subtitle: "Bluetooth transfer",
-                    badge: "Slow",
-                    badgeColor: .orange,
                     isAvailable: true,
                     action: onSelectBluetooth
                 )
@@ -592,8 +588,6 @@ struct DownloadOptionButton: View {
     let icon: String
     let title: String
     let subtitle: String
-    let badge: String
-    let badgeColor: Color
     let isAvailable: Bool
     let action: () -> Void
 
@@ -610,15 +604,6 @@ struct DownloadOptionButton: View {
                         Text(title)
                             .font(.footnote)
                             .fontWeight(.semibold)
-
-                        Text(badge)
-                            .font(.system(size: 8))
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(badgeColor.opacity(0.2))
-                            .foregroundStyle(badgeColor)
-                            .clipShape(Capsule())
                     }
 
                     Text(subtitle)

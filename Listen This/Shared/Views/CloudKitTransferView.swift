@@ -284,24 +284,23 @@ struct CloudKitTransferView: View {
         header(viewModel)
 
         // Explanation section
-        VStack(alignment: .leading, spacing: 8) {
-            Label(
-                viewModel.mode == .upload ? "Fast Watch Transfer" : "Download from iPhone",
-                systemImage: "bolt.fill"
-            )
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(.blue)
-
-            Text(viewModel.mode == .upload
-                 ? "Faster than Bluetooth file transfer. Uses temporary iCloud space to sync audiobook to your Apple Watch over WiFi."
-                 : "Download audiobook chunks that were uploaded from your iPhone.")
+        VStack() {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(
+                    viewModel.mode == .upload ? "Fast Watch Transfer" : "Download from iPhone"
+                )
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                
+                Text(viewModel.mode == .upload
+                     ? "Faster than Bluetooth file transfer. Uses temporary iCloud space to sync audiobook to your Apple Watch over WiFi."
+                     : "Download audiobook chunks that were uploaded from your iPhone.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            }.padding()
         }
-        .padding()
-        .background(Color.blue.opacity(0.08))
+        #if os(iOS)
+        .background(Color(.secondarySystemBackground))
+        #endif
         .clipShape(RoundedRectangle(cornerRadius: 12))
 
         // Main action/status section
@@ -332,13 +331,6 @@ struct CloudKitTransferView: View {
     @ViewBuilder
     private func actionSection(_ viewModel: CloudKitTransferViewModel) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: viewModel.mode == .upload
-                  ? "icloud.and.arrow.up"
-                  : "icloud.and.arrow.down")
-                .font(.system(size: 50))
-                .foregroundStyle(viewModel.isActionDisabled ? .gray : .blue)
-                .symbolRenderingMode(.hierarchical)
-
             Button {
                 viewModel.start()
             } label: {
@@ -349,34 +341,26 @@ struct CloudKitTransferView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isActionDisabled)
-            .controlSize(.large)
         }
         .padding(.vertical, 8)
     }
 
     @ViewBuilder
     private func infoSection(_ viewModel: CloudKitTransferViewModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("How it works")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
+        VStack(alignment: .leading, spacing: 8) {
             if viewModel.mode == .upload {
-                InfoRow(icon: "1.circle.fill", text: "Audiobook is split into 100MB chunks")
-                InfoRow(icon: "2.circle.fill", text: "Chunks upload to your private iCloud")
-                InfoRow(icon: "3.circle.fill", text: "Watch downloads chunks over WiFi")
-                InfoRow(icon: "4.circle.fill", text: "Chunks auto-delete after download")
+                Label("Upload audiobook temporarily to iCloud using WiFi", systemImage: "info.circle")
+                Label("After upload has finished download can be started from your watch", systemImage: "info.circle")
+                Label("Temporary files are removed after Download is finished", systemImage: "info.circle")
             } else {
-                InfoRow(icon: "1.circle.fill", text: "Downloads from your private iCloud")
-                InfoRow(icon: "2.circle.fill", text: "Reconstructs audiobook from chunks")
-                InfoRow(icon: "3.circle.fill", text: "Chunks cleaned up automatically")
+                Label("Download audiobook from iCloud to your watch using WiFi", systemImage: "info.circle")
+                Label("Temporary files are removed after Download is finished", systemImage: "info.circle")
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
         .padding()
         #if os(iOS)
-        .background(Color(.systemGray6))
+        .background(Color(.secondarySystemBackground))
         #endif
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
