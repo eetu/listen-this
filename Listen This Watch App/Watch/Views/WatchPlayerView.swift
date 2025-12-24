@@ -24,6 +24,7 @@ struct WatchPlayerView: View {
     @State private var showingDeleteConfirmation = false
 
     // Volume
+    @State private var currentVolume: Float = AVAudioSession.sharedInstance().outputVolume
     @State private var volumeObserver: NSKeyValueObservation?
 
     // MARK: - Computed
@@ -44,7 +45,8 @@ struct WatchPlayerView: View {
                         PlayerControlsView(
                             player: playerService,
                             chapters: sortedChapters,
-                            showsChapterSkipButtons: false
+                            showsChapterSkipButtons: false,
+                            volume: $currentVolume
                         )
                     }
                 } else {
@@ -164,6 +166,7 @@ struct WatchPlayerView: View {
             }
         }
         .navigationTitle("Chapters")
+        .focusable(true)
     }
 
     // MARK: - Context Menu
@@ -219,7 +222,11 @@ struct WatchPlayerView: View {
 
     private func observeVolume() {
         let session = AVAudioSession.sharedInstance()
-        volumeObserver = session.observe(\.outputVolume) { _, _ in }
+        volumeObserver = session.observe(\.outputVolume) { session, _ in
+            DispatchQueue.main.async {
+                currentVolume = session.outputVolume
+            }
+        }
     }
 
     private func removeDownload() {
@@ -242,10 +249,10 @@ struct WatchPlayerView: View {
 /// Wrapper for WKInterfaceVolumeControl to enable digital crown volume control
 struct VolumeView: WKInterfaceObjectRepresentable {
     typealias WKInterfaceObjectType = WKInterfaceVolumeControl
-    
+
     func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
         let view = WKInterfaceVolumeControl(origin: .local)
-        
+
         // Keep the volume control focused to enable digital crown rotation
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak view] timer in
             if let view = view {
@@ -254,15 +261,15 @@ struct VolumeView: WKInterfaceObjectRepresentable {
                 timer.invalidate()
             }
         }
-        
+
         // Initial focus
         DispatchQueue.main.async {
             view.focus()
         }
-        
+
         return view
     }
-    
+
     func updateWKInterfaceObject(_ wkInterfaceObject: WKInterfaceVolumeControl, context: Context) {
         // No updates needed
     }
