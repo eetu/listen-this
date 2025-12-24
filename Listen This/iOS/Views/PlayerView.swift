@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AVKit
 
 // MARK: - Production Wrapper (for Navigation)
 
@@ -16,6 +17,9 @@ struct PlayerView: View {
             } else {
                 ProgressView("Loading...")
             }
+        }
+        .toolbar {
+            AirPlayButton()
         }
         .task {
             if player == nil {
@@ -122,6 +126,27 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+// MARK: - AirPlay Button
+
+private struct AirPlayButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let routePickerView = AVRoutePickerView()
+        routePickerView.tintColor = UIColor(Color.primary)
+        routePickerView.activeTintColor = UIColor(Color.primary)
+        routePickerView.prioritizesVideoDevices = false
+
+        // Constrain the size to match other toolbar icons
+        routePickerView.setContentHuggingPriority(.required, for: .horizontal)
+        routePickerView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        return routePickerView
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        // No updates needed
     }
 }
 
