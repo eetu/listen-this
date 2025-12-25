@@ -721,11 +721,6 @@ final class MockCloudKitTransferManager: CloudKitTransferManager {
             return .fullyUploaded
         }
 
-        // Randomly return partial for testing
-        if Bool.random() {
-            return .partiallyUploaded(existingChunks: Set([0, 1, 2, 3]))
-        }
-
         return .notUploaded
     }
     

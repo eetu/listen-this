@@ -11,6 +11,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		C270F7532EFC53AF008500DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C255388D2EEFD37200874394 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C25538942EEFD37200874394;
+			remoteInfo = "Listen This";
+		};
 		C2B59A6C2EEFD84400090C62 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C255388D2EEFD37200874394 /* Project object */;
@@ -37,6 +44,7 @@
 /* Begin PBXFileReference section */
 		C25538952EEFD37200874394 /* Listen This.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C270F6192EF889E8008500DF /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Listen This AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Transfer.xcodeproj; sourceTree = "<group>"; };
 		C2B59A642EEFD84300090C62 /* Listen This Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2EE209C2EEFDAC60008D70C /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
@@ -86,6 +94,11 @@
 			path = "Listen This";
 			sourceTree = "<group>";
 		};
+		C270F7502EFC53AF008500DF /* Listen This AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Listen This AppTests";
+			sourceTree = "<group>";
+		};
 		C2B59A652EEFD84300090C62 /* Listen This Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Listen This Watch App";
@@ -95,6 +108,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		C25538922EEFD37200874394 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C270F74C2EFC53AF008500DF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -119,6 +139,7 @@
 				C2EE209D2EEFDAC60008D70C /* README.md */,
 				C25538972EEFD37200874394 /* Listen This */,
 				C2B59A652EEFD84300090C62 /* Listen This Watch App */,
+				C270F7502EFC53AF008500DF /* Listen This AppTests */,
 				C25538962EEFD37200874394 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -128,6 +149,7 @@
 			children = (
 				C25538952EEFD37200874394 /* Listen This.app */,
 				C2B59A642EEFD84300090C62 /* Listen This Watch App.app */,
+				C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -166,6 +188,29 @@
 			productReference = C25538952EEFD37200874394 /* Listen This.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C270F74E2EFC53AF008500DF /* Listen This AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C270F7572EFC53AF008500DF /* Build configuration list for PBXNativeTarget "Listen This AppTests" */;
+			buildPhases = (
+				C270F74B2EFC53AF008500DF /* Sources */,
+				C270F74C2EFC53AF008500DF /* Frameworks */,
+				C270F74D2EFC53AF008500DF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C270F7542EFC53AF008500DF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C270F7502EFC53AF008500DF /* Listen This AppTests */,
+			);
+			name = "Listen This AppTests";
+			packageProductDependencies = (
+			);
+			productName = "Listen This AppTests";
+			productReference = C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		C2B59A632EEFD84300090C62 /* Listen This Watch App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C2B59A6F2EEFD84400090C62 /* Build configuration list for PBXNativeTarget "Listen This Watch App" */;
@@ -201,6 +246,10 @@
 					C25538942EEFD37200874394 = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					C270F74E2EFC53AF008500DF = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = C25538942EEFD37200874394;
+					};
 					C2B59A632EEFD84300090C62 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -228,12 +277,20 @@
 			targets = (
 				C25538942EEFD37200874394 /* Listen This */,
 				C2B59A632EEFD84300090C62 /* Listen This Watch App */,
+				C270F74E2EFC53AF008500DF /* Listen This AppTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		C25538932EEFD37200874394 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C270F74D2EFC53AF008500DF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -257,6 +314,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C270F74B2EFC53AF008500DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C2B59A602EEFD84300090C62 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -267,6 +331,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C270F7542EFC53AF008500DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C25538942EEFD37200874394 /* Listen This */;
+			targetProxy = C270F7532EFC53AF008500DF /* PBXContainerItemProxy */;
+		};
 		C2B59A6D2EEFD84400090C62 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
@@ -464,6 +533,48 @@
 			};
 			name = Release;
 		};
+		C270F7552EFC53AF008500DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A9B4GVX4R5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Listen This.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Listen This";
+			};
+			name = Debug;
+		};
+		C270F7562EFC53AF008500DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A9B4GVX4R5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Listen This.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Listen This";
+			};
+			name = Release;
+		};
 		C2B59A702EEFD84400090C62 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -555,6 +666,15 @@
 			buildConfigurations = (
 				C25538A42EEFD37400874394 /* Debug */,
 				C25538A52EEFD37400874394 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C270F7572EFC53AF008500DF /* Build configuration list for PBXNativeTarget "Listen This AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C270F7552EFC53AF008500DF /* Debug */,
+				C270F7562EFC53AF008500DF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
