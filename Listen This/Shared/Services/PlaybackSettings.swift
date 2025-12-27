@@ -18,7 +18,6 @@ final class PlaybackSettings {
     // MARK: - UserDefaults Keys
 
     private enum Keys {
-        static let defaultPlaybackSpeed = "defaultPlaybackSpeed"
         static let skipBackwardInterval = "skipBackwardInterval"
         static let skipForwardInterval = "skipForwardInterval"
         static let defaultSleepTimerMinutes = "defaultSleepTimerMinutes"
@@ -26,18 +25,6 @@ final class PlaybackSettings {
     }
 
     // MARK: - Playback Speed
-
-    /// Default playback speed (0.5 - 3.0)
-    var defaultPlaybackSpeed: Double {
-        get {
-            let stored = UserDefaults.standard.double(forKey: Keys.defaultPlaybackSpeed)
-            return stored > 0 ? stored : 1.0
-        }
-        set {
-            let clamped = min(max(newValue, 0.5), 3.0)
-            UserDefaults.standard.set(clamped, forKey: Keys.defaultPlaybackSpeed)
-        }
-    }
 
     /// Whether to remember playback speed per audiobook
     var rememberSpeedPerBook: Bool {
@@ -52,9 +39,6 @@ final class PlaybackSettings {
             UserDefaults.standard.set(newValue, forKey: Keys.rememberSpeedPerBook)
         }
     }
-
-    /// Available playback speed presets
-    static let speedPresets: [Double] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
 
     // MARK: - Skip Intervals
 

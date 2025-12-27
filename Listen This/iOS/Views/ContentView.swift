@@ -17,31 +17,33 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
-        if horizontalSizeClass == .regular {
-            // iPad: Split view with sidebar
-            iPadLayout
-        } else {
-            // iPhone: Standard stack navigation (existing behavior)
-            LibraryView()
-        }
-    }
-
-    private var iPadLayout: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Sidebar: Always show library list
             LibrarySidebarView(selectedAudiobook: $selectedAudiobook)
                 .navigationTitle("Library")
         } detail: {
+            // Detail: Show player when audiobook is selected
             if let audiobook = selectedAudiobook {
                 PlayerView(audiobook: audiobook)
+                    .id("player-\(audiobook.id)") // Maintain view identity
             } else {
                 LibraryDetailView()
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .onChange(of: selectedAudiobook) { _, newValue in
             if newValue != nil {
-                // Collapse sidebar when audiobook is selected
-                withAnimation {
+                // When an audiobook is selected, show detail (collapse sidebar on compact)
+                columnVisibility = .detailOnly
+            }
+        }
+        .onChange(of: horizontalSizeClass) { oldValue, newValue in
+            // Reset column visibility when size class changes to allow proper adaptation
+            if oldValue != newValue {
+                if selectedAudiobook != nil {
                     columnVisibility = .detailOnly
+                } else {
+                    columnVisibility = .automatic
                 }
             }
         }

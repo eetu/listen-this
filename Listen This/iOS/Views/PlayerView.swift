@@ -117,7 +117,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
         }
         .sheet(isPresented: $showingSleepTimer) {
             PlayerSleepTimerSheet(player: player)
-                .presentationDetents([.height(250)])
+                .presentationDetents([.height(350)])
         }
     }
 
@@ -139,15 +139,9 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
 
             Button { showingSleepTimer = true } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "moon")
-                    if player.isSleepTimerActive {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                }
+                Label("Sleep Timer", systemImage: "moon")
             }
+            .tint(player.isSleepTimerActive ? .accentColor : nil)
         }
     }
 
@@ -180,7 +174,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
         }
         .sheet(isPresented: $showingSleepTimer) {
             PlayerSleepTimerSheet(player: player)
-                .presentationDetents([.height(250)])
+                .presentationDetents([.height(350)])
         }
     }
 
@@ -265,40 +259,58 @@ private struct PlayerChaptersSheet<Player: AudioPlayer & Observable>: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if let chapters = audiobook.chapters, !chapters.isEmpty {
-                    ForEach(chapters.sorted(by: { $0.index < $1.index })) { chapter in
-                        Button {
-                            Task {
-                                let _ = await player.seek(to: chapter.startTime)
-                                dismiss()
+            ScrollViewReader { proxy in
+                List {
+                    if let chapters = audiobook.chapters, !chapters.isEmpty {
+                        ForEach(chapters.sorted(by: { $0.index < $1.index })) { chapter in
+                            Button {
+                                Task {
+                                    let _ = await player.seek(to: chapter.startTime)
+                                    dismiss()
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(chapter.title)
+                                            .font(.headline)
+
+                                        Text("Chapter \(chapter.index + 1)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    if chapter.index == player.currentChapterIndex {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
                             }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(chapter.title)
-                                        .font(.headline)
+                            .id(chapter.id)
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No Chapters",
+                            systemImage: "list.bullet",
+                            description: Text("This audiobook has no chapter metadata.")
+                        )
+                    }
+                }
+                .task {
+                    // Scroll to current chapter after a brief delay to ensure list is rendered
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
 
-                                    Text("Chapter \(chapter.index + 1)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                if chapter.index == player.currentChapterIndex {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.tint)
-                                }
+                    if let chapters = audiobook.chapters,
+                       player.currentChapterIndex >= 0,
+                       player.currentChapterIndex < chapters.count {
+                        let sortedChapters = chapters.sorted(by: { $0.index < $1.index })
+                        if let currentChapter = sortedChapters.first(where: { $0.index == player.currentChapterIndex }) {
+                            withAnimation {
+                                proxy.scrollTo(currentChapter.id, anchor: .center)
                             }
                         }
                     }
-                } else {
-                    ContentUnavailableView(
-                        "No Chapters",
-                        systemImage: "list.bullet",
-                        description: Text("This audiobook has no chapter metadata.")
-                    )
                 }
             }
             .navigationTitle("Chapters")
@@ -391,7 +403,7 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
             }
             .padding(.horizontal)
 
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 3), spacing: 12) {
+            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 6), spacing: 12) {
                 ForEach(presets, id: \.self) { minutes in
                     Button {
                         player.setSleepTimer(minutes: minutes)
@@ -416,6 +428,27 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
             }
             .padding(.horizontal)
 
+            // End of Chapter option
+            Button {
+                player.setSleepTimerEndOfChapter()
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bookmark")
+                        .font(.title3)
+                    Text("End of Chapter")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemGray5))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+
             if player.isSleepTimerActive {
                 Button(role: .destructive) {
                     player.cancelSleepTimer()
@@ -438,6 +471,9 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
     }
 
     private var formattedRemaining: String {
+        if player.sleepAtEndOfChapter {
+            return "End of Chapter"
+        }
         let remaining = Int(player.sleepTimerRemaining)
         return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }

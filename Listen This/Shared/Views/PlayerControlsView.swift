@@ -21,6 +21,9 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     @Binding var volume: Float
     #endif
 
+    /// Playback settings
+    @State private var settings = PlaybackSettings.shared
+
     // MARK: - Computed
 
     private var currentChapter: Chapter? {
@@ -147,18 +150,18 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     private var skipBackwardButton: some View {
         Button {
-            Task { await player.skip(by: -15) }
+            Task { await player.skip(by: -Double(settings.skipBackwardInterval)) }
         } label: {
-            Image(systemName: "gobackward.15")
+            Image(systemName: "gobackward.\(settings.skipBackwardInterval)")
                 .font(skipFont)
         }
     }
 
     private var skipForwardButton: some View {
         Button {
-            Task { await player.skip(by: 30) }
+            Task { await player.skip(by: Double(settings.skipForwardInterval)) }
         } label: {
-            Image(systemName: "goforward.30")
+            Image(systemName: "goforward.\(settings.skipForwardInterval)")
                 .font(skipFont)
         }
     }

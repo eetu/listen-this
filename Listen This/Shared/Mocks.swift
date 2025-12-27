@@ -580,6 +580,7 @@ final class MockAudioPlayerService: AudioPlayer {
     var loadError: Error?
     var sleepTimerRemaining: TimeInterval
     var isSleepTimerActive: Bool
+    var sleepAtEndOfChapter: Bool
     var sortedChapters: [Chapter]
 
     // MARK: - Initializers
@@ -593,6 +594,7 @@ final class MockAudioPlayerService: AudioPlayer {
         loadError: Error? = nil,
         sleepTimerRemaining: TimeInterval = 0,
         isSleepTimerActive: Bool = false,
+        sleepAtEndOfChapter: Bool = false,
         sortedChapters: [Chapter] = []
     ) {
         self.isPlaying = isPlaying
@@ -603,6 +605,7 @@ final class MockAudioPlayerService: AudioPlayer {
         self.loadError = loadError
         self.sleepTimerRemaining = sleepTimerRemaining
         self.isSleepTimerActive = isSleepTimerActive
+        self.sleepAtEndOfChapter = sleepAtEndOfChapter
         self.sortedChapters = sortedChapters
     }
 
@@ -654,11 +657,19 @@ final class MockAudioPlayerService: AudioPlayer {
 
     func setSleepTimer(minutes: Int) {
         isSleepTimerActive = true
+        sleepAtEndOfChapter = false
         sleepTimerRemaining = TimeInterval(minutes * 60)
+    }
+
+    func setSleepTimerEndOfChapter() {
+        isSleepTimerActive = true
+        sleepAtEndOfChapter = true
+        sleepTimerRemaining = 0
     }
 
     func cancelSleepTimer() {
         isSleepTimerActive = false
+        sleepAtEndOfChapter = false
         sleepTimerRemaining = 0
     }
 }

@@ -72,6 +72,7 @@ final class AudioPlayerService: AudioPlayer {
     private let modelContext: ModelContext
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var rateObserver: NSKeyValueObservation?
     private(set) var audiobook: Audiobook?
 
     /// Tracks the timestamp of the last restored/saved playback state
@@ -160,6 +161,12 @@ final class AudioPlayerService: AudioPlayer {
     // MARK: - Loading
 
     func load(audiobook: Audiobook) async {
+        // Skip reload if this audiobook is already loaded and playing
+        if self.audiobook?.id == audiobook.id, player != nil {
+            PlaybackDiagnostics.log("Audiobook already loaded, skipping reload")
+            return
+        }
+
         cleanup()
         self.audiobook = audiobook
         loadError = nil
@@ -187,11 +194,15 @@ final class AudioPlayerService: AudioPlayer {
             }
 
             let item = AVPlayerItem(asset: asset)
-            player = AVPlayer(playerItem: item)
+            let newPlayer = AVPlayer(playerItem: item)
+            player = newPlayer
 
             let durationTime = try await asset.load(.duration)
             duration = durationTime.seconds
             print("[AudioPlayer] Loaded successfully, duration: \(duration)")
+
+            // Observe player rate to keep isPlaying in sync with actual playback state
+            setupRateObserver(for: newPlayer)
 
             restorePlaybackState()
             startTimeObserver()
@@ -361,11 +372,30 @@ final class AudioPlayerService: AudioPlayer {
         guard !sortedChapters.isEmpty else { return }
         let chapter = sortedChapters[currentChapterIndex]
 
-        if currentPosition - chapter.startTime > 3 {
+        // Use same tolerance as updateCurrentChapter for consistency
+        let tolerance = 0.1
+
+        if currentPosition - (chapter.startTime - tolerance) > 3 {
             await seek(to: chapter.startTime)
         } else if currentChapterIndex > 0 {
             currentChapterIndex -= 1
             await seek(to: sortedChapters[currentChapterIndex].startTime)
+        }
+    }
+
+    // MARK: - Rate Observer
+
+    private func setupRateObserver(for player: AVPlayer) {
+        rateObserver = player.observe(\.rate, options: [.new]) { [weak self] player, _ in
+            guard let self else { return }
+            Task { @MainActor in
+                // Sync isPlaying with actual player state
+                let shouldBePlaying = player.rate > 0
+                if self.isPlaying != shouldBePlaying {
+                    self.isPlaying = shouldBePlaying
+                    PlaybackDiagnostics.log("Player rate changed, isPlaying synced to: \(shouldBePlaying)")
+                }
+            }
         }
     }
 
@@ -487,18 +517,18 @@ final class AudioPlayerService: AudioPlayer {
 
     private func restorePlaybackState() {
         guard let session = audiobook?.playbackSession else {
-            // No existing session - use default speed from settings
-            playbackRate = PlaybackSettings.shared.defaultPlaybackSpeed
+            // No existing session - use 1.0x speed
+            playbackRate = 1.0
             return
         }
         currentPosition = session.currentPosition
         currentChapterIndex = session.currentChapter
 
-        // Use per-book speed if enabled, otherwise use default from settings
+        // Use per-book speed if enabled, otherwise use 1.0x
         if PlaybackSettings.shared.rememberSpeedPerBook {
             playbackRate = session.playbackRate
         } else {
-            playbackRate = PlaybackSettings.shared.defaultPlaybackSpeed
+            playbackRate = 1.0
         }
 
         lastKnownPlayedTimestamp = session.lastPlayed
@@ -553,8 +583,12 @@ final class AudioPlayerService: AudioPlayer {
     private func updateCurrentChapter() {
         let previousChapterIndex = currentChapterIndex
 
+        // Use a small tolerance (100ms) to account for floating-point precision
+        // and AVPlayer briefly reporting positions slightly before the exact seek target
+        let tolerance = 0.1
+
         for chapter in sortedChapters.reversed() {
-            if currentPosition >= chapter.startTime {
+            if currentPosition >= chapter.startTime - tolerance {
                 currentChapterIndex = chapter.index
                 break
             }
@@ -618,12 +652,19 @@ final class AudioPlayerService: AudioPlayer {
             timeObserver = nil
         }
 
+        rateObserver?.invalidate()
+        rateObserver = nil
+
         #if os(iOS)
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
         #endif
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+
+        // Update state to reflect that playback is stopped
+        isPlaying = false
+
         player = nil
         audiobook = nil
     }

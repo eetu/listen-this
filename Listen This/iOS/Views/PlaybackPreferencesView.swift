@@ -14,16 +14,6 @@ struct PlaybackPreferencesView: View {
         Form {
             // MARK: - Playback Speed
             Section {
-                Picker("Default Speed", selection: Binding(
-                    get: { settings.defaultPlaybackSpeed },
-                    set: { settings.defaultPlaybackSpeed = $0 }
-                )) {
-                    ForEach(PlaybackSettings.speedPresets, id: \.self) { speed in
-                        Text(PlaybackSettings.formatSpeed(speed))
-                            .tag(speed)
-                    }
-                }
-
                 Toggle("Remember Speed Per Book", isOn: Binding(
                     get: { settings.rememberSpeedPerBook },
                     set: { settings.rememberSpeedPerBook = $0 }
@@ -31,7 +21,7 @@ struct PlaybackPreferencesView: View {
             } header: {
                 Text("Playback Speed")
             } footer: {
-                Text("When enabled, each audiobook will remember its own playback speed. Otherwise, the default speed is used.")
+                Text("When enabled, each audiobook will remember its own playback speed. Otherwise, all books play at 1.0x speed.")
             }
 
             // MARK: - Skip Intervals

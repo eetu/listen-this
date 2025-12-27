@@ -45,6 +45,84 @@ struct WatchLibraryView: View {
             
             // Send cached book list to iPhone when view appears
             connectivity.sendCachedAudiobookList()
+            
+            // Clean up orphaned cache files (files that no longer have audiobook entries)
+            Task {
+                await cleanupOrphanedCaches()
+            }
+        }
+    }
+    
+    // MARK: - Orphaned Cache Cleanup
+    
+    /// Removes cache files for audiobooks that no longer exist in the database
+    /// This handles cases where the audiobook was deleted from iPhone while Watch was offline
+    @MainActor
+    private func cleanupOrphanedCaches() async {
+        print("🧹 [WatchLibraryView] Starting orphaned cache cleanup...")
+
+        // Build a set of known filenames (for faster lookup)
+        var knownFilenames = Set<String>()
+        for audiobook in audiobooks {
+            if let filename = audiobook.filename {
+                knownFilenames.insert(filename)
+            }
+        }
+
+        // Get cache directory
+        let cacheDir = FileManager.default.urls(
+            for: .cachesDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("Audiobooks")
+
+        guard FileManager.default.fileExists(atPath: cacheDir.path) else {
+            print("✅ [WatchLibraryView] No cache directory found, nothing to clean")
+            return
+        }
+
+        // Get all cached files
+        guard let cachedFiles = try? FileManager.default.contentsOfDirectory(
+            at: cacheDir,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            print("⚠️ [WatchLibraryView] Failed to read cache directory")
+            return
+        }
+
+        var removedCount = 0
+        var freedSpace: Int64 = 0
+
+        for fileURL in cachedFiles {
+            // Get the full filename (e.g., "MyBook.m4b")
+            let filename = fileURL.lastPathComponent
+
+            // Check if this filename belongs to any audiobook
+            if !knownFilenames.contains(filename) {
+                // Orphaned cache file - delete it
+                do {
+                    // Get file size before deleting
+                    if let fileSize = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64 {
+                        freedSpace += fileSize
+                    }
+                    
+                    try FileManager.default.removeItem(at: fileURL)
+                    removedCount += 1
+                    print("🗑️ [WatchLibraryView] Removed orphaned cache: \(filename)")
+                } catch {
+                    print("⚠️ [WatchLibraryView] Failed to remove orphaned cache \(filename): \(error)")
+                }
+            }
+        }
+        
+        if removedCount > 0 {
+            let freedSpaceMB = Double(freedSpace) / 1_000_000.0
+            print("✅ [WatchLibraryView] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB")
+            
+            // Update the cached book list sent to iPhone
+            connectivity.sendCachedAudiobookList()
+        } else {
+            print("✅ [WatchLibraryView] No orphaned caches found")
         }
     }
     

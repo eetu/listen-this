@@ -20,6 +20,7 @@ protocol AudioPlayer: AnyObject {
 
     var sleepTimerRemaining: TimeInterval { get }
     var isSleepTimerActive: Bool { get }
+    var sleepAtEndOfChapter: Bool { get }
 
     var sortedChapters: [Chapter] { get }
 
@@ -35,5 +36,6 @@ protocol AudioPlayer: AnyObject {
     func nextChapter() async
 
     func setSleepTimer(minutes: Int)
+    func setSleepTimerEndOfChapter()
     func cancelSleepTimer()
 }
