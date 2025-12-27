@@ -8,126 +8,84 @@ This document outlines the testing strategy for the Listen This audiobook app, c
 
 ### Test Files
 
-1. **Listen_This_AppTests.swift** - Core functionality tests
-   - CloudKit chunked transfer tests
-   - WatchConnectivity transfer tests
-   - AudiobookCacheManager tests
-   - Integration tests
-   - Edge case tests
+| File | Purpose |
+|------|---------|
+| **TestHelpers.swift** | Shared test utilities (container creation, test data factories) |
+| **TransferTests.swift** | CloudKit and WatchConnectivity file transfer tests |
+| **CacheTests.swift** | AudiobookCacheManager and file system tests |
+| **ModelTests.swift** | SwiftData model relationships and queries |
+| **ConcurrencyTests.swift** | Thread safety, error recovery, and performance |
+| **PlaybackSyncTests.swift** | Cross-device playback state synchronization |
 
-2. **Listen_This_AdvancedTests.swift** - Advanced scenarios
-   - Concurrency and thread safety
-   - Error recovery and resilience
-   - SwiftData model tests
-   - File system operations
-   - Performance tests
-   - Boundary tests
+### Mock Implementations
 
-3. **Shared/Mocks.swift** (in main target) - Shared mock implementations
-   - MockCloudKitTransferManager
-   - MockCacheManager
-   - MockiOSWatchConnectivity
-   - MockAudioPlayerService
-   - Available in both tests (via @testable import) and previews
-   - Wrapped in #if DEBUG to exclude from production builds
+Located in **Shared/Mocks.swift** (main target):
+- `MockCloudKitTransferManager`
+- `MockCacheManager`
+- `MockiOSWatchConnectivity`
+- `MockAudioPlayerService`
+
+Available in both tests (via `@testable import`) and SwiftUI previews. Wrapped in `#if DEBUG` to exclude from production builds.
 
 ## Testing Framework
 
 We use **Swift Testing** (the modern Swift testing framework with macros) instead of XCTest.
 
-### Key Differences from XCTest
+### Key Syntax
 
 ```swift
-// Swift Testing
 import Testing
 
-@Test("Test description")
-func myTest() async throws {
-    #expect(value == expected)
-    #require(optionalValue != nil)
-}
+@Suite("Feature Name Tests")
+@MainActor
+struct FeatureTests {
 
-// vs XCTest
-import XCTest
-
-func testMyFunction() throws {
-    XCTAssertEqual(value, expected)
-    XCTAssertNotNil(optionalValue)
+    @Test("Descriptive test name")
+    func testSomething() async throws {
+        #expect(value == expected)
+        #require(optionalValue != nil)
+    }
 }
 ```
 
 ## Test Categories
 
-### 1. Unit Tests
+### Transfer Tests
+Tests for file transfers between devices and CloudKit:
+- Upload/download progress tracking
+- Chunk calculations
+- Cancel operations
+- Error handling
+- Integration workflows
 
-**Purpose:** Test individual components in isolation
+### Cache Tests
+Tests for local file caching:
+- Cache directory management
+- File copy/delete operations
+- Cache size calculations
+- Orphaned file cleanup
 
-**Examples:**
-- Progress calculation tests
-- Error description tests
-- Model property tests
-- Utility function tests
+### Model Tests
+Tests for SwiftData models:
+- Relationship cascade delete
+- Computed properties
+- Query predicates
+- Boundary cases (unicode, long strings)
 
-**Best Practices:**
-- Use mocks for dependencies
-- Test one thing per test
-- Keep tests fast (< 100ms each)
-
-### 2. Integration Tests
-
-**Purpose:** Test interactions between components
-
-**Examples:**
-- Complete upload/download workflows
-- Cache-to-CloudKit pipelines
-- iPhone-to-Watch transfers
-
-**Best Practices:**
-- Use in-memory storage
-- Clean up after tests
-- Mock network calls
-
-### 3. Concurrency Tests
-
-**Purpose:** Verify thread safety and race condition handling
-
-**Examples:**
-- Multiple concurrent uploads
+### Concurrency Tests
+Tests for thread safety and resilience:
+- Concurrent uploads
 - Cancel during operations
 - Atomic progress updates
+- Error recovery
+- Performance benchmarks
 
-**Best Practices:**
-- Use `withTaskGroup` for concurrent operations
-- Test cancellation scenarios
-- Verify no data corruption
-
-### 4. Error Recovery Tests
-
-**Purpose:** Ensure graceful error handling
-
-**Examples:**
-- Resume partial uploads
-- Handle network interruptions
-- Recover from corrupted files
-
-**Best Practices:**
-- Test both happy and sad paths
-- Verify cleanup after errors
-- Check error propagation
-
-### 5. Performance Tests
-
-**Purpose:** Catch performance regressions
-
-**Examples:**
-- Large library queries
-- Progress update frequency
-- File operations
-
-**Best Practices:**
-- Set reasonable thresholds
-- Test with realistic data sizes
-- Profile memory usage
+### Playback Sync Tests
+Tests for cross-device synchronization:
+- Timestamp comparison
+- Conflict resolution (Watch vs iPhone)
+- Progress preservation
+- Session field persistence
 
 ## Running Tests
 
@@ -135,20 +93,52 @@ func testMyFunction() throws {
 
 ```bash
 # Run all tests
-xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
 
-# Run specific test suite
-xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:Listen_This_AppTests/CloudKitTransferTests
+# Run specific test file
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:"Listen This AppTests/PlaybackStateSyncTests"
 
 # Run specific test
-xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:Listen_This_AppTests/CloudKitTransferTests/uploadChunkCount
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:"Listen This AppTests/CloudKitTransferTests/uploadChunkCount"
 ```
 
 ### Xcode
 
-1. Open Test Navigator (⌘6)
+1. Open Test Navigator (Cmd+6)
 2. Click the diamond icon next to a test/suite
-3. Or use Product → Test (⌘U)
+3. Or use Product -> Test (Cmd+U)
+
+## Test Helpers
+
+### Creating Test Containers
+
+```swift
+// Standard container
+let container = try createTestContainer()
+let context = ModelContext(container)
+
+// Container with PlaybackSession support
+let container = try createTestContainerWithPlayback()
+```
+
+### Creating Test Data
+
+```swift
+// Default audiobook
+let audiobook = createTestAudiobook()
+
+// Custom properties
+let audiobook = createTestAudiobook(
+    title: "The Hobbit",
+    fileSize: 250_000_000
+)
+
+// Temporary test file
+let fileURL = try createTestFile(size: 1_000_000)
+defer { try? FileManager.default.removeItem(at: fileURL) }
+```
 
 ## Mock Configuration
 
@@ -169,61 +159,24 @@ manager.simulatePartialUpload(audiobook, uploadedChunks: Set([0, 1, 2]))
 manager.reset()
 ```
 
-### MockCacheManager
+## Best Practices
 
-```swift
-let cacheManager = MockCacheManager()
+### DO
+- Write tests for new features
+- Use descriptive test names
+- Keep tests independent
+- Clean up test files with `defer`
+- Test edge cases
+- Use mocks for external dependencies
+- Group related tests in suites
 
-// Simulate failures
-cacheManager.shouldFailCaching = true
-
-// Check cached audiobooks
-print(cacheManager.cachedAudiobooks)
-
-// Clean up
-cacheManager.reset()
-```
-
-## Test Data Helpers
-
-### Creating Test Containers
-
-```swift
-let container = try createTestContainer()
-let context = ModelContext(container)
-```
-
-### Creating Test Audiobooks
-
-```swift
-// Default audiobook
-let audiobook = createTestAudiobook()
-
-// Custom properties
-let audiobook = createTestAudiobook(
-    title: "The Hobbit",
-    fileSize: 250_000_000
-)
-```
-
-### Creating Test Files
-
-```swift
-let fileURL = try createTestFile(size: 1_000_000)
-defer {
-    try? FileManager.default.removeItem(at: fileURL)
-}
-```
-
-## Coverage Goals
-
-| Component | Target Coverage | Current |
-|-----------|----------------|---------|
-| CloudKitChunkedTransferManager | 85% | 75% |
-| WatchConnectivityManager | 80% | 45% |
-| AudiobookCacheManager | 90% | 85% |
-| Data Models | 95% | 90% |
-| UI Components | 60% | 30% |
+### DON'T
+- Test Apple's APIs
+- Make tests dependent on each other
+- Use real network calls
+- Leave test data in production directories
+- Skip error cases
+- Write tests that take minutes to run
 
 ## Common Patterns
 
@@ -248,115 +201,21 @@ func errorTest() async throws {
 }
 ```
 
-### Testing Progress Updates
+### Testing Concurrent Operations
 
 ```swift
-@Test("Progress updates correctly")
-func progressTest() async throws {
-    let manager = MockCloudKitTransferManager()
-    let audiobook = createTestAudiobook()
-    
-    Task {
-        try await manager.uploadAudiobook(audiobook)
+@Test("Concurrent operations complete")
+func concurrencyTest() async throws {
+    await withTaskGroup(of: Void.self) { group in
+        for item in items {
+            group.addTask {
+                try? await processItem(item)
+            }
+        }
     }
-    
-    // Wait and verify progress
-    try await Task.sleep(nanoseconds: 100_000_000)
-    
-    let progress = manager.activeUploads[audiobook.id.uuidString]
-    #expect(progress != nil)
-    #expect(progress!.progress > 0)
+    #expect(allCompleted)
 }
 ```
-
-## Continuous Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Tests
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run tests
-        run: |
-          xcodebuild test \
-            -scheme "Listen This" \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
-            -enableCodeCoverage YES
-```
-
-## Debugging Tests
-
-### Print Statements
-
-```swift
-@Test("Debug test")
-func debugTest() async throws {
-    print("Current value: \(value)")
-    #expect(value == expected)
-}
-```
-
-### Breakpoints
-
-Set breakpoints in test code just like regular code. Xcode will pause execution.
-
-### Test Failure Messages
-
-```swift
-#expect(value == expected, "Values should match")
-
-// Custom failure
-Issue.record("Something unexpected happened")
-```
-
-## Future Improvements
-
-### Not Yet Implemented
-
-1. **UI Tests** - Test SwiftUI views and user interactions
-2. **Snapshot Tests** - Verify UI appearance
-3. **Network Mocking** - Mock URLSession responses
-4. **CloudKit Mocking** - Better CloudKit operation testing
-5. **Watch Simulator Tests** - Test watchOS app directly
-6. **Accessibility Tests** - Verify VoiceOver support
-7. **Localization Tests** - Test multiple languages
-
-### Planned Test Suites
-
-- **PlayerTests** - Test audio playback functionality
-- **ChapterTests** - Test chapter navigation
-- **LibraryTests** - Test library management
-- **SyncTests** - Test CloudKit sync logic
-- **UITests** - Test SwiftUI views
-
-## Best Practices
-
-### DO ✅
-
-- Write tests for new features
-- Use descriptive test names
-- Keep tests independent
-- Clean up after tests
-- Test edge cases
-- Use mocks for external dependencies
-- Test async code properly
-- Group related tests in suites
-
-### DON'T ❌
-
-- Don't test Apple's APIs
-- Don't make tests dependent on each other
-- Don't use real network calls
-- Don't leave test data in production directories
-- Don't skip error cases
-- Don't test implementation details
-- Don't write tests that take minutes to run
 
 ## Resources
 
@@ -364,14 +223,6 @@ Issue.record("Something unexpected happened")
 - [SwiftData Testing Guide](https://developer.apple.com/documentation/swiftdata/testing)
 - [Concurrency Testing](https://developer.apple.com/documentation/swift/concurrency)
 
-## Questions?
-
-If you have questions about testing:
-1. Check this guide first
-2. Look at existing tests for examples
-3. Review Apple's testing documentation
-4. Ask the team
-
 ---
 
-*Last Updated: December 25, 2025*
+*Last Updated: December 27, 2025*

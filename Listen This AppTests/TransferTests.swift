@@ -1,11 +1,8 @@
 //
-//  Listen_This_AppTests.swift
+//  TransferTests.swift
 //  Listen This AppTests
 //
-//  Unit tests for download flow
-//
-//  Note: Mocks are imported from the main target (Mocks.swift)
-//  This allows sharing mocks between tests and SwiftUI previews
+//  Tests for CloudKit and WatchConnectivity file transfers
 //
 
 import Testing
@@ -13,40 +10,9 @@ import Foundation
 import SwiftData
 @testable import Listen_This
 
-// MARK: - Test Fixtures
-
-/// Helper to create in-memory model container for testing
-@MainActor
-func createTestContainer() throws -> ModelContainer {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    return try ModelContainer(for: Audiobook.self, Chapter.self, CacheEntry.self, configurations: config)
-}
-
-/// Helper to create test audiobook
-@MainActor
-func createTestAudiobook(title: String = "Test Book", fileSize: Int64 = 100_000_000) -> Audiobook {
-    let audiobook = Audiobook(
-        title: title,
-        author: "Test Author",
-        narrator: "Test Narrator",
-        duration: 3600,
-        fileSize: fileSize
-    )
-    audiobook.localFilename = "\(audiobook.id).m4b"
-    return audiobook
-}
-
-/// Helper to create test file
-func createTestFile(size: Int64 = 1_000_000) throws -> URL {
-    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4b")
-    let data = Data(repeating: 0, count: Int(size))
-    try data.write(to: tempURL)
-    return tempURL
-}
-
 // MARK: - CloudKit Transfer Tests
 
-@Suite("CloudKit Chunked Transfer Manager Tests")
+@Suite("CloudKit Chunked Transfer Tests")
 @MainActor
 struct CloudKitTransferTests {
 
@@ -134,7 +100,6 @@ struct CloudKitTransferTests {
 
         let audiobookId = UUID()
 
-        // Add a mock upload
         manager.activeUploads[audiobookId] = ChunkTransferProgress(
             audiobookId: audiobookId,
             totalBytes: 100_000_000,
@@ -197,7 +162,6 @@ struct CloudKitTransferTests {
 
         let audiobookId = UUID()
 
-        // Add a mock download
         manager.activeDownloads[audiobookId] = ChunkTransferProgress(
             audiobookId: audiobookId,
             totalBytes: 100_000_000,
@@ -223,7 +187,6 @@ struct CloudKitTransferTests {
 
         let audiobook = createTestAudiobook()
 
-        // Without manifest, should return notUploaded
         let availability = await manager.checkCloudKitChunks(for: audiobook)
         #expect(availability == .notUploaded)
     }
@@ -244,9 +207,9 @@ struct CloudKitTransferTests {
 
 // MARK: - WatchConnectivity Transfer Tests
 
-@Suite("WatchConnectivity Transfer Manager Tests")
+@Suite("WatchConnectivity Transfer Tests")
 @MainActor
-struct WatchConnectivityTests {
+struct WatchConnectivityTransferTests {
 
     @Test("WatchTransferProgress initializes correctly")
     func transferProgressInit() async throws {
@@ -322,175 +285,32 @@ struct WatchConnectivityTests {
     }
 }
 
-// MARK: - AudiobookCacheManager Tests
+// MARK: - Transfer Integration Tests
 
-@Suite("AudiobookCacheManager Tests")
+@Suite("Transfer Integration Tests")
 @MainActor
-struct AudiobookCacheManagerTests {
-
-    @Test("Cache directory is created")
-    func cacheDirectoryCreation() async throws {
-        let cacheDir = AudiobookCacheManager.cacheDirectory
-
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: cacheDir.path, isDirectory: &isDirectory)
-
-        #expect(exists == true)
-        #expect(isDirectory.boolValue == true)
-    }
-
-    @Test("Cache audiobook copies file correctly")
-    func cacheAudiobookCopy() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        let manager = AudiobookCacheManager(modelContext: context)
-
-        let audiobook = createTestAudiobook()
-        let sourceURL = try createTestFile()
-
-        defer {
-            try? FileManager.default.removeItem(at: sourceURL)
-        }
-
-        let cachedURL = try manager.cacheAudiobook(audiobook, from: sourceURL)
-
-        defer {
-            try? FileManager.default.removeItem(at: cachedURL)
-        }
-
-        #expect(FileManager.default.fileExists(atPath: cachedURL.path))
-        #expect(cachedURL.lastPathComponent == sourceURL.lastPathComponent)
-    }
-
-    @Test("Delete cached file removes file")
-    func deleteCachedFile() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        let manager = AudiobookCacheManager(modelContext: context)
-
-        let audiobook = createTestAudiobook()
-        context.insert(audiobook)
-
-        let sourceURL = try createTestFile()
-        defer {
-            try? FileManager.default.removeItem(at: sourceURL)
-        }
-
-        let cachedURL = try manager.cacheAudiobook(audiobook, from: sourceURL)
-
-        #expect(FileManager.default.fileExists(atPath: cachedURL.path))
-
-        // Set the audiobook's local filename
-        audiobook.localFilename = cachedURL.lastPathComponent
-
-        try manager.deleteCachedFile(for: audiobook)
-
-        #expect(FileManager.default.fileExists(atPath: cachedURL.path) == false)
-    }
-
-    @Test("Get all cached files returns m4b files only")
-    func getAllCachedFiles() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        let manager = AudiobookCacheManager(modelContext: context)
-
-        // Create test files
-        let m4bFile = AudiobookCacheManager.cacheDirectory.appendingPathComponent("test.m4b")
-        let txtFile = AudiobookCacheManager.cacheDirectory.appendingPathComponent("test.txt")
-
-        try Data().write(to: m4bFile)
-        try Data().write(to: txtFile)
-
-        defer {
-            try? FileManager.default.removeItem(at: m4bFile)
-            try? FileManager.default.removeItem(at: txtFile)
-        }
-
-        let cachedFiles = manager.getAllCachedFiles()
-
-        #expect(cachedFiles.contains { $0.lastPathComponent == "test.m4b" })
-        #expect(cachedFiles.contains { $0.lastPathComponent == "test.txt" } == false)
-    }
-
-    @Test("Get cache size calculates total correctly")
-    func getCacheSize() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        let manager = AudiobookCacheManager(modelContext: context)
-
-        // Create test files with known sizes
-        let file1 = AudiobookCacheManager.cacheDirectory.appendingPathComponent("test1.m4b")
-        let file2 = AudiobookCacheManager.cacheDirectory.appendingPathComponent("test2.m4b")
-
-        let data1 = Data(repeating: 0, count: 1_000_000) // 1MB
-        let data2 = Data(repeating: 0, count: 2_000_000) // 2MB
-
-        try data1.write(to: file1)
-        try data2.write(to: file2)
-
-        defer {
-            try? FileManager.default.removeItem(at: file1)
-            try? FileManager.default.removeItem(at: file2)
-        }
-
-        let totalSize = manager.getCacheSize()
-
-        // Should be approximately 3MB (allowing for file system overhead)
-        #expect(totalSize >= 2_600_000)
-        #expect(totalSize <= 3_000_000)
-    }
-
-    @Test("Cleanup orphaned caches removes unlinked files")
-    func cleanupOrphanedCaches() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        let manager = AudiobookCacheManager(modelContext: context)
-
-        // Create an orphaned file (no corresponding audiobook)
-        let orphanedFile = AudiobookCacheManager.cacheDirectory.appendingPathComponent("orphan.m4b")
-        try Data().write(to: orphanedFile)
-
-        #expect(FileManager.default.fileExists(atPath: orphanedFile.path))
-
-        try await manager.cleanupOrphanedCaches()
-
-        #expect(FileManager.default.fileExists(atPath: orphanedFile.path) == false)
-    }
-}
-
-// MARK: - Integration Tests
-
-@Suite("Download Flow Integration Tests")
-@MainActor
-struct DownloadFlowIntegrationTests {
+struct TransferIntegrationTests {
 
     @Test("Complete download workflow - cache to CloudKit simulation")
     func completeCloudKitWorkflow() async throws {
         let container = try createTestContainer()
         let context = ModelContext(container)
 
-        // Create audiobook
         let audiobook = createTestAudiobook(title: "Integration Test", fileSize: 100_000_000)
         context.insert(audiobook)
 
-        // Create mock transfer manager
         let transferManager = MockCloudKitTransferManager()
-        transferManager.simulateNetworkDelay = false // Speed up test
+        transferManager.simulateNetworkDelay = false
 
-        // Simulate upload
         try await transferManager.uploadAudiobook(audiobook)
 
-        // Verify upload completed
         #expect(transferManager.activeUploads[audiobook.id] == nil)
 
-        // Check availability
         let availability = await transferManager.checkCloudKitChunks(for: audiobook)
         #expect(availability == .fullyUploaded)
 
-        // Simulate download
         let downloadedURL = try await transferManager.downloadAudiobook(audiobook)
 
-        // Verify download completed
         #expect(transferManager.activeDownloads[audiobook.id] == nil)
         #expect(downloadedURL.pathExtension == "m4b")
     }
@@ -505,7 +325,6 @@ struct DownloadFlowIntegrationTests {
 
         let transferManager = MockCloudKitTransferManager()
 
-        // Try to download without uploading first
         await #expect(throws: ChunkTransferError.self) {
             _ = try await transferManager.downloadAudiobook(audiobook)
         }
@@ -519,18 +338,14 @@ struct DownloadFlowIntegrationTests {
         let audiobook = createTestAudiobook()
         let transferManager = MockCloudKitTransferManager()
 
-        // Start upload in background
         Task {
             try await transferManager.uploadAudiobook(audiobook)
         }
 
-        // Wait a bit for upload to start
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        // Cancel transfer
         transferManager.cancelTransfer(audiobookId: audiobook.id)
 
-        // Verify it was cancelled
         #expect(transferManager.activeUploads[audiobook.id] == nil)
     }
 
@@ -542,34 +357,23 @@ struct DownloadFlowIntegrationTests {
         let audiobook = createTestAudiobook()
         let transferManager = MockCloudKitTransferManager()
 
-        // Upload
         try await transferManager.uploadAudiobook(audiobook)
 
-        // Verify uploaded
         let beforeDelete = await transferManager.checkCloudKitChunks(for: audiobook)
         #expect(beforeDelete == .fullyUploaded)
 
-        // Delete
         try await transferManager.deleteAudiobookFromCloud(audiobookId: audiobook.id)
 
-        // Verify deleted
         let afterDelete = await transferManager.checkCloudKitChunks(for: audiobook)
         #expect(afterDelete == .notUploaded)
     }
-}
-
-// MARK: - Edge Case Tests
-
-@Suite("Download Flow Edge Cases")
-@MainActor
-struct DownloadFlowEdgeCaseTests {
 
     @Test("Handle very small file (< 1MB)")
     func smallFile() async throws {
         let container = try createTestContainer()
         let context = ModelContext(container)
 
-        let audiobook = createTestAudiobook(fileSize: 500_000) // 500KB
+        let audiobook = createTestAudiobook(fileSize: 500_000)
         context.insert(audiobook)
 
         let transferManager = MockCloudKitTransferManager()
@@ -585,14 +389,14 @@ struct DownloadFlowEdgeCaseTests {
         let container = try createTestContainer()
         let context = ModelContext(container)
 
-        let audiobook = createTestAudiobook(fileSize: 1_500_000_000) // 1.5GB
+        let audiobook = createTestAudiobook(fileSize: 1_500_000_000)
         context.insert(audiobook)
 
         let fileSize: Int64 = 1_500_000_000
         let chunkSize = CloudKitChunkedTransferManager.chunkSize
         let expectedChunks = Int(ceil(Double(fileSize) / Double(chunkSize)))
 
-        #expect(expectedChunks == 15) // 100MB chunks
+        #expect(expectedChunks == 15)
     }
 
     @Test("Progress text formats bytes correctly")
@@ -606,7 +410,6 @@ struct DownloadFlowEdgeCaseTests {
             isUploading: true
         )
 
-        // Should format as bytes/KB
         #expect(progress1.progressText.contains("512"))
 
         let progress2 = ChunkTransferProgress(
@@ -618,7 +421,6 @@ struct DownloadFlowEdgeCaseTests {
             isUploading: true
         )
 
-        // Should format as MB
         #expect(progress2.progressText.contains("50"))
     }
 
@@ -630,7 +432,6 @@ struct DownloadFlowEdgeCaseTests {
         let audiobook2 = createTestAudiobook(title: "Book 2")
         let audiobook3 = createTestAudiobook(title: "Book 3")
 
-        // Start all uploads simultaneously
         async let upload1 = manager.uploadAudiobook(audiobook1)
         async let upload2 = manager.uploadAudiobook(audiobook2)
         async let upload3 = manager.uploadAudiobook(audiobook3)
@@ -639,18 +440,6 @@ struct DownloadFlowEdgeCaseTests {
         try await upload2
         try await upload3
 
-        // All should complete
         #expect(manager.activeUploads.isEmpty)
-    }
-
-    @Test("Audiobook expected cache path calculation")
-    func expectedCachePath() async throws {
-        let audiobook = createTestAudiobook()
-        audiobook.localFilename = "test-book.m4b"
-
-        let expectedPath = audiobook.expectedCachePath
-
-        #expect(expectedPath != nil)
-        #expect(expectedPath?.hasSuffix("test-book.m4b") == true)
     }
 }
