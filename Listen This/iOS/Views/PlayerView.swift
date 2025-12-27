@@ -36,6 +36,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     let audiobook: Audiobook
     
     @Bindable var player: Player
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingChapters = false
     @State private var showingSpeedPicker = false
     @State private var showingSleepTimer = false
@@ -59,43 +60,52 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            artworkView
-                .padding(.top, 8)
-            Spacer()
-            if let sortedChapters {
-                PlayerControlsView(
-                    player: player,
-                    chapters: sortedChapters,
-                    showsChapterSkipButtons: true
-                )
-                .padding(.bottom, 16)
+        Group {
+            if horizontalSizeClass == .regular {
+                // iPad: Side-by-side layout
+                iPadPlayerLayout
+            } else {
+                // iPhone: Vertical layout (existing design)
+                iPhonePlayerLayout
             }
         }
-        .padding(.all, 16)
         .task {
             await player.load(audiobook: audiobook)
         }
         .onDisappear {
             Task { await player.pause() }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button{ showingChapters = true }
-                    label: {
-                        Label("Chapters", systemImage: "list.bullet")
-                    }
-                Spacer()
-                Button{ showingSpeedPicker = true }
-                    label: {
-                        Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
-                    }
-                Spacer()
-                Button { showingSleepTimer = true }
-                    label: {
-                        Label("Sleep Timer", systemImage: "moon")
-                    }
+    }
+    
+    // MARK: - iPad Layout
+
+    private var iPadPlayerLayout: some View {
+        VStack {
+            Spacer()
+
+            artworkView
+                .frame(maxWidth: 500, maxHeight: 500)
+
+            metadataSection
+                .frame(maxWidth: 500)
+                .padding(.top, 16)
+
+            Spacer()
+
+            if let sortedChapters {
+                PlayerControlsView(
+                    player: player,
+                    chapters: sortedChapters,
+                    showsChapterSkipButtons: true
+                )
+                .frame(maxWidth: 600)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 32)
             }
+        }
+        .frame(maxWidth: .infinity)
+        .toolbar {
+            iPadToolbar
         }
         .sheet(isPresented: $showingChapters) {
             PlayerChaptersSheet(player: player, audiobook: audiobook)
@@ -110,7 +120,113 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
         }
     }
 
-    // MARK: - Artwork
+    @ToolbarContentBuilder
+    private var iPadToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button { showingChapters = true } label: {
+                Label("Chapters", systemImage: "list.bullet")
+            }
+
+            Button { showingSpeedPicker = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "gauge.with.dots.needle.67percent")
+                    if player.playbackRate != 1.0 {
+                        Text("\(player.playbackRate, specifier: "%.1f")×")
+                            .font(.caption)
+                    }
+                }
+            }
+
+            Button { showingSleepTimer = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "moon")
+                    if player.isSleepTimerActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - iPhone Layout
+    
+    private var iPhonePlayerLayout: some View {
+        VStack(spacing: 24) {
+            artworkView
+                .padding(.top, 8)
+            Spacer()
+            if let sortedChapters {
+                PlayerControlsView(
+                    player: player,
+                    chapters: sortedChapters,
+                    showsChapterSkipButtons: true
+                )
+                .padding(.bottom, 16)
+            }
+        }
+        .padding(.all, 16)
+        .toolbar {
+            iPhoneToolbar
+        }
+        .sheet(isPresented: $showingChapters) {
+            PlayerChaptersSheet(player: player, audiobook: audiobook)
+        }
+        .sheet(isPresented: $showingSpeedPicker) {
+            PlayerSpeedSheet(player: player)
+                .presentationDetents([.height(250)])
+        }
+        .sheet(isPresented: $showingSleepTimer) {
+            PlayerSleepTimerSheet(player: player)
+                .presentationDetents([.height(250)])
+        }
+    }
+    
+    @ToolbarContentBuilder
+    private var iPhoneToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            Button { showingChapters = true } label: {
+                Label("Chapters", systemImage: "list.bullet")
+            }
+            Spacer()
+            Button { showingSpeedPicker = true } label: {
+                Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
+            }
+            Spacer()
+            Button { showingSleepTimer = true } label: {
+                Label("Sleep Timer", systemImage: "moon")
+            }
+        }
+    }
+    
+    // MARK: - Metadata Section (iPad)
+    
+    private var metadataSection: some View {
+        VStack(spacing: 8) {
+            if let currentChapter {
+                Text(currentChapter.title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                
+                Text("Chapter \(currentChapter.index + 1) of \(sortedChapters?.count ?? 0)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Text(audiobook.title)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            
+            Text(audiobook.author)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    // MARK: - Artwork (Shared)
 
     private var artworkView: some View {
         Group {
