@@ -119,14 +119,8 @@ final class AudiobookCacheManager: CacheManager {
         // Build a set of known filenames (for faster lookup)
         var knownFilenames = Set<String>()
         for audiobook in audiobooks {
-            // Get the filename from the audiobook's source path
-            if let iCloudPath = audiobook.iCloudRelativePath {
-                let filename = URL(fileURLWithPath: iCloudPath).lastPathComponent
+            if let filename = audiobook.filename {
                 knownFilenames.insert(filename)
-            }
-            // Also check if there's a localFilename property
-            if let localFilename = audiobook.localFilename {
-                knownFilenames.insert(localFilename)
             }
         }
         
@@ -152,7 +146,9 @@ final class AudiobookCacheManager: CacheManager {
     }
     
     /// Clean up old cached files to free space
-    func evictOldCaches(keepingCount: Int = 5) async throws {
+    /// Uses CacheSettings.shared.keepRecentCount if no count is specified
+    func evictOldCaches(keepingCount: Int? = nil) async throws {
+        let count = keepingCount ?? CacheSettings.shared.keepRecentCount
         // Get all audiobooks with cached files
         let descriptor = FetchDescriptor<Audiobook>(
             sortBy: [SortDescriptor(\.lastAccessedDate, order: .reverse)]
@@ -163,8 +159,8 @@ final class AudiobookCacheManager: CacheManager {
         let cachedAudiobooks = audiobooks.filter { $0.isFileCached }
         
         // Keep only the most recent
-        if cachedAudiobooks.count > keepingCount {
-            let toDelete = cachedAudiobooks.dropFirst(keepingCount)
+        if cachedAudiobooks.count > count {
+            let toDelete = cachedAudiobooks.dropFirst(count)
             var freedSpace: Int64 = 0
             
             for audiobook in toDelete {
@@ -185,11 +181,16 @@ final class AudiobookCacheManager: CacheManager {
     }
     
     /// Check if cache is over a certain size and clean up if needed
-    func cleanupIfNeeded(maxSize: Int64 = 3_000_000_000) async throws {  // 3GB default
+    /// Uses CacheSettings.shared.maxCacheSizeBytes if no size is specified
+    func cleanupIfNeeded(maxSize: Int64? = nil) async throws {
+        // Only run if auto cleanup is enabled
+        guard CacheSettings.shared.autoCleanupEnabled else { return }
+
+        let limit = maxSize ?? CacheSettings.shared.maxCacheSizeBytes
         let currentSize = getCacheSize()
-        
-        if currentSize > maxSize {
-            try await evictOldCaches(keepingCount: 3)
+
+        if currentSize > limit {
+            try await evictOldCaches()
         }
     }
 }

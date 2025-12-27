@@ -41,9 +41,9 @@ func createTestAudiobook(title: String = "Test Book", fileSize: Int64 = 100_000_
         author: "Test Author",
         narrator: "Test Narrator",
         duration: 3600,
-        fileSize: fileSize
+        fileSize: fileSize,
+        iCloudRelativePath: "Documents/Audiobooks/\(UUID().uuidString).m4b"
     )
-    audiobook.localFilename = "\(audiobook.id).m4b"
     return audiobook
 }
 

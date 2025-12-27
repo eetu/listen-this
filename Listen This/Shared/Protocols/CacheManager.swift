@@ -17,6 +17,6 @@ protocol CacheManager: AnyObject {
     func getAllCachedFiles() -> [URL]
     func getCacheSize() -> Int64
     func cleanupOrphanedCaches() async throws
-    func evictOldCaches(keepingCount: Int) async throws
-    func cleanupIfNeeded(maxSize: Int64) async throws
+    func evictOldCaches(keepingCount: Int?) async throws
+    func cleanupIfNeeded(maxSize: Int64?) async throws
 }

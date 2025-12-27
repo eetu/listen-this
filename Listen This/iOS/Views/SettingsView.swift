@@ -11,48 +11,60 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    
+
     var body: some View {
         NavigationStack {
             List {
+                // MARK: - Playback
                 Section {
+                    NavigationLink {
+                        PlaybackPreferencesView()
+                    } label: {
+                        Label("Playback", systemImage: "play.circle")
+                    }
+                } header: {
+                    Text("Playback")
+                } footer: {
+                    Text("Playback speed, skip intervals, and sleep timer defaults")
+                }
+
+                // MARK: - Storage
+                Section {
+                    NavigationLink {
+                        CacheSettingsView()
+                    } label: {
+                        Label("Local Storage", systemImage: "internaldrive")
+                    }
+
                     NavigationLink {
                         CloudKitStorageView()
                     } label: {
                         Label("CloudKit Storage", systemImage: "icloud")
                     }
-                    
-                    NavigationLink {
-                        Text("Local Storage - Coming Soon")
-                    } label: {
-                        Label("Local Storage", systemImage: "internaldrive")
-                    }
                 } header: {
                     Text("Storage")
                 }
-                
+
+                // MARK: - Sync
                 Section {
+                    NavigationLink {
+                        SyncSettingsView()
+                    } label: {
+                        Label("iCloud Sync", systemImage: "arrow.triangle.2.circlepath.icloud")
+                    }
+
                     NavigationLink {
                         TransferMethodSettingsView(modelContext: modelContext)
                     } label: {
-                        Label("Transfer Method", systemImage: "arrow.triangle.swap")
-                    }
-                } header: {
-                    Text("Apple Watch Sync")
-                } footer: {
-                    Text("Choose how audiobooks are transferred to your Apple Watch")
-                }
-                
-                Section {
-                    NavigationLink {
-                        Text("iCloud Sync - Coming Soon")
-                    } label: {
-                        Label("iCloud Sync", systemImage: "icloud.and.arrow.up")
+                        Label("Watch Transfer", systemImage: "applewatch")
                     }
                 } header: {
                     Text("Sync")
+                } footer: {
+                    Text("Manage how your library and audiobooks sync across devices")
                 }
-                
+
+                // MARK: - Sources
                 Section {
                     NavigationLink {
                         Text("Content Sources - Coming Soon")
@@ -62,7 +74,8 @@ struct SettingsView: View {
                 } header: {
                     Text("Sources")
                 }
-                
+
+                // MARK: - App
                 Section {
                     NavigationLink {
                         Text("About - Coming Soon")
@@ -71,7 +84,7 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("App")
-                }                
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

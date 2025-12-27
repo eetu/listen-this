@@ -53,12 +53,26 @@ final class AudioPlayerService: AudioPlayer {
         }
     }
 
+    // MARK: - Shared Instance
+
+    private static var _shared: AudioPlayerService?
+
+    /// Returns the shared player service instance, creating it if necessary
+    static func shared(modelContext: ModelContext) -> AudioPlayerService {
+        if let existing = _shared {
+            return existing
+        }
+        let service = AudioPlayerService(modelContext: modelContext)
+        _shared = service
+        return service
+    }
+
     // MARK: - Core State
 
     private let modelContext: ModelContext
     private var player: AVPlayer?
     private var timeObserver: Any?
-    private var audiobook: Audiobook?
+    private(set) var audiobook: Audiobook?
 
     /// Tracks the timestamp of the last restored/saved playback state
     /// Used to prevent older synced data from overwriting newer local progress
@@ -80,9 +94,10 @@ final class AudioPlayerService: AudioPlayer {
     private var sleepTimer: Timer?
     private(set) var sleepTimerEndTime: Date?
     var sleepTimerRemaining: TimeInterval = 0
+    private(set) var sleepAtEndOfChapter: Bool = false
 
     var isSleepTimerActive: Bool {
-        sleepTimerEndTime != nil
+        sleepTimerEndTime != nil || sleepAtEndOfChapter
     }
 
     // MARK: - Init / Deinit
@@ -206,7 +221,7 @@ final class AudioPlayerService: AudioPlayer {
 
     private func resolveFileURL(for audiobook: Audiobook) async throws -> URL {
         print("[AudioPlayer] Resolving file URL for: \(audiobook.title)")
-        print("[AudioPlayer] - localFilename: \(audiobook.localFilename ?? "nil")")
+        print("[AudioPlayer] - filename: \(audiobook.filename ?? "nil")")
         print("[AudioPlayer] - iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
         print("[AudioPlayer] - isFileCached: \(audiobook.isFileCached)")
         print("[AudioPlayer] - expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")
@@ -277,6 +292,16 @@ final class AudioPlayerService: AudioPlayer {
             isPlaying = true
             updateLastPlayed()
             updateNowPlayingInfo()
+
+            // Start default sleep timer if configured
+            let settings = PlaybackSettings.shared
+            if !isSleepTimerActive {
+                if settings.defaultSleepTimerMinutes == PlaybackSettings.sleepTimerEndOfChapter {
+                    setSleepTimerEndOfChapter()
+                } else if settings.defaultSleepTimerMinutes > 0 {
+                    setSleepTimer(minutes: settings.defaultSleepTimerMinutes)
+                }
+            }
         } catch {
             PlaybackDiagnostics.log("Play failed: \(error)")
         }
@@ -302,6 +327,18 @@ final class AudioPlayerService: AudioPlayer {
 
     func skip(by seconds: Double) async {
         _ = await seek(to: currentPosition + seconds)
+    }
+
+    /// Skip backward using the configured interval from settings
+    func skipBackward() async {
+        let interval = Double(PlaybackSettings.shared.skipBackwardInterval)
+        _ = await seek(to: currentPosition - interval)
+    }
+
+    /// Skip forward using the configured interval from settings
+    func skipForward() async {
+        let interval = Double(PlaybackSettings.shared.skipForwardInterval)
+        _ = await seek(to: currentPosition + interval)
     }
 
     func setPlaybackRate(_ rate: Double) {
@@ -449,10 +486,21 @@ final class AudioPlayerService: AudioPlayer {
     // MARK: - Persistence
 
     private func restorePlaybackState() {
-        guard let session = audiobook?.playbackSession else { return }
+        guard let session = audiobook?.playbackSession else {
+            // No existing session - use default speed from settings
+            playbackRate = PlaybackSettings.shared.defaultPlaybackSpeed
+            return
+        }
         currentPosition = session.currentPosition
         currentChapterIndex = session.currentChapter
-        playbackRate = session.playbackRate
+
+        // Use per-book speed if enabled, otherwise use default from settings
+        if PlaybackSettings.shared.rememberSpeedPerBook {
+            playbackRate = session.playbackRate
+        } else {
+            playbackRate = PlaybackSettings.shared.defaultPlaybackSpeed
+        }
+
         lastKnownPlayedTimestamp = session.lastPlayed
         Task { await seek(to: currentPosition) }
     }
@@ -503,10 +551,20 @@ final class AudioPlayerService: AudioPlayer {
     }
 
     private func updateCurrentChapter() {
+        let previousChapterIndex = currentChapterIndex
+
         for chapter in sortedChapters.reversed() {
             if currentPosition >= chapter.startTime {
                 currentChapterIndex = chapter.index
                 break
+            }
+        }
+
+        // Check if chapter changed and we should sleep at end of chapter
+        if sleepAtEndOfChapter && currentChapterIndex != previousChapterIndex && currentChapterIndex > previousChapterIndex {
+            Task {
+                await pause()
+                cancelSleepTimer()
             }
         }
     }
@@ -536,11 +594,18 @@ final class AudioPlayerService: AudioPlayer {
         }
     }
 
+    /// Set sleep timer to pause at the end of the current chapter
+    func setSleepTimerEndOfChapter() {
+        cancelSleepTimer()
+        sleepAtEndOfChapter = true
+    }
+
     func cancelSleepTimer() {
         sleepTimer?.invalidate()
         sleepTimer = nil
         sleepTimerEndTime = nil
         sleepTimerRemaining = 0
+        sleepAtEndOfChapter = false
     }
 
     // MARK: - Cleanup

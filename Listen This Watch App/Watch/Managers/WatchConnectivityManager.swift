@@ -431,11 +431,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
             audiobook.cacheEntry?.filePath = destinationURL.path
             audiobook.cacheEntry?.fileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? Int64) ?? 0
             audiobook.cacheEntry?.lastAccessedDate = Date()
-            audiobook.downloadDate = Date()
-            
-            // Store filename for cache path calculation
-            audiobook.localFilename = filename
-            
+
             try modelContext.save()
             
             // Clear transfer progress

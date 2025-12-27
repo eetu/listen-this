@@ -68,7 +68,8 @@ struct CacheManagerTests {
 
         #expect(FileManager.default.fileExists(atPath: cachedURL.path))
 
-        audiobook.localFilename = cachedURL.lastPathComponent
+        // Set iCloudRelativePath so filename can be derived
+        audiobook.iCloudRelativePath = "Documents/Audiobooks/\(cachedURL.lastPathComponent)"
 
         try manager.deleteCachedFile(for: audiobook)
 
@@ -217,7 +218,7 @@ struct FileSystemTests {
     @Test("Audiobook expected cache path calculation")
     func expectedCachePath() async throws {
         let audiobook = createTestAudiobook()
-        audiobook.localFilename = "test-book.m4b"
+        audiobook.iCloudRelativePath = "Documents/Audiobooks/test-book.m4b"
 
         let expectedPath = audiobook.expectedCachePath
 

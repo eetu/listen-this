@@ -65,7 +65,6 @@ final class AudiobookLibraryService {
             duration: metadata.duration,
             fileSize: metadata.fileSize,
             iCloudRelativePath: iCloudRelativePath,
-            localFilename: url.lastPathComponent,
             chapterCount: metadata.chapterCount
         )
         
