@@ -131,7 +131,7 @@ struct CloudKitStorageView: View {
                 switch result {
                 case .success(let record):
                     // Extract values - query already filtered for isComplete == 1
-                    if let audiobookId = record["audiobookId"] as? String,
+                    if let audiobookId = record["audiobookId"] as? UUID,
                        let title = record["title"] as? String,
                        let fileSize = record["fileSize"] as? Int64,
                        let uploadDate = record["uploadDate"] as? Date {
@@ -172,7 +172,7 @@ struct CloudKitStorageView: View {
         }
     }
     
-    private func deleteFromCloud(_ audiobookId: String) async {
+    private func deleteFromCloud(_ audiobookId: UUID) async {
         guard let manager = transferManager else { return }
 
         do {
@@ -217,12 +217,12 @@ struct CloudKitStorageView: View {
 // MARK: - Supporting Types
 
 struct UploadedAudiobook: Identifiable {
-    let audiobookId: String
+    let audiobookId: UUID
     let title: String
     let fileSize: Int64
     let uploadDate: Date
     
-    var id: String { audiobookId }
+    var id: UUID { audiobookId }
 }
 
 struct UploadedAudiobookRow: View {

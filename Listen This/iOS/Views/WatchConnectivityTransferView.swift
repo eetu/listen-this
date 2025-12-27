@@ -269,7 +269,7 @@ struct WatchConnectivityTransferView: View {
     // MARK: - Actions
     
     private func transferAudiobook() async {
-        guard let cacheManager = cacheManager else { return }
+        guard cacheManager != nil else { return }
         
         // Prevent duplicate transfers
         if hasActiveTransfer {

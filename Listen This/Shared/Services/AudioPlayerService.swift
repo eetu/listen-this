@@ -10,38 +10,6 @@ import AVFoundation
 import MediaPlayer
 import SwiftData
 
-// MARK: - Public Protocol (View-Facing)
-
-@MainActor
-protocol AudioPlayer: AnyObject {
-
-    var isPlaying: Bool { get }
-    var currentPosition: Double { get }
-    var duration: Double { get }
-    var playbackRate: Double { get }
-    var currentChapterIndex: Int { get }
-    var loadError: Error? { get }
-
-    var sleepTimerRemaining: TimeInterval { get }
-    var isSleepTimerActive: Bool { get }
-
-    var sortedChapters: [Chapter] { get }
-
-    func load(audiobook: Audiobook) async
-
-    func play() async
-    func pause() async
-    func seek(to position: Double) async -> Double
-    func skip(by seconds: Double) async
-    func setPlaybackRate(_ rate: Double)
-
-    func nextChapter() async
-    func previousChapter() async
-
-    func setSleepTimer(minutes: Int)
-    func cancelSleepTimer()
-}
-
 // MARK: - Concrete Implementation
 
 @MainActor
@@ -91,6 +59,10 @@ final class AudioPlayerService: AudioPlayer {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var audiobook: Audiobook?
+
+    /// Tracks the timestamp of the last restored/saved playback state
+    /// Used to prevent older synced data from overwriting newer local progress
+    private var lastKnownPlayedTimestamp: Date?
 
     var isPlaying = false
     var currentPosition: Double = 0
@@ -295,13 +267,16 @@ final class AudioPlayerService: AudioPlayer {
             queue: .main
         ) { [weak self] time in
             guard let self else { return }
-            self.currentPosition = time.seconds
-            self.updateCurrentChapter()
+            Task { @MainActor in
+                self.currentPosition = time.seconds
+                self.updateCurrentChapter()
 
-            if self.isPlaying && Int(time.seconds) % 5 == 0 {
-                self.updateNowPlayingInfo()
-                self.savePlaybackState()
+                if self.isPlaying && Int(time.seconds) % 5 == 0 {
+                    self.updateNowPlayingInfo()
+                    self.savePlaybackState()
+                }
             }
+
         }
     }
 
@@ -404,6 +379,7 @@ final class AudioPlayerService: AudioPlayer {
         currentPosition = session.currentPosition
         currentChapterIndex = session.currentChapter
         playbackRate = session.playbackRate
+        lastKnownPlayedTimestamp = session.lastPlayed
         Task { await seek(to: currentPosition) }
     }
 
@@ -417,10 +393,26 @@ final class AudioPlayerService: AudioPlayer {
             return s
         }()
 
+        // Check if CloudKit synced newer data from another device
+        // If the session's lastPlayed is newer than what we loaded,
+        // and we haven't actually played yet (no local changes), don't overwrite
+        if let knownTimestamp = lastKnownPlayedTimestamp,
+           session.lastPlayed > knownTimestamp {
+            // Remote has newer data - adopt it instead of overwriting
+            PlaybackDiagnostics.log("Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state")
+            currentPosition = session.currentPosition
+            currentChapterIndex = session.currentChapter
+            playbackRate = session.playbackRate
+            lastKnownPlayedTimestamp = session.lastPlayed
+            Task { await seek(to: currentPosition) }
+            return
+        }
+
         session.currentPosition = currentPosition
         session.currentChapter = currentChapterIndex
         session.playbackRate = playbackRate
         session.lastPlayed = Date()
+        lastKnownPlayedTimestamp = session.lastPlayed
         session.progressPercentage =
             duration > 0 ? (currentPosition / duration) * 100 : 0
 
@@ -457,13 +449,15 @@ final class AudioPlayerService: AudioPlayer {
             repeats: true
         ) { [weak self] _ in
             guard let self else { return }
-            let remaining =
-                self.sleepTimerEndTime?.timeIntervalSinceNow ?? 0
-            if remaining <= 0 {
-                Task { await self.pause() }
-                self.cancelSleepTimer()
-            } else {
-                self.sleepTimerRemaining = remaining
+            Task { @MainActor in
+                let remaining =
+                    self.sleepTimerEndTime?.timeIntervalSinceNow ?? 0
+                if remaining <= 0 {
+                    Task { await self.pause() }
+                    self.cancelSleepTimer()
+                } else {
+                    self.sleepTimerRemaining = remaining
+                }
             }
         }
     }

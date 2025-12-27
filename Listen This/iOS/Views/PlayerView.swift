@@ -164,7 +164,7 @@ private struct PlayerChaptersSheet<Player: AudioPlayer & Observable>: View {
                     ForEach(chapters.sorted(by: { $0.index < $1.index })) { chapter in
                         Button {
                             Task {
-                                await player.seek(to: chapter.startTime)
+                                let _ = await player.seek(to: chapter.startTime)
                                 dismiss()
                             }
                         } label: {
@@ -342,7 +342,7 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
 #Preview("Playing with Chapters") {
     PlayerViewContent(
         audiobook: PreviewData.audiobook,
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: true,
             currentPosition: 145,
             duration: 510,
@@ -354,7 +354,7 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
 #Preview("Paused at Start") {
     PlayerViewContent(
         audiobook: PreviewData.audiobook,
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 0,
             duration: 510,
@@ -366,7 +366,7 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
 #Preview("Error State") {
     PlayerViewContent(
         audiobook: PreviewData.audiobook,
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 0,
             duration: 0,

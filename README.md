@@ -283,14 +283,15 @@ Run: Cmd+R
 - Automatic playback state persistence
 - Progress tracking per chapter and overall
 - CloudKit-compatible schema (no unique constraints)
+- Cross-device sync with conflict resolution (newest timestamp wins)
 - Error handling framework
 - Content provider abstraction
 - iCloud container management
 
 ## Documentation
 
-- **Architecture** - Complete system architecture (see `Architechture.md`)
-- **Testing Guide** - Coming soon
+- **Architecture** - Complete system architecture (see `Listen This/Docs/Architechture.md`)
+- **Testing Guide** - See `Listen This AppTests/TESTING.md`
 
 ## Development Roadmap
 
@@ -350,15 +351,22 @@ Local Cache ← Intelligent Management → Playback State Updates
 ## Testing
 
 ```bash
-# Run tests (when available)
-Cmd+U
+# Run all tests
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
 
-# Test on simulator
-Select simulator → Cmd+R
-
-# Test on device
-Connect device → Select device → Cmd+R
+# Run specific test suite
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:"Listen This AppTests/PlaybackStateSyncTests"
 ```
+
+Test files are organized by feature:
+- `TransferTests.swift` - CloudKit and WatchConnectivity transfers
+- `CacheTests.swift` - Cache manager and file system
+- `ModelTests.swift` - SwiftData models
+- `ConcurrencyTests.swift` - Thread safety and performance
+- `PlaybackSyncTests.swift` - Cross-device playback sync
+
+See `Listen This AppTests/TESTING.md` for the complete testing guide.
 
 ## Contributing
 
@@ -370,8 +378,8 @@ Private project - All rights reserved
 
 ---
 
-**Last Updated**: December 18, 2025
-**Status**: Phase 1 MVP In Progress
-**Next**: Complete AVPlayer Integration and watchOS App Development
+**Last Updated**: December 27, 2025
+**Status**: Phase 1 MVP Complete, Phase 2 In Progress
+**Recent**: Cross-device playback sync with conflict resolution
 **CloudKit**: Configured and Active
 **WatchConnectivity**: Implemented for File Transfers
