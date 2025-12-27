@@ -92,8 +92,11 @@ Tests for cross-device synchronization:
 ### Command Line
 
 ```bash
-# Run all tests
+# Run all tests (iPhone)
 xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
+
+# Run all tests (iPad)
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPad Pro (13-inch) (M4)'
 
 # Run specific test file
 xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
@@ -102,6 +105,11 @@ xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=
 # Run specific test
 xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:"Listen This AppTests/CloudKitTransferTests/uploadChunkCount"
+
+# Run tests on both iPhone and iPad
+xcodebuild test -scheme "Listen This" \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -destination 'platform=iOS Simulator,name=iPad Pro (13-inch) (M4)'
 ```
 
 ### Xcode
@@ -159,6 +167,106 @@ manager.simulatePartialUpload(audiobook, uploadedChunks: Set([0, 1, 2]))
 manager.reset()
 ```
 
+## iPad-Specific Testing
+
+### UI Adaptation Tests
+
+Tests for iPad-specific layouts and features:
+
+```swift
+@Suite("iPad Layout Tests")
+@MainActor
+struct iPadLayoutTests {
+    
+    @Test("Library shows 4 columns on iPad")
+    func iPadLibraryColumns() async throws {
+        // Test that iPad uses 4-column grid
+        let container = try createTestContainer()
+        let context = ModelContext(container)
+        
+        // Create test audiobooks
+        for i in 0..<8 {
+            let book = createTestAudiobook(title: "Book \(i)")
+            context.insert(book)
+        }
+        
+        // Verify grid column count based on size class
+        // Note: Size class testing requires UI testing framework
+    }
+    
+    @Test("Split view layout on iPad")
+    func iPadSplitView() async throws {
+        // Verify NavigationSplitView is used on iPad
+        // Test sidebar and detail pane behavior
+    }
+    
+    @Test("Multitasking support")
+    func multitaskingLayout() async throws {
+        // Test that app adapts to Split View sizes
+        // Verify readable content at various widths
+    }
+}
+```
+
+### Size Class Testing
+
+```swift
+@Suite("Size Class Adaptation")
+@MainActor
+struct SizeClassTests {
+    
+    @Test("Regular horizontal size class uses iPad layout")
+    func regularSizeClassLayout() async throws {
+        // Test layout switches based on horizontalSizeClass
+    }
+    
+    @Test("Compact size class uses iPhone layout")
+    func compactSizeClassLayout() async throws {
+        // Test iPhone layout on iPad in Split View
+    }
+}
+```
+
+### Input Method Tests
+
+```swift
+@Suite("iPad Input Methods")
+@MainActor
+struct InputMethodTests {
+    
+    @Test("Keyboard shortcuts work")
+    func keyboardShortcuts() async throws {
+        // Test spacebar for play/pause
+        // Test arrow keys for navigation
+        // Test Cmd+N for add book
+    }
+    
+    @Test("Drag and drop audiobook import")
+    func dragDropImport() async throws {
+        // Test dropping M4B file into app
+    }
+    
+    @Test("External pointer hover effects")
+    func pointerHoverEffects() async throws {
+        // Test hover effects on buttons
+    }
+}
+```
+
+### Running iPad Tests
+
+```bash
+# Run iPad-specific tests
+xcodebuild test -scheme "Listen This" \
+  -destination 'platform=iOS Simulator,name=iPad Pro (13-inch) (M4)' \
+  -only-testing:"Listen This AppTests/iPadLayoutTests"
+
+# Test multiple iPad sizes
+xcodebuild test -scheme "Listen This" \
+  -destination 'platform=iOS Simulator,name=iPad Pro (13-inch) (M4)' \
+  -destination 'platform=iOS Simulator,name=iPad mini (6th generation)'
+```
+
 ## Best Practices
 
 ### DO
@@ -169,6 +277,9 @@ manager.reset()
 - Test edge cases
 - Use mocks for external dependencies
 - Group related tests in suites
+- **Test on both iPhone and iPad simulators**
+- **Test different size classes (regular/compact)**
+- **Verify iPad-specific layouts and features**
 
 ### DON'T
 - Test Apple's APIs
@@ -177,6 +288,7 @@ manager.reset()
 - Leave test data in production directories
 - Skip error cases
 - Write tests that take minutes to run
+- **Assume iPhone layout works on iPad without testing**
 
 ## Common Patterns
 

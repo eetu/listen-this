@@ -45,6 +45,7 @@ struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View
     @Bindable var connectivity: Connectivity
     let modelContext: ModelContext
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var searchText = ""
     @State private var showingAddBook = false
     @State private var showingSettings = false
@@ -54,6 +55,20 @@ struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View
     @State private var transferAudiobookId: UUID?
     @State private var cloudKitAudiobookId: UUID?
     @State private var bluetoothAudiobookId: UUID?
+    
+    // Grid layout columns for iPad
+    private var gridColumns: [GridItem] {
+        let columnCount: Int
+        switch horizontalSizeClass {
+        case .regular:
+            // iPad in full screen: 3 columns
+            columnCount = 3
+        default:
+            // iPhone or iPad in Split View: 2 columns  
+            columnCount = 2
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: 16), count: columnCount)
+    }
 
     var filteredAudiobooks: [Audiobook] {
         if searchText.isEmpty {
@@ -119,6 +134,102 @@ struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View
     // MARK: - Library List
 
     private var libraryList: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                // iPad: Grid layout
+                iPadGridLayout
+            } else {
+                // iPhone: List layout (existing behavior)
+                iPhoneListLayout
+            }
+        }
+    }
+    
+    // iPad-specific grid layout
+    private var iPadGridLayout: some View {
+        ScrollView {
+            LazyVGrid(columns: gridColumns, spacing: 16) {
+                ForEach(filteredAudiobooks) { book in
+                    NavigationLink(value: book) {
+                        AudiobookGridCard(audiobook: book)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        contextMenuContent(for: book)
+                    }
+                    .id(book.id)
+                }
+            }
+            .padding()
+        }
+        .navigationDestination(for: Audiobook.self) { book in
+            PlayerView(audiobook: book)
+        }
+        .sheet(isPresented: .init(
+            get: { deleteAudiobookId != nil },
+            set: { if !$0 { deleteAudiobookId = nil } }
+        )) {
+            if let id = deleteAudiobookId,
+               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                DeleteOptionsSheet(
+                    audiobook: audiobook,
+                    connectivity: connectivity,
+                    modelContext: modelContext,
+                    onDismiss: {
+                        deleteAudiobookId = nil
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: .init(
+            get: { transferAudiobookId != nil },
+            set: { if !$0 { transferAudiobookId = nil } }
+        )) {
+            if let id = transferAudiobookId,
+               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                TransferMethodSheet(
+                    audiobook: audiobook,
+                    onSelectCloudKit: {
+                        cloudKitAudiobookId = id
+                        transferAudiobookId = nil
+                    },
+                    onSelectBluetooth: {
+                        bluetoothAudiobookId = id
+                        transferAudiobookId = nil
+                    },
+                    onCancel: {
+                        transferAudiobookId = nil
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: .init(
+            get: { cloudKitAudiobookId != nil },
+            set: { if !$0 { cloudKitAudiobookId = nil } }
+        )) {
+            if let id = cloudKitAudiobookId,
+               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                NavigationStack {
+                    CloudKitTransferView(audiobook: audiobook)
+                }
+            }
+        }
+        .sheet(isPresented: .init(
+            get: { bluetoothAudiobookId != nil },
+            set: { if !$0 { bluetoothAudiobookId = nil } }
+        )) {
+            if let id = bluetoothAudiobookId,
+               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                NavigationStack {
+                    WatchConnectivityTransferView(audiobook: audiobook)
+                        .environment(connectivity)
+                }
+            }
+        }
+    }
+    
+    // iPhone-specific list layout (existing implementation)
+    private var iPhoneListLayout: some View {
         List {
             ForEach(filteredAudiobooks) { book in
                 AudiobookCardWithMenu(
@@ -203,6 +314,87 @@ struct LibraryViewContent<Connectivity: iOSWatchConnectivity & Observable>: View
                 }
             }
         }
+    }
+    
+    // Context menu content shared by both layouts
+    @ViewBuilder
+    private func contextMenuContent(for audiobook: Audiobook) -> some View {
+        // Send to Watch
+        if connectivity.isPaired && connectivity.isWatchAppInstalled {
+            Button {
+                transferAudiobookId = audiobook.id
+            } label: {
+                Label("Send to Watch", systemImage: "applewatch")
+            }
+        }
+        
+        // Delete
+        if audiobook.isFileCached || audiobook.iCloudRelativePath != nil {
+            Button(role: .destructive) {
+                deleteAudiobookId = audiobook.id
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+}
+
+// MARK: - Audiobook Grid Card (iPad)
+
+struct AudiobookGridCard: View {
+    let audiobook: Audiobook
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Artwork
+            Group {
+                if let artworkData = audiobook.artworkData,
+                   let uiImage = UIImage(data: artworkData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.tertiary)
+                        
+                        Image(systemName: "book.closed")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(height: 200)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+            
+            // Title
+            Text(audiobook.title)
+                .font(.headline)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            
+            // Author
+            Text(audiobook.author)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            
+            // Progress indicator
+            if let session = audiobook.playbackSession,
+               session.currentPosition > 0 {
+                ProgressView(value: session.currentPosition, total: audiobook.duration)
+                    .progressViewStyle(.linear)
+                    .padding(.horizontal, 4)
+            }
+        }
+        .padding(8)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(.systemGray5), lineWidth: 1)
+        )
     }
 }
 

@@ -150,10 +150,24 @@ final class AudioPlayerService: AudioPlayer {
         loadError = nil
 
         do {
-            let url = try resolveFileURL(for: audiobook)
-            let asset = AVURLAsset(url: url)
+            let url = try await resolveFileURL(for: audiobook)
+            print("[AudioPlayer] Creating asset for URL: \(url.path)")
 
-            guard try await asset.load(.isPlayable) else {
+            // For iCloud files, we need to coordinate access
+            let asset: AVURLAsset
+            if url.path.contains("Mobile Documents") {
+                print("[AudioPlayer] Using file coordination for iCloud file")
+                asset = try await loadAssetWithCoordination(from: url)
+            } else {
+                asset = AVURLAsset(url: url)
+            }
+
+            print("[AudioPlayer] Checking if asset is playable...")
+            let isPlayable = try await asset.load(.isPlayable)
+            print("[AudioPlayer] Asset isPlayable: \(isPlayable)")
+
+            guard isPlayable else {
+                print("[AudioPlayer] Asset is not playable")
                 throw AudiobookError.fileNotFound
             }
 
@@ -162,34 +176,94 @@ final class AudioPlayerService: AudioPlayer {
 
             let durationTime = try await asset.load(.duration)
             duration = durationTime.seconds
+            print("[AudioPlayer] Loaded successfully, duration: \(duration)")
 
             restorePlaybackState()
             startTimeObserver()
             updateNowPlayingInfo()
 
         } catch {
+            print("[AudioPlayer] Load error: \(error)")
             loadError = error
         }
     }
 
-    private func resolveFileURL(for audiobook: Audiobook) throws -> URL {
+    private func loadAssetWithCoordination(from url: URL) async throws -> AVURLAsset {
+        try await withCheckedThrowingContinuation { continuation in
+            let coordinator = NSFileCoordinator()
+            var coordinatorError: NSError?
+
+            coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinatorError) { coordinatedURL in
+                let asset = AVURLAsset(url: coordinatedURL)
+                continuation.resume(returning: asset)
+            }
+
+            if let error = coordinatorError {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+
+    private func resolveFileURL(for audiobook: Audiobook) async throws -> URL {
+        print("[AudioPlayer] Resolving file URL for: \(audiobook.title)")
+        print("[AudioPlayer] - localFilename: \(audiobook.localFilename ?? "nil")")
+        print("[AudioPlayer] - iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
+        print("[AudioPlayer] - isFileCached: \(audiobook.isFileCached)")
+        print("[AudioPlayer] - expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")
+
         if audiobook.isFileCached, let cached = audiobook.cacheFileURL {
+            print("[AudioPlayer] Using cached file: \(cached.path)")
             return cached
         }
 
         if let cloudURL = audiobook.iCloudFileURL {
+            print("[AudioPlayer] Trying iCloud URL: \(cloudURL.path)")
+
             #if os(iOS)
             _ = cloudURL.startAccessingSecurityScopedResource()
             securityScopedURL = cloudURL
             #endif
 
+            let fileExists = FileManager.default.fileExists(atPath: cloudURL.path)
+            print("[AudioPlayer] File exists at iCloud path: \(fileExists)")
+
+            // Check if file needs to be downloaded from iCloud
+            if !fileExists {
+                print("[AudioPlayer] Starting iCloud download...")
+                try await downloadiCloudFile(at: cloudURL)
+            }
+
             guard FileManager.default.fileExists(atPath: cloudURL.path) else {
+                print("[AudioPlayer] File still not found after download attempt")
                 throw AudiobookError.fileNotFound
             }
             return cloudURL
         }
 
+        print("[AudioPlayer] No valid file URL found")
         throw AudiobookError.fileNotFound
+    }
+
+    private func downloadiCloudFile(at url: URL) async throws {
+        // Trigger iCloud download
+        try FileManager.default.startDownloadingUbiquitousItem(at: url)
+
+        // Wait for download to complete (up to 5 minutes)
+        for _ in 0..<300 {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+
+            let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            if status?.ubiquitousItemDownloadingStatus == .current {
+                return
+            }
+
+            // Check if file now exists
+            if FileManager.default.fileExists(atPath: url.path) {
+                return
+            }
+        }
+
+        throw AudiobookError.downloadFailed
     }
 
     // MARK: - Playback Controls
