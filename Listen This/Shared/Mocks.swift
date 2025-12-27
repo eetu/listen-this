@@ -681,9 +681,9 @@ extension Audiobook {
             author: author,
             narrator: narrator,
             duration: duration,
-            fileSize: fileSize
+            fileSize: fileSize,
+            iCloudRelativePath: "Documents/Audiobooks/\(title.replacingOccurrences(of: " ", with: "_")).m4b"
         )
-        audiobook.localFilename = "\(title.replacingOccurrences(of: " ", with: "_")).m4b"
         audiobook.chapterCount = 19
 
         return audiobook

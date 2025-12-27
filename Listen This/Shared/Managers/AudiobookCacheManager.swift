@@ -119,14 +119,8 @@ final class AudiobookCacheManager: CacheManager {
         // Build a set of known filenames (for faster lookup)
         var knownFilenames = Set<String>()
         for audiobook in audiobooks {
-            // Get the filename from the audiobook's source path
-            if let iCloudPath = audiobook.iCloudRelativePath {
-                let filename = URL(fileURLWithPath: iCloudPath).lastPathComponent
+            if let filename = audiobook.filename {
                 knownFilenames.insert(filename)
-            }
-            // Also check if there's a localFilename property
-            if let localFilename = audiobook.localFilename {
-                knownFilenames.insert(localFilename)
             }
         }
         

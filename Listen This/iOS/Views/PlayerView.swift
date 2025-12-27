@@ -6,13 +6,14 @@ import AVKit
 
 struct PlayerView: View {
     let audiobook: Audiobook
-    
+
     @Environment(\.modelContext) private var modelContext
     @State private var player: AudioPlayerService?
-    
+    @State private var isLoading = true
+
     var body: some View {
         Group {
-            if let player {
+            if let player, !isLoading {
                 PlayerViewContent(audiobook: audiobook, player: player)
             } else {
                 ProgressView("Loading...")
@@ -21,11 +22,17 @@ struct PlayerView: View {
         .toolbar {
             AirPlayButton()
         }
-        .task {
-            if player == nil {
-                let service = AudioPlayerService(modelContext: modelContext)
-                player = service
-            }
+        .task(id: audiobook.id) {
+            isLoading = true
+
+            // Use the shared player service to ensure only one player is active
+            let service = AudioPlayerService.shared(modelContext: modelContext)
+            player = service
+
+            // Load the new audiobook (this will cleanup the previous one)
+            await service.load(audiobook: audiobook)
+
+            isLoading = false
         }
     }
 }
@@ -34,18 +41,18 @@ struct PlayerView: View {
 
 struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     let audiobook: Audiobook
-    
+
     @Bindable var player: Player
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingChapters = false
     @State private var showingSpeedPicker = false
     @State private var showingSleepTimer = false
 
-    
+
     var sortedChapters: [Chapter]? {
         audiobook.chapters?.sorted(by: { $0.index < $1.index })
     }
-    
+
     var isPlaying: Bool {
         player.isPlaying
     }
@@ -69,14 +76,8 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 iPhonePlayerLayout
             }
         }
-        .task {
-            await player.load(audiobook: audiobook)
-        }
-        .onDisappear {
-            Task { await player.pause() }
-        }
     }
-    
+
     // MARK: - iPad Layout
 
     private var iPadPlayerLayout: some View {
@@ -149,9 +150,9 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
         }
     }
-    
+
     // MARK: - iPhone Layout
-    
+
     private var iPhonePlayerLayout: some View {
         VStack(spacing: 24) {
             artworkView
@@ -182,7 +183,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 .presentationDetents([.height(250)])
         }
     }
-    
+
     @ToolbarContentBuilder
     private var iPhoneToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
@@ -199,26 +200,15 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
         }
     }
-    
+
     // MARK: - Metadata Section (iPad)
-    
+
     private var metadataSection: some View {
         VStack(spacing: 8) {
-            if let currentChapter {
-                Text(currentChapter.title)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
-                
-                Text("Chapter \(currentChapter.index + 1) of \(sortedChapters?.count ?? 0)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
             Text(audiobook.title)
                 .font(.headline)
                 .multilineTextAlignment(.center)
-            
+
             Text(audiobook.author)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -495,5 +485,3 @@ private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
         )
     )
 }
-
-

@@ -47,7 +47,11 @@ struct CacheSettingsView: View {
                 Text("Storage Usage")
             } footer: {
                 if !isLoading {
-                    Text("\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached")
+                    if cachedAudiobooks.isEmpty {
+                        Text("No audiobooks cached locally. Play an audiobook to download it for offline listening.")
+                    } else {
+                        Text("\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached locally for offline playback.")
+                    }
                 }
             }
 

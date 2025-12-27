@@ -72,15 +72,13 @@ struct SwiftDataModelTests {
     @Test("Audiobook computed properties")
     func audiobookComputedProperties() async throws {
         let audiobook = createTestAudiobook()
-        audiobook.localFilename = "test-book.m4b"
+        audiobook.iCloudRelativePath = "Documents/Audiobooks/test-book.m4b"
 
         #expect(audiobook.filename == "test-book.m4b")
 
         let expectedPath = audiobook.expectedCachePath
         #expect(expectedPath != nil)
         #expect(expectedPath?.contains("test-book.m4b") == true)
-
-        #expect(audiobook.iCloudFileURL == nil)
     }
 
     @Test("Query audiobooks by criteria")
@@ -166,9 +164,10 @@ struct ModelBoundaryTests {
     @Test("Special characters in filename")
     func specialCharactersInFilename() async throws {
         let audiobook = createTestAudiobook()
-        audiobook.localFilename = "Book: A Story's Tale (2024) #1.m4b"
+        audiobook.iCloudRelativePath = "Documents/Audiobooks/Book: A Story's Tale (2024) #1.m4b"
 
         let expectedPath = audiobook.expectedCachePath
         #expect(expectedPath != nil)
+        #expect(audiobook.filename == "Book: A Story's Tale (2024) #1.m4b")
     }
 }

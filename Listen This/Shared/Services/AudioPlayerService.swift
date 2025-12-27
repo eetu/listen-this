@@ -53,12 +53,26 @@ final class AudioPlayerService: AudioPlayer {
         }
     }
 
+    // MARK: - Shared Instance
+
+    private static var _shared: AudioPlayerService?
+
+    /// Returns the shared player service instance, creating it if necessary
+    static func shared(modelContext: ModelContext) -> AudioPlayerService {
+        if let existing = _shared {
+            return existing
+        }
+        let service = AudioPlayerService(modelContext: modelContext)
+        _shared = service
+        return service
+    }
+
     // MARK: - Core State
 
     private let modelContext: ModelContext
     private var player: AVPlayer?
     private var timeObserver: Any?
-    private var audiobook: Audiobook?
+    private(set) var audiobook: Audiobook?
 
     /// Tracks the timestamp of the last restored/saved playback state
     /// Used to prevent older synced data from overwriting newer local progress
@@ -207,7 +221,7 @@ final class AudioPlayerService: AudioPlayer {
 
     private func resolveFileURL(for audiobook: Audiobook) async throws -> URL {
         print("[AudioPlayer] Resolving file URL for: \(audiobook.title)")
-        print("[AudioPlayer] - localFilename: \(audiobook.localFilename ?? "nil")")
+        print("[AudioPlayer] - filename: \(audiobook.filename ?? "nil")")
         print("[AudioPlayer] - iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
         print("[AudioPlayer] - isFileCached: \(audiobook.isFileCached)")
         print("[AudioPlayer] - expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")

@@ -14,32 +14,29 @@ final class Audiobook {
     var title: String = ""
     var author: String = ""
     var narrator: String?
-    
+
     // IMPORTANT: External storage attributes must be accessed (fault resolved) before deletion
     // Otherwise SwiftData will crash with "This backing data was detached from a context without resolving attribute faults"
     // See AudiobookLibraryService.deleteAudiobook() for the fault resolution pattern
     @Attribute(.externalStorage) var artworkData: Data?
-    
+
     var duration: Double = 0  // Total duration in seconds
     var fileSize: Int64 = 0   // File size in bytes
-    
+
     // Storage - Simple iCloud Drive path reference (syncs via CloudKit)
     var iCloudRelativePath: String?  // e.g. "Documents/Audiobooks/book.m4b"
-    var localFilename: String?  // The actual filename (e.g. "The Hobbit.m4b")
-    
+
     // Metadata
-    var downloadDate: Date?
     var lastAccessedDate: Date = Date()
-    var lastSyncedDate: Date = Date()
     var chapterCount: Int = 0
     var isArchived: Bool = false
-    
+
     @Relationship(deleteRule: .cascade) var chapters: [Chapter]?
     @Relationship(deleteRule: .cascade) var playbackSession: PlaybackSession?
     // CacheEntry is device-specific and should not sync via CloudKit
     // Each device maintains its own cache state independently
     @Relationship(deleteRule: .cascade) var cacheEntry: CacheEntry?
-    
+
     init(
         id: UUID = UUID(),
         title: String = "",
@@ -49,10 +46,7 @@ final class Audiobook {
         duration: Double = 0,
         fileSize: Int64 = 0,
         iCloudRelativePath: String? = nil,
-        localFilename: String? = nil,
-        downloadDate: Date? = nil,
         lastAccessedDate: Date = Date(),
-        lastSyncedDate: Date = Date(),
         chapterCount: Int = 0,
         isArchived: Bool = false,
         chapters: [Chapter] = []
@@ -65,21 +59,18 @@ final class Audiobook {
         self.duration = duration
         self.fileSize = fileSize
         self.iCloudRelativePath = iCloudRelativePath
-        self.localFilename = localFilename
-        self.downloadDate = downloadDate
         self.lastAccessedDate = lastAccessedDate
-        self.lastSyncedDate = lastSyncedDate
         self.chapterCount = chapterCount
         self.isArchived = isArchived
         self.chapters = chapters
     }
     
     // MARK: - Computed Properties (Not Stored, Not Synced)
-    
-    /// Get the filename for this audiobook
+
+    /// Get the filename for this audiobook (derived from iCloud path)
     var filename: String? {
-        // Use stored localFilename if available
-        return localFilename
+        guard let iCloudPath = iCloudRelativePath else { return nil }
+        return URL(fileURLWithPath: iCloudPath).lastPathComponent
     }
     
     /// Get the expected local cache path for this device

@@ -77,44 +77,6 @@ struct PlaybackPreferencesView: View {
             } footer: {
                 Text("Set a default sleep timer that will be suggested when starting playback. Select \"None\" to disable.")
             }
-
-            // MARK: - Current Settings Summary
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Speed")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(PlaybackSettings.formatSpeed(settings.defaultPlaybackSpeed))
-                    }
-
-                    HStack {
-                        Text("Skip Back")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(PlaybackSettings.formatInterval(settings.skipBackwardInterval))
-                    }
-
-                    HStack {
-                        Text("Skip Forward")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(PlaybackSettings.formatInterval(settings.skipForwardInterval))
-                    }
-
-                    if settings.defaultSleepTimerMinutes > 0 {
-                        HStack {
-                            Text("Sleep Timer")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(PlaybackSettings.formatSleepTimer(settings.defaultSleepTimerMinutes))
-                        }
-                    }
-                }
-                .font(.subheadline)
-            } header: {
-                Text("Summary")
-            }
         }
         .navigationTitle("Playback")
         .navigationBarTitleDisplayMode(.inline)
