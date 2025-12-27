@@ -16,7 +16,7 @@ struct SleepTimerView: View {
                 Spacer()
 
                 if playerService?.isSleepTimerActive == true {
-                    Text(formattedRemaining)
+                    Text(statusText)
                         .monospacedDigit()
                         .foregroundStyle(.tint)
                 }
@@ -48,6 +48,27 @@ struct SleepTimerView: View {
             }
             .padding(.horizontal)
 
+            // End of Chapter option
+            Button {
+                playerService?.setSleepTimerEndOfChapter()
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bookmark")
+                        .font(.title3)
+                    Text("End of Chapter")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemGray5))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
+
             if playerService?.isSleepTimerActive == true {
                 Button(role: .destructive) {
                     playerService?.cancelSleepTimer()
@@ -69,7 +90,10 @@ struct SleepTimerView: View {
         .padding(.top)
     }
 
-    private var formattedRemaining: String {
+    private var statusText: String {
+        if playerService?.sleepAtEndOfChapter == true {
+            return "End of Chapter"
+        }
         let remaining = Int(playerService?.sleepTimerRemaining ?? 0)
         return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }

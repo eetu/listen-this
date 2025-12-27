@@ -379,28 +379,30 @@ final class MockCacheManager: CacheManager {
         // Mock implementation - no-op
     }
 
-    func evictOldCaches(keepingCount: Int) async throws {
+    func evictOldCaches(keepingCount: Int? = nil) async throws {
         if let error = errorToThrow {
             throw error
         }
 
+        let count = keepingCount ?? 5
         // Mock: Remove oldest cached books beyond keepingCount
-        if cachedAudiobooks.count > keepingCount {
-            let toRemove = cachedAudiobooks.count - keepingCount
+        if cachedAudiobooks.count > count {
+            let toRemove = cachedAudiobooks.count - count
             let idsToRemove = Array(cachedAudiobooks.prefix(toRemove))
             idsToRemove.forEach { cachedAudiobooks.remove($0) }
         }
     }
 
-    func cleanupIfNeeded(maxSize: Int64) async throws {
+    func cleanupIfNeeded(maxSize: Int64? = nil) async throws {
         if let error = errorToThrow {
             throw error
         }
 
+        let limit = maxSize ?? 3_000_000_000
         let currentSize = getCacheSize()
-        if currentSize > maxSize {
+        if currentSize > limit {
             // Mock: Remove books until under limit
-            while getCacheSize() > maxSize && !cachedAudiobooks.isEmpty {
+            while getCacheSize() > limit && !cachedAudiobooks.isEmpty {
                 if let first = cachedAudiobooks.first {
                     cachedAudiobooks.remove(first)
                 }
