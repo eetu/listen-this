@@ -60,6 +60,10 @@ final class AudioPlayerService: AudioPlayer {
     private var timeObserver: Any?
     private var audiobook: Audiobook?
 
+    /// Tracks the timestamp of the last restored/saved playback state
+    /// Used to prevent older synced data from overwriting newer local progress
+    private var lastKnownPlayedTimestamp: Date?
+
     var isPlaying = false
     var currentPosition: Double = 0
     var duration: Double = 0
@@ -375,6 +379,7 @@ final class AudioPlayerService: AudioPlayer {
         currentPosition = session.currentPosition
         currentChapterIndex = session.currentChapter
         playbackRate = session.playbackRate
+        lastKnownPlayedTimestamp = session.lastPlayed
         Task { await seek(to: currentPosition) }
     }
 
@@ -388,10 +393,26 @@ final class AudioPlayerService: AudioPlayer {
             return s
         }()
 
+        // Check if CloudKit synced newer data from another device
+        // If the session's lastPlayed is newer than what we loaded,
+        // and we haven't actually played yet (no local changes), don't overwrite
+        if let knownTimestamp = lastKnownPlayedTimestamp,
+           session.lastPlayed > knownTimestamp {
+            // Remote has newer data - adopt it instead of overwriting
+            PlaybackDiagnostics.log("Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state")
+            currentPosition = session.currentPosition
+            currentChapterIndex = session.currentChapter
+            playbackRate = session.playbackRate
+            lastKnownPlayedTimestamp = session.lastPlayed
+            Task { await seek(to: currentPosition) }
+            return
+        }
+
         session.currentPosition = currentPosition
         session.currentChapter = currentChapterIndex
         session.playbackRate = playbackRate
         session.lastPlayed = Date()
+        lastKnownPlayedTimestamp = session.lastPlayed
         session.progressPercentage =
             duration > 0 ? (currentPosition / duration) * 100 : 0
 
