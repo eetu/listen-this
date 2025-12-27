@@ -228,22 +228,37 @@ While `CacheEntry` syncs via CloudKit, each device manages its cache independent
 
 #### Conflict Resolution
 
-```swift
-enum ConflictResolution {
-    case useLatest        // Most recent timestamp wins
-    case useHighestProgress  // Furthest position wins
-    case manual           // Ask user
-}
+The app uses timestamp-based conflict resolution to handle cross-device sync:
 
-func resolveConflict(local: PlaybackState, remote: PlaybackState) -> PlaybackState {
-    // Default strategy: use latest timestamp
-    if local.lastUpdated > remote.lastUpdated {
-        return local
-    } else {
-        return remote
+```swift
+// In AudioPlayerService.savePlaybackState()
+// Tracks the timestamp when playback state was last loaded
+private var lastKnownPlayedTimestamp: Date?
+
+func savePlaybackState() {
+    // Check if CloudKit synced newer data from another device
+    if let knownTimestamp = lastKnownPlayedTimestamp,
+       session.lastPlayed > knownTimestamp {
+        // Remote has newer data - adopt it instead of overwriting
+        currentPosition = session.currentPosition
+        lastKnownPlayedTimestamp = session.lastPlayed
+        seek(to: currentPosition)
+        return
     }
+
+    // Save local state with new timestamp
+    session.lastPlayed = Date()
+    lastKnownPlayedTimestamp = session.lastPlayed
 }
 ```
+
+**How it works:**
+1. When loading an audiobook, store the `lastPlayed` timestamp
+2. Before saving, check if CloudKit synced newer data (from Watch/other device)
+3. If remote `lastPlayed > knownTimestamp`, adopt remote state instead of overwriting
+4. This prevents older local state from overwriting newer progress from another device
+
+**Key field:** `PlaybackSession.lastPlayed: Date` - Updated on every position save
 
 #### Sync Flow
 
@@ -864,30 +879,37 @@ extension AudiobookError {
 
 ## Testing Strategy
 
-### Unit Tests
-- Content provider implementations
-- Cache management logic
-- Sync conflict resolution
-- Chapter parsing
-- Priority calculation algorithms
+Tests are organized by feature in `Listen This AppTests/`:
 
-### Integration Tests
-- CloudKit sync flows
-- Download manager
-- Playback state persistence
-- Watch-iPhone communication
+| File | Purpose |
+|------|---------|
+| `TestHelpers.swift` | Shared utilities (containers, factories) |
+| `TransferTests.swift` | CloudKit & WatchConnectivity transfers |
+| `CacheTests.swift` | Cache manager & file system |
+| `ModelTests.swift` | SwiftData models & boundaries |
+| `ConcurrencyTests.swift` | Thread safety, errors, performance |
+| `PlaybackSyncTests.swift` | Cross-device playback sync |
 
-### UI Tests
-- Library browsing
-- Playback controls
-- Download flows
-- Offline scenarios
+### Test Categories
 
-### Device Testing Matrix
-- iPhone (iOS 17+)
-- iPad (iPadOS 17+)
-- Apple Watch Series 4+ (watchOS 10+)
-- Various storage configurations
+**Transfer Tests** - File transfers between devices and CloudKit
+**Cache Tests** - Local file caching and cleanup
+**Model Tests** - SwiftData relationships and queries
+**Concurrency Tests** - Thread safety and error recovery
+**Playback Sync Tests** - Cross-device timestamp conflict resolution
+
+### Running Tests
+
+```bash
+# Run all tests
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
+
+# Run specific suite
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:"Listen This AppTests/PlaybackStateSyncTests"
+```
+
+See `Listen This AppTests/TESTING.md` for complete documentation.
 
 ---
 
