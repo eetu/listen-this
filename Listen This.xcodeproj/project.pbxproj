@@ -64,23 +64,44 @@
 			membershipExceptions = (
 				Shared/Managers/AudiobookCacheManager.swift,
 				Shared/Managers/CloudKitChunkedTransferManager.swift,
-				Shared/Managers/PreviewAudiobookCacheManager.swift,
+				Shared/Mocks.swift,
 				Shared/Models/Audiobook.swift,
 				Shared/Models/AudiobookError.swift,
 				Shared/Models/CacheEntry.swift,
 				Shared/Models/Chapter.swift,
 				Shared/Models/PlaybackSession.swift,
 				Shared/Preview/PreviewData.swift,
+				Shared/Protocols/AudioPlayer.swift,
+				Shared/Protocols/CacheManager.swift,
+				Shared/Protocols/CloudKitTransferManager.swift,
 				Shared/Providers/ContentSource.swift,
 				Shared/Providers/iCloudDriveProvider.swift,
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
-				Shared/Services/PreviewAudioPlayerService.swift,
 				Shared/Views/ChapterTitleView.swift,
 				Shared/Views/CloudKitTransferView.swift,
 				Shared/Views/PlayerControlsView.swift,
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
+		};
+		C2EBC4102EFFF36200524C8A /* Exceptions for "Listen This" folder in "Listen This AppTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				iOS/Models/WatchTransferProgress.swift,
+				iOS/Protocols/iOSWatchConnectivity.swift,
+				Shared/Managers/AudiobookCacheManager.swift,
+				Shared/Managers/CloudKitChunkedTransferManager.swift,
+				Shared/Mocks.swift,
+				Shared/Models/Audiobook.swift,
+				Shared/Models/AudiobookError.swift,
+				Shared/Models/CacheEntry.swift,
+				Shared/Models/Chapter.swift,
+				Shared/Models/PlaybackSession.swift,
+				Shared/Protocols/AudioPlayer.swift,
+				Shared/Protocols/CacheManager.swift,
+				Shared/Protocols/CloudKitTransferManager.swift,
+			);
+			target = C270F74E2EFC53AF008500DF /* Listen This AppTests */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -90,6 +111,7 @@
 			exceptions = (
 				C25538A22EEFD37400874394 /* Exceptions for "Listen This" folder in "Listen This" target */,
 				C25DBDDA2EEFD9A000FD4952 /* Exceptions for "Listen This" folder in "Listen This Watch App" target */,
+				C2EBC4102EFFF36200524C8A /* Exceptions for "Listen This" folder in "Listen This AppTests" target */,
 			);
 			path = "Listen This";
 			sourceTree = "<group>";

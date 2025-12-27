@@ -66,9 +66,7 @@ struct Listen_ThisApp: App {
                 .onAppear {
                     #if os(iOS)
                     // Configure Watch Connectivity with model context
-                    if let context = modelContainer.mainContext as? ModelContext {
-                        watchConnectivity.configure(modelContext: context)
-                    }
+                    watchConnectivity.configure(modelContext: modelContainer.mainContext)
                     
                     // Check for outstanding transfers
                     watchConnectivity.checkOutstandingTransfers()

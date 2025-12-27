@@ -748,7 +748,7 @@ struct DeleteOptionsSheet<Connectivity: iOSWatchConnectivity & Observable>: View
 // MARK: - Previews
 
 #Preview("Library with Books") {
-    @Previewable @State var connectivity = PreviewiOSWatchConnectivity()
+    @Previewable @State var connectivity = MockiOSWatchConnectivity()
 
     return LibraryViewContent(
         audiobooks: PreviewData.audiobooks,
@@ -758,7 +758,7 @@ struct DeleteOptionsSheet<Connectivity: iOSWatchConnectivity & Observable>: View
 }
 
 #Preview("Empty Library") {
-    @Previewable @State var connectivity = PreviewiOSWatchConnectivity()
+    @Previewable @State var connectivity = MockiOSWatchConnectivity()
 
     return LibraryViewContent(
         audiobooks: [],

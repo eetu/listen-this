@@ -4,6 +4,9 @@
 //
 //  Unit tests for download flow
 //
+//  Note: Mocks are imported from the main target (Mocks.swift)
+//  This allows sharing mocks between tests and SwiftUI previews
+//
 
 import Testing
 import Foundation
@@ -29,7 +32,7 @@ func createTestAudiobook(title: String = "Test Book", fileSize: Int64 = 100_000_
         duration: 3600,
         fileSize: fileSize
     )
-    audiobook.localFilename = "\(audiobook.id.uuidString).m4b"
+    audiobook.localFilename = "\(audiobook.id).m4b"
     return audiobook
 }
 
@@ -53,7 +56,7 @@ struct CloudKitTransferTests {
     func uploadChunkCount() async throws {
         let container = try createTestContainer()
         let context = ModelContext(container)
-        let manager = CloudKitChunkedTransferManager(modelContext: context)
+        _ = CloudKitChunkedTransferManager(modelContext: context)
 
         // 100MB chunks, 250MB file = 3 chunks
         let fileSize: Int64 = 250_000_000
@@ -68,10 +71,10 @@ struct CloudKitTransferTests {
     func uploadProgressTracking() async throws {
         let container = try createTestContainer()
         let context = ModelContext(container)
-        let manager = CloudKitChunkedTransferManager(modelContext: context)
+        _ = CloudKitChunkedTransferManager(modelContext: context)
 
         let audiobook = createTestAudiobook(fileSize: 100_000_000)
-        let audiobookId = audiobook.id.uuidString
+        let audiobookId = audiobook.id
 
         let progress = ChunkTransferProgress(
             audiobookId: audiobookId,
@@ -91,7 +94,7 @@ struct CloudKitTransferTests {
     @Test("Upload progress calculates percentage correctly")
     func uploadProgressPercentage() async throws {
         var progress = ChunkTransferProgress(
-            audiobookId: "test",
+            audiobookId: UUID(),
             totalBytes: 100_000_000,
             totalChunks: 10,
             completedChunks: 5,
@@ -112,7 +115,7 @@ struct CloudKitTransferTests {
     @Test("Upload status text formats correctly")
     func uploadStatusText() async throws {
         let progress = ChunkTransferProgress(
-            audiobookId: "test",
+            audiobookId: UUID(),
             totalBytes: 100_000_000,
             totalChunks: 10,
             completedChunks: 3,
@@ -129,7 +132,7 @@ struct CloudKitTransferTests {
         let context = ModelContext(container)
         let manager = CloudKitChunkedTransferManager(modelContext: context)
 
-        let audiobookId = "test-123"
+        let audiobookId = UUID()
 
         // Add a mock upload
         manager.activeUploads[audiobookId] = ChunkTransferProgress(
@@ -153,10 +156,10 @@ struct CloudKitTransferTests {
     func downloadProgressTracking() async throws {
         let container = try createTestContainer()
         let context = ModelContext(container)
-        let manager = CloudKitChunkedTransferManager(modelContext: context)
+        _ = CloudKitChunkedTransferManager(modelContext: context)
 
         let audiobook = createTestAudiobook(fileSize: 50_000_000)
-        let audiobookId = audiobook.id.uuidString
+        let audiobookId = audiobook.id
 
         let progress = ChunkTransferProgress(
             audiobookId: audiobookId,
@@ -175,7 +178,7 @@ struct CloudKitTransferTests {
     @Test("Download status text formats correctly")
     func downloadStatusText() async throws {
         let progress = ChunkTransferProgress(
-            audiobookId: "test",
+            audiobookId: UUID(),
             totalBytes: 100_000_000,
             totalChunks: 10,
             completedChunks: 7,
@@ -192,7 +195,7 @@ struct CloudKitTransferTests {
         let context = ModelContext(container)
         let manager = CloudKitChunkedTransferManager(modelContext: context)
 
-        let audiobookId = "test-456"
+        let audiobookId = UUID()
 
         // Add a mock download
         manager.activeDownloads[audiobookId] = ChunkTransferProgress(
@@ -472,12 +475,13 @@ struct DownloadFlowIntegrationTests {
 
         // Create mock transfer manager
         let transferManager = MockCloudKitTransferManager()
+        transferManager.simulateNetworkDelay = false // Speed up test
 
         // Simulate upload
         try await transferManager.uploadAudiobook(audiobook)
 
         // Verify upload completed
-        #expect(transferManager.activeUploads[audiobook.id.uuidString] == nil)
+        #expect(transferManager.activeUploads[audiobook.id] == nil)
 
         // Check availability
         let availability = await transferManager.checkCloudKitChunks(for: audiobook)
@@ -487,7 +491,7 @@ struct DownloadFlowIntegrationTests {
         let downloadedURL = try await transferManager.downloadAudiobook(audiobook)
 
         // Verify download completed
-        #expect(transferManager.activeDownloads[audiobook.id.uuidString] == nil)
+        #expect(transferManager.activeDownloads[audiobook.id] == nil)
         #expect(downloadedURL.pathExtension == "m4b")
     }
 
@@ -510,7 +514,7 @@ struct DownloadFlowIntegrationTests {
     @Test("Cancel transfer during upload")
     func cancelDuringUpload() async throws {
         let container = try createTestContainer()
-        let context = ModelContext(container)
+        _ = ModelContext(container)
 
         let audiobook = createTestAudiobook()
         let transferManager = MockCloudKitTransferManager()
@@ -524,16 +528,16 @@ struct DownloadFlowIntegrationTests {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         // Cancel transfer
-        transferManager.cancelTransfer(audiobookId: audiobook.id.uuidString)
+        transferManager.cancelTransfer(audiobookId: audiobook.id)
 
         // Verify it was cancelled
-        #expect(transferManager.activeUploads[audiobook.id.uuidString] == nil)
+        #expect(transferManager.activeUploads[audiobook.id] == nil)
     }
 
     @Test("Delete from cloud after download")
     func deleteAfterDownload() async throws {
         let container = try createTestContainer()
-        let context = ModelContext(container)
+        _ = ModelContext(container)
 
         let audiobook = createTestAudiobook()
         let transferManager = MockCloudKitTransferManager()
@@ -546,7 +550,7 @@ struct DownloadFlowIntegrationTests {
         #expect(beforeDelete == .fullyUploaded)
 
         // Delete
-        try await transferManager.deleteAudiobookFromCloud(audiobook)
+        try await transferManager.deleteAudiobookFromCloud(audiobookId: audiobook.id)
 
         // Verify deleted
         let afterDelete = await transferManager.checkCloudKitChunks(for: audiobook)
@@ -594,7 +598,7 @@ struct DownloadFlowEdgeCaseTests {
     @Test("Progress text formats bytes correctly")
     func progressByteFormatting() async throws {
         let progress1 = ChunkTransferProgress(
-            audiobookId: "test",
+            audiobookId: UUID(),
             totalBytes: 1024,
             totalChunks: 1,
             completedChunks: 0,
@@ -606,7 +610,7 @@ struct DownloadFlowEdgeCaseTests {
         #expect(progress1.progressText.contains("512"))
 
         let progress2 = ChunkTransferProgress(
-            audiobookId: "test",
+            audiobookId: UUID(),
             totalBytes: 100_000_000,
             totalChunks: 1,
             completedChunks: 0,
@@ -620,8 +624,6 @@ struct DownloadFlowEdgeCaseTests {
 
     @Test("Multiple simultaneous transfers")
     func multipleTransfers() async throws {
-        let container = try createTestContainer()
-        let context = ModelContext(container)
         let manager = MockCloudKitTransferManager()
 
         let audiobook1 = createTestAudiobook(title: "Book 1")
@@ -629,9 +631,9 @@ struct DownloadFlowEdgeCaseTests {
         let audiobook3 = createTestAudiobook(title: "Book 3")
 
         // Start all uploads simultaneously
-        async let upload1: () = manager.uploadAudiobook(audiobook1)
-        async let upload2: () = manager.uploadAudiobook(audiobook2)
-        async let upload3: () = manager.uploadAudiobook(audiobook3)
+        async let upload1 = manager.uploadAudiobook(audiobook1)
+        async let upload2 = manager.uploadAudiobook(audiobook2)
+        async let upload3 = manager.uploadAudiobook(audiobook3)
 
         try await upload1
         try await upload2

@@ -40,7 +40,7 @@ final class iCloudDriveProvider: ContentSource {
     
     func validateAccess() async throws -> Bool {
         // Check if ubiquity container is available with specific container ID
-        let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This")
+        let _ = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This")
         
         guard isAvailable else {
             print("⚠️ iCloud Drive is NOT available - Enable iCloud Documents capability in Xcode")

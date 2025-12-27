@@ -320,8 +320,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
         _ session: WCSession,
         didReceive file: WCSessionFile
     ) {
-        _ = (try? FileManager.default.attributesOfItem(atPath: file.fileURL.path)[.size] as? Int64) ?? 0
-
         // CRITICAL: Must copy file IMMEDIATELY before it's deleted by system
         // WatchConnectivity deletes temp files after this method returns
         // Using synchronous dispatch pattern from Apple's sample to ensure file is handled
@@ -341,10 +339,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 attributes: nil
             )
         } catch {
-            DispatchQueue.main.sync {
-                Task { @MainActor in
-                    self.lastError = error
-                }
+            Task { @MainActor in
+                self.lastError = error
             }
             return
         }
@@ -377,10 +373,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 // Clean up source after successful copy
                 try? FileManager.default.removeItem(at: file.fileURL)
             } catch {
-                DispatchQueue.main.sync {
-                    Task { @MainActor in
-                        self.lastError = error
-                    }
+                Task { @MainActor in
+                    self.lastError = error
                 }
                 return
             }
@@ -390,21 +384,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
             return
         }
 
-        // CRITICAL: Use synchronous dispatch to ensure model update begins before method returns
-        // This follows Apple's pattern from TransferringDataWithWatchConnectivity sample
-        // The system removes WCSessionFile.fileURL once this method returns, so we must
-        // capture all necessary data and dispatch to main queue synchronously
+        // File is now safely stored in permanent location
+        // Capture metadata and filename while still available, then update model asynchronously
         let metadata = file.metadata
         let filename = file.fileURL.lastPathComponent
 
-        DispatchQueue.main.sync {
-            Task { @MainActor in
-                await self.updateAudiobookCache(
-                    metadata: metadata,
-                    destinationURL: destinationURL,
-                    filename: filename
-                )
-            }
+        Task { @MainActor in
+            await self.updateAudiobookCache(
+                metadata: metadata,
+                destinationURL: destinationURL,
+                filename: filename
+            )
         }
     }
     

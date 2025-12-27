@@ -273,7 +273,7 @@ struct VolumeRing: View {
 #Preview("Paused · Middle Chapter") {
     @Previewable @State var volume: Float = 0.7
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 180,
             duration: 510,
@@ -288,7 +288,7 @@ struct VolumeRing: View {
 #else
 #Preview("Paused · Middle Chapter") {
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 180,
             duration: 510,
@@ -305,7 +305,7 @@ struct VolumeRing: View {
 #Preview("Playing · First Chapter") {
     @Previewable @State var volume: Float = 0.5
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: true,
             currentPosition: 45,
             duration: 510,
@@ -320,7 +320,7 @@ struct VolumeRing: View {
 #else
 #Preview("Playing · First Chapter") {
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: true,
             currentPosition: 45,
             duration: 510,
@@ -337,7 +337,7 @@ struct VolumeRing: View {
 #Preview("Error State · No Chapter Buttons") {
     @Previewable @State var volume: Float = 0.3
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 0,
             duration: 0,
@@ -359,7 +359,7 @@ struct VolumeRing: View {
 #else
 #Preview("Error State · No Chapter Buttons") {
     PlayerControlsView(
-        player: PreviewAudioPlayerService(
+        player: MockAudioPlayerService(
             isPlaying: false,
             currentPosition: 0,
             duration: 0,

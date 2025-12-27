@@ -17,21 +17,6 @@ import UIKit
 import WatchKit
 #endif
 
-// MARK: - Public Protocol (View-Facing)
-
-@MainActor
-protocol CloudKitTransferManager: AnyObject {
-    var activeUploads: [String: ChunkTransferProgress] { get }
-    var activeDownloads: [String: ChunkTransferProgress] { get }
-    
-    func uploadAudiobook(_ audiobook: Audiobook) async throws
-    func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL
-    func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws
-    func deleteAudiobookFromCloud(audiobookId: String) async throws
-    func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability
-    func cancelTransfer(audiobookId: String)
-}
-
 // MARK: - Concrete Implementation
 
 @MainActor
@@ -58,8 +43,8 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     // MARK: - Observable State
 
-    var activeUploads: [String: ChunkTransferProgress] = [:]
-    var activeDownloads: [String: ChunkTransferProgress] = [:]
+    var activeUploads: [UUID: ChunkTransferProgress] = [:]
+    var activeDownloads: [UUID: ChunkTransferProgress] = [:]
 
     // MARK: - Init
 
@@ -85,7 +70,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         }
 
         let chunkCount = Int(ceil(Double(fileSize) / Double(Self.chunkSize)))
-        let audiobookId = audiobook.id.uuidString
+        let audiobookId = audiobook.id
 
         let availability = await checkCloudKitChunks(for: audiobook)
 
@@ -145,7 +130,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         activeUploads.removeValue(forKey: audiobookId)
     }
 
-    func cancelTransfer(audiobookId: String) {
+    func cancelTransfer(audiobookId: UUID) {
         activeUploads.removeValue(forKey: audiobookId)
         activeDownloads.removeValue(forKey: audiobookId)
     }
@@ -156,7 +141,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         beginBackgroundExecution()
         defer { endBackgroundExecution() }
 
-        let audiobookId = audiobook.id.uuidString
+        let audiobookId = audiobook.id
         let manifest = try await fetchManifest(audiobookId: audiobookId)
 
         guard let path = audiobook.expectedCachePath else {
@@ -204,7 +189,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         // This frees up iCloud storage since the file is now on the Watch
         Task {
             do {
-                try await deleteAudiobookFromCloud(audiobook)
+                try await deleteAudiobookFromCloud(audiobookId: audiobook.id)
             } catch {
                 // Log error but don't fail the download since file is already saved
                 print("[CloudKitChunkedTransferManager] Failed to cleanup from iCloud: \(error)")
@@ -215,7 +200,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     }
 
     func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
-        let audiobookId = audiobook.id.uuidString
+        let audiobookId = audiobook.id
 
         // Fetch manifest
         let manifest = try await fetchManifest(audiobookId: audiobookId)
@@ -225,7 +210,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         
         for chunkIndex in 0..<manifest.chunkCount {
             let chunkRecordId = CKRecord.ID(
-                recordName: "\(audiobookId)-chunk-\(chunkIndex)"
+                recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
             )
             recordsToDelete.append(chunkRecordId)
         }
@@ -261,13 +246,13 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     }
 
     /// Delete audiobook chunks by ID (for storage management views)
-    func deleteAudiobookFromCloud(audiobookId: String) async throws {
+    func deleteAudiobookFromCloud(audiobookId: UUID) async throws {
         let manifest = try await fetchManifest(audiobookId: audiobookId)
         var recordsToDelete: [CKRecord.ID] = []
 
         for chunkIndex in 0..<manifest.chunkCount {
             let chunkRecordId = CKRecord.ID(
-                recordName: "\(audiobookId)-chunk-\(chunkIndex)"
+                recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
             )
             recordsToDelete.append(chunkRecordId)
         }
@@ -319,7 +304,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         chunkData: Data,
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: String
+        audiobookId: UUID
     ) async throws {
         try await retry {
             try await uploadChunk(
@@ -334,7 +319,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private func downloadChunkWithRetry(
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: String
+        audiobookId: UUID
     ) async throws -> Data {
         try await retry {
             try await downloadChunk(
@@ -350,7 +335,9 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private func beginBackgroundExecution() {
         #if os(iOS)
         backgroundTaskId = UIApplication.shared.beginBackgroundTask {
-            self.endBackgroundExecution()
+            Task { @MainActor in
+                self.endBackgroundExecution()
+            }
         }
         #elseif os(watchOS)
         extendedRuntimeSession = WKExtendedRuntimeSession()
@@ -372,8 +359,8 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     // MARK: - Manifest
 
-    func fetchManifest(audiobookId: String) async throws -> AudiobookManifest {
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
+    func fetchManifest(audiobookId: UUID) async throws -> AudiobookManifest {
+        let recordId = CKRecord.ID(recordName: "\(audiobookId.uuidString)-manifest")
         let record = try await database.record(for: recordId)
 
         guard
@@ -393,20 +380,20 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     }
 
     private func createOrFetchManifest(
-        audiobookId: String,
+        audiobookId: UUID,
         title: String,
         fileSize: Int64,
         chunkCount: Int
     ) async throws -> CKRecord {
 
-        let recordId = CKRecord.ID(recordName: "\(audiobookId)-manifest")
+        let recordId = CKRecord.ID(recordName: "\(audiobookId.uuidString)-manifest")
 
         if let record = try? await database.record(for: recordId) {
             return record
         }
 
         let record = CKRecord(recordType: "AudiobookManifest", recordID: recordId)
-        record["audiobookId"] = audiobookId
+        record["audiobookId"] = audiobookId.uuidString
         record["title"] = title
         record["fileSize"] = fileSize
         record["chunkCount"] = chunkCount
@@ -428,11 +415,11 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         chunkData: Data,
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: String
+        audiobookId: UUID
     ) async throws {
 
         let recordId = CKRecord.ID(
-            recordName: "\(audiobookId)-chunk-\(chunkIndex)"
+            recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
         )
 
         let record = CKRecord(
@@ -459,11 +446,11 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private func downloadChunk(
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: String
+        audiobookId: UUID
     ) async throws -> Data {
 
         let recordId = CKRecord.ID(
-            recordName: "\(audiobookId)-chunk-\(chunkIndex)"
+            recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
         )
 
         let record = try await database.record(for: recordId)
@@ -477,7 +464,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         return try Data(contentsOf: url)
     }
 
-    private func fetchExistingChunkIndexes(audiobookId: String, expectedChunkCount: Int) async throws -> Set<Int> {
+    private func fetchExistingChunkIndexes(audiobookId: UUID, expectedChunkCount: Int) async throws -> Set<Int> {
         print("[CloudKitChunkedTransferManager] Fetching existing chunk indexes for: \(audiobookId)")
         print("[CloudKitChunkedTransferManager] Expected chunk count: \(expectedChunkCount)")
 
@@ -486,7 +473,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         // Check each chunk individually since batch fetch seems to hang on watchOS
         // This is slower but more reliable
         for chunkIndex in 0..<expectedChunkCount {
-            let chunkRecordId = CKRecord.ID(recordName: "\(audiobookId)-chunk-\(chunkIndex)")
+            let chunkRecordId = CKRecord.ID(recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)")
 
             do {
                 print("[CloudKitChunkedTransferManager] Checking chunk \(chunkIndex)...")
@@ -533,7 +520,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     /// Used by both iPhone (before upload) and Watch (before download)
     func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability {
         do {
-            let manifest = try await fetchManifest(audiobookId: audiobook.id.uuidString)
+            let _ = try await fetchManifest(audiobookId: audiobook.id)
 
             // If the manifest exists and is marked complete, we trust that all chunks are uploaded
             // fetchManifest already validates isComplete == 1, so we don't need to check individual chunks
@@ -558,13 +545,13 @@ enum ChunkAvailability: Equatable {
 
 struct AudiobookManifest {
     let recordId: CKRecord.ID
-    let audiobookId: String
+    let audiobookId: UUID
     let fileSize: Int64
     let chunkCount: Int
 }
 
 struct ChunkTransferProgress: Equatable {
-    let audiobookId: String
+    let audiobookId: UUID
     let totalBytes: Int64
     let totalChunks: Int
     var completedChunks: Int
@@ -630,104 +617,4 @@ enum ChunkTransferError: LocalizedError {
         }
     }
 }
-// MARK: - Mock Implementation (Previews & Testing)
-
-@MainActor
-@Observable
-final class MockCloudKitTransferManager: CloudKitTransferManager {
-    var activeUploads: [String: ChunkTransferProgress] = [:]
-    var activeDownloads: [String: ChunkTransferProgress] = [:]
-    
-    private var uploadedBooks: Set<String> = []
-    
-    func uploadAudiobook(_ audiobook: Audiobook) async throws {
-        let audiobookId = audiobook.id.uuidString
-        
-        // Simulate upload
-        let progress = ChunkTransferProgress(
-            audiobookId: audiobookId,
-            totalBytes: 50_000_000,
-            totalChunks: 10,
-            completedChunks: 0,
-            bytesTransferred: 0,
-            isUploading: true
-        )
-        activeUploads[audiobookId] = progress
-        
-        // Simulate chunk uploads
-        for i in 1...10 {
-            try await Task.sleep(nanoseconds: 200_000_000)
-            if var currentProgress = activeUploads[audiobookId] {
-                currentProgress.completedChunks = i
-                currentProgress.bytesTransferred = Int64(i) * 5_000_000
-                activeUploads[audiobookId] = currentProgress
-            }
-        }
-        
-        activeUploads.removeValue(forKey: audiobookId)
-        uploadedBooks.insert(audiobookId)
-    }
-    
-    func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL {
-        let audiobookId = audiobook.id.uuidString
-        
-        // Check if uploaded
-        guard uploadedBooks.contains(audiobookId) else {
-            throw ChunkTransferError.fileNotAvailable
-        }
-        
-        // Simulate download
-        let progress = ChunkTransferProgress(
-            audiobookId: audiobookId,
-            totalBytes: 50_000_000,
-            totalChunks: 10,
-            completedChunks: 0,
-            bytesTransferred: 0,
-            isUploading: false
-        )
-        activeDownloads[audiobookId] = progress
-        
-        // Simulate chunk downloads
-        for i in 1...10 {
-            try await Task.sleep(nanoseconds: 200_000_000)
-            if var currentProgress = activeDownloads[audiobookId] {
-                currentProgress.completedChunks = i
-                currentProgress.bytesTransferred = Int64(i) * 5_000_000
-                activeDownloads[audiobookId] = currentProgress
-            }
-        }
-        
-        activeDownloads.removeValue(forKey: audiobookId)
-        
-        // Return mock URL
-        return FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(audiobookId).m4b")
-    }
-    
-    func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
-        uploadedBooks.remove(audiobook.id.uuidString)
-        try await Task.sleep(nanoseconds: 500_000_000)
-    }
-
-    func deleteAudiobookFromCloud(audiobookId: String) async throws {
-        uploadedBooks.remove(audiobookId)
-        try await Task.sleep(nanoseconds: 500_000_000)
-    }
-    
-    func checkCloudKitChunks(for audiobook: Audiobook) async -> ChunkAvailability {
-        let audiobookId = audiobook.id.uuidString
-
-        if uploadedBooks.contains(audiobookId) {
-            return .fullyUploaded
-        }
-
-        return .notUploaded
-    }
-    
-    func cancelTransfer(audiobookId: String) {
-        activeUploads.removeValue(forKey: audiobookId)
-        activeDownloads.removeValue(forKey: audiobookId)
-    }
-}
-
 

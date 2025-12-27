@@ -193,8 +193,9 @@ final class TransferMethodSelector {
     
     private func startNetworkMonitoring() {
         networkMonitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
             Task { @MainActor in
-                self?.updateNetworkStatus(path)
+                self.updateNetworkStatus(path)
             }
         }
         

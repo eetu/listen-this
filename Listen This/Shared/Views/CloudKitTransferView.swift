@@ -57,9 +57,9 @@ final class CloudKitTransferViewModel {
     var activeProgress: ChunkTransferProgress? {
         switch mode {
         case .upload:
-            return transferManager.activeUploads[audiobook.id.uuidString]
+            return transferManager.activeUploads[audiobook.id]
         case .download:
-            return transferManager.activeDownloads[audiobook.id.uuidString]
+            return transferManager.activeDownloads[audiobook.id]
         }
     }
     
@@ -120,7 +120,7 @@ final class CloudKitTransferViewModel {
     }
 
     func cancel() {
-        transferManager.cancelTransfer(audiobookId: audiobook.id.uuidString)
+        transferManager.cancelTransfer(audiobookId: audiobook.id)
     }
 
     // MARK: - Upload

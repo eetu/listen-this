@@ -10,25 +10,6 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 
-// MARK: - Public Protocol (View-Facing)
-
-@MainActor
-protocol iOSWatchConnectivity: AnyObject {
-    var isReachable: Bool { get }
-    var isPaired: Bool { get }
-    var isWatchAppInstalled: Bool { get }
-    var activeTransfers: [String: WatchTransferProgress] { get }
-    var watchCachedAudiobookIds: Set<String> { get set }
-    var lastError: Error? { get }
-    var session: WCSession? { get }
-
-    func configure(modelContext: ModelContext)
-    func transferAudiobook(_ audiobook: Audiobook) async throws
-    func cancelTransfer(for audiobookId: String)
-    func requestWatchCachedList()
-    func checkOutstandingTransfers()
-}
-
 // MARK: - Concrete Implementation
 
 /// Manages communication between iPhone and Apple Watch
@@ -501,51 +482,3 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
     }
 }
 
-// MARK: - Watch Transfer Progress
-
-struct WatchTransferProgress: Equatable {
-    let audiobookId: String
-    let audiobookTitle: String
-    let totalBytes: Int64
-    var bytesTransferred: Int64
-    var isActive: Bool
-    
-    var progress: Double {
-        guard totalBytes > 0 else { return 0 }
-        return Double(bytesTransferred) / Double(totalBytes)
-    }
-    
-    var progressPercentage: Int {
-        Int(progress * 100)
-    }
-    
-    var progressText: String {
-        let transferred = ByteCountFormatter.string(fromByteCount: bytesTransferred, countStyle: .file)
-        let total = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
-        return "\(transferred) / \(total)"
-    }
-}
-
-// MARK: - Transfer Errors
-enum WatchTransferError: LocalizedError {
-    case sessionUnavailable
-    case watchNotAvailable
-    case fileNotCached
-    case fileNotFound
-    case transferFailed
-    
-    var errorDescription: String? {
-        switch self {
-        case .sessionUnavailable:
-            return "Watch Connectivity session is not available"
-        case .watchNotAvailable:
-            return "Apple Watch is not paired or app is not installed"
-        case .fileNotCached:
-            return "Audiobook file is not cached on iPhone"
-        case .fileNotFound:
-            return "Audiobook file could not be found"
-        case .transferFailed:
-            return "File transfer to Apple Watch failed"
-        }
-    }
-}
