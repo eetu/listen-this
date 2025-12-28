@@ -28,11 +28,14 @@ final class CacheSettings {
     /// Maximum cache size in GB
     var maxCacheSizeGB: Double {
         get {
+            access(keyPath: \.maxCacheSizeGB)
             let stored = UserDefaults.standard.double(forKey: Keys.maxCacheSizeGB)
             return stored > 0 ? stored : 3.0  // Default 3GB
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: Keys.maxCacheSizeGB)
+            withMutation(keyPath: \.maxCacheSizeGB) {
+                UserDefaults.standard.set(newValue, forKey: Keys.maxCacheSizeGB)
+            }
         }
     }
 
@@ -49,11 +52,14 @@ final class CacheSettings {
     /// Number of recent audiobooks to keep cached
     var keepRecentCount: Int {
         get {
+            access(keyPath: \.keepRecentCount)
             let stored = UserDefaults.standard.integer(forKey: Keys.keepRecentCount)
             return stored > 0 ? stored : 5  // Default 5
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: Keys.keepRecentCount)
+            withMutation(keyPath: \.keepRecentCount) {
+                UserDefaults.standard.set(newValue, forKey: Keys.keepRecentCount)
+            }
         }
     }
 
@@ -65,6 +71,7 @@ final class CacheSettings {
     /// Whether automatic cache cleanup is enabled
     var autoCleanupEnabled: Bool {
         get {
+            access(keyPath: \.autoCleanupEnabled)
             // Default to true if not set
             if UserDefaults.standard.object(forKey: Keys.autoCleanupEnabled) == nil {
                 return true
@@ -72,7 +79,9 @@ final class CacheSettings {
             return UserDefaults.standard.bool(forKey: Keys.autoCleanupEnabled)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: Keys.autoCleanupEnabled)
+            withMutation(keyPath: \.autoCleanupEnabled) {
+                UserDefaults.standard.set(newValue, forKey: Keys.autoCleanupEnabled)
+            }
         }
     }
 
