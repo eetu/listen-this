@@ -22,6 +22,8 @@ struct WatchPlayerView: View {
     @State private var showingChapterList = false
     @State private var showingContextMenu = false
     @State private var showingDeleteConfirmation = false
+    @State private var showingSleepTimer = false
+    @State private var showingPlaybackSpeed = false
 
     // Volume
     @State private var currentVolume: Float = AVAudioSession.sharedInstance().outputVolume
@@ -74,6 +76,8 @@ struct WatchPlayerView: View {
         }
         .sheet(isPresented: $showingChapterList) { chapterListSheet }
         .sheet(isPresented: $showingContextMenu) { contextMenuSheet }
+        .sheet(isPresented: $showingSleepTimer) { sleepTimerSheet }
+        .sheet(isPresented: $showingPlaybackSpeed) { playbackSpeedSheet }
         .alert("Remove Download", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Remove", role: .destructive) { removeDownload() }
@@ -173,10 +177,34 @@ struct WatchPlayerView: View {
 
     private var contextMenuSheet: some View {
         List {
-            if let playerService {
+            if playerService != nil {
                 Section {
-                    NavigationLink("Playback Speed") {
-                        playbackSpeedPicker(playerService)
+                    Button {
+                        showingContextMenu = false
+                        showingPlaybackSpeed = true
+                    } label: {
+                        HStack {
+                            Label("Playback Speed", systemImage: "gauge.with.dots.needle.67percent")
+                            Spacer()
+                            if let rate = playerService?.playbackRate, rate != 1.0 {
+                                Text("\(rate, specifier: "%.2f")x")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Button {
+                        showingContextMenu = false
+                        showingSleepTimer = true
+                    } label: {
+                        HStack {
+                            Label("Sleep Timer", systemImage: "moon")
+                            Spacer()
+                            if let player = playerService, player.isSleepTimerActive {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
                     }
                 }
             }
@@ -191,24 +219,75 @@ struct WatchPlayerView: View {
         .navigationTitle("Options")
     }
 
-    // MARK: - Playback Speed
+    // MARK: - Playback Speed Sheet
 
-    private func playbackSpeedPicker(_ player: AudioPlayerService) -> some View {
-        List([0.75, 1.0, 1.25, 1.5, 1.75, 2.0], id: \.self) { rate in
-            Button {
-                player.setPlaybackRate(rate)
-                showingContextMenu = false
-            } label: {
-                HStack {
-                    Text("\(rate, specifier: "%.2f")x")
-                    Spacer()
-                    if abs(player.playbackRate - rate) < 0.01 {
-                        Image(systemName: "checkmark")
+    private var playbackSpeedSheet: some View {
+        List {
+            if let player = playerService {
+                ForEach([0.75, 1.0, 1.25, 1.5, 1.75, 2.0], id: \.self) { rate in
+                    Button {
+                        player.setPlaybackRate(rate)
+                        showingPlaybackSpeed = false
+                    } label: {
+                        HStack {
+                            Text("\(rate, specifier: "%.2f")x")
+                            Spacer()
+                            if abs(player.playbackRate - rate) < 0.01 {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
                     }
                 }
             }
         }
         .navigationTitle("Playback Speed")
+    }
+
+    // MARK: - Sleep Timer Sheet
+
+    private var sleepTimerSheet: some View {
+        List {
+            if let player = playerService {
+                Section {
+                    ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+                        Button {
+                            player.setSleepTimer(minutes: minutes)
+                            showingSleepTimer = false
+                        } label: {
+                            HStack {
+                                Text("\(minutes) min")
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button {
+                        player.setSleepTimerEndOfChapter()
+                        showingSleepTimer = false
+                    } label: {
+                        HStack {
+                            Label("End of Chapter", systemImage: "text.bookmark")
+                            Spacer()
+                        }
+                    }
+                }
+
+                if player.isSleepTimerActive {
+                    Section {
+                        Button(role: .destructive) {
+                            player.cancelSleepTimer()
+                            showingSleepTimer = false
+                        } label: {
+                            Text("Cancel Timer")
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Sleep Timer")
     }
 
     // MARK: - Helpers
