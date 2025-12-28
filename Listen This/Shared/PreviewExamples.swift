@@ -83,48 +83,6 @@ import SwiftData
         .environment(manager)
 }
 
-// MARK: - Library View Previews
-
-#Preview("Library - Empty") {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(
-        for: Audiobook.self, Chapter.self, CacheEntry.self,
-        configurations: config
-    )
-    
-    return LibraryView()
-        .modelContainer(container)
-}
-
-#Preview("Library - Populated") {
-    let container = try! createPreviewContainer()
-    
-    return LibraryView()
-        .modelContainer(container)
-}
-
-#Preview("Library - With Cached Books") {
-    let container = try! createPreviewContainer()
-    let context = ModelContext(container)
-    
-    // Mark some books as cached
-    let descriptor = FetchDescriptor<Audiobook>()
-    if let audiobooks = try? context.fetch(descriptor),
-       let firstBook = audiobooks.first {
-        // In a real preview, you'd set cache state
-        let cacheEntry = CacheEntry(
-            filePath: "/mock/path/\(firstBook.id).m4b",
-            fileSize: firstBook.fileSize
-        )
-        firstBook.cacheEntry = cacheEntry
-        context.insert(cacheEntry)
-        try? context.save()
-    }
-    
-    return LibraryView()
-        .modelContainer(container)
-}
-
 // MARK: - Progress View Previews
 
 #Preview("Transfer Progress - 0%") {
@@ -307,45 +265,6 @@ private func formatFileSize(_ bytes: Int64) -> String {
 
 // MARK: - Mock Scenario Previews
 
-#Preview("Scenario - Fresh Install") {
-    // Empty library, no transfers, no cache
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(
-        for: Audiobook.self, Chapter.self, CacheEntry.self,
-        configurations: config
-    )
-    
-    return LibraryView()
-        .modelContainer(container)
-        .environment(MockCloudKitTransferManager())
-}
-
-#Preview("Scenario - Active User") {
-    // Library with books, some cached, active transfer
-    let container = try! createPreviewContainer()
-    let context = ModelContext(container)
-
-    let manager = MockCloudKitTransferManager()
-
-    // Simulate some books already uploaded to CloudKit
-    let descriptor = FetchDescriptor<Audiobook>()
-    if let audiobooks = try? context.fetch(descriptor) {
-        let uploadedIds = audiobooks.prefix(3).map { $0.id }
-        manager.preloadUploadedBooks(uploadedIds)
-
-        // Simulate active download for one book
-        if let firstBook = audiobooks.first {
-            manager.simulateActiveDownload(
-                audiobookId: firstBook.id,
-                progress: 0.42
-            )
-        }
-    }
-
-    return LibraryView()
-        .modelContainer(container)
-        .environment(manager)
-}
 
 #Preview("Scenario - Network Error") {
     let container = try! createPreviewContainer()
@@ -358,31 +277,6 @@ private func formatFileSize(_ bytes: Int64) -> String {
     return CloudKitTransferView(audiobook: audiobook)
         .modelContainer(container)
         .environment(manager)
-}
-
-#Preview("Scenario - Large Library (100 books)") {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(
-        for: Audiobook.self, Chapter.self, CacheEntry.self,
-        configurations: config
-    )
-    
-    let context = ModelContext(container)
-    
-    // Create 100 audiobooks
-    for i in 1...100 {
-        let audiobook = Audiobook.preview(
-            title: "Book \(i)",
-            author: "Author \(i % 10)",
-            narrator: "Narrator \(i % 5)"
-        )
-        context.insert(audiobook)
-    }
-    
-    try? context.save()
-    
-    return LibraryView()
-        .modelContainer(container)
 }
 
 #endif
