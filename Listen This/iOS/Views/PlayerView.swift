@@ -116,8 +116,8 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 .presentationDetents([.height(250)])
         }
         .sheet(isPresented: $showingSleepTimer) {
-            PlayerSleepTimerSheet(player: player)
-                .presentationDetents([.height(350)])
+            SleepTimerView(player: player)
+                .presentationDetents([.height(450)])
         }
     }
 
@@ -173,8 +173,8 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 .presentationDetents([.height(250)])
         }
         .sheet(isPresented: $showingSleepTimer) {
-            PlayerSleepTimerSheet(player: player)
-                .presentationDetents([.height(350)])
+            SleepTimerView(player: player)
+                .presentationDetents([.height(450)])
         }
     }
 
@@ -378,104 +378,6 @@ private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
             Spacer()
         }
         .padding(.top)
-    }
-}
-
-private struct PlayerSleepTimerSheet<Player: AudioPlayer & Observable>: View {
-    @Bindable var player: Player
-    @Environment(\.dismiss) private var dismiss
-
-    private let presets: [Int] = [5, 10, 15, 30, 45, 60]
-
-    var body: some View {
-        VStack(spacing: 24) {
-            HStack {
-                Text("Sleep Timer")
-                    .font(.headline)
-
-                Spacer()
-
-                if player.isSleepTimerActive {
-                    Text(formattedRemaining)
-                        .monospacedDigit()
-                        .foregroundStyle(.tint)
-                }
-            }
-            .padding(.horizontal)
-
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 6), spacing: 12) {
-                ForEach(presets, id: \.self) { minutes in
-                    Button {
-                        player.setSleepTimer(minutes: minutes)
-                        dismiss()
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text("\(minutes)")
-                                .font(.title2.bold())
-                            Text("minutes")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.systemGray5))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal)
-
-            // End of Chapter option
-            Button {
-                player.setSleepTimerEndOfChapter()
-                dismiss()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "text.bookmark")
-                        .font(.title3)
-                    Text("End of Chapter")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemGray5))
-                )
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal)
-
-            if player.isSleepTimerActive {
-                Button(role: .destructive) {
-                    player.cancelSleepTimer()
-                    dismiss()
-                } label: {
-                    Text("Cancel Sleep Timer")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.red.opacity(0.15))
-                        )
-                }
-                .padding(.horizontal)
-            }
-
-            Spacer()
-        }
-        .padding(.top)
-    }
-
-    private var formattedRemaining: String {
-        if player.sleepAtEndOfChapter {
-            return "End of Chapter"
-        }
-        let remaining = Int(player.sleepTimerRemaining)
-        return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }
 }
 
