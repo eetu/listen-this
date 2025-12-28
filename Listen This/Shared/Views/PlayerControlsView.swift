@@ -15,6 +15,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     /// Feature flags
     let showsChapterSkipButtons: Bool
+    var showsChapterTitle: Bool = true
 
     /// Volume for visual feedback (watchOS only)
     #if os(watchOS)
@@ -49,7 +50,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     var body: some View {
         VStack(spacing: 6) {
 
-            if let chapter = currentChapter {
+            if showsChapterTitle, let chapter = currentChapter {
                 ChapterTitleView(title: chapter.title)
             }
 

@@ -44,6 +44,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
 
     @Bindable var player: Player
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var showingChapters = false
     @State private var showingSpeedPicker = false
     @State private var showingSleepTimer = false
@@ -66,15 +67,48 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
         return chapters[player.currentChapterIndex]
     }
 
+    /// iPad: regular horizontal AND regular vertical (true iPad, not iPhone landscape)
+    private var isIPad: Bool {
+        horizontalSizeClass == .regular && verticalSizeClass == .regular
+    }
+
+    /// Landscape mode: vertical size class is compact (iPhone landscape or iPad split view)
+    private var isLandscape: Bool {
+        verticalSizeClass == .compact
+    }
+
     var body: some View {
         Group {
-            if horizontalSizeClass == .regular {
-                // iPad: Side-by-side layout
+            if isIPad {
+                // iPad: Centered layout with large artwork
                 iPadPlayerLayout
+            } else if isLandscape {
+                // iPhone landscape (or narrow iPad): Side-by-side layout
+                iPhoneLandscapeLayout
             } else {
-                // iPhone: Vertical layout (existing design)
+                // iPhone portrait: Vertical layout
                 iPhonePlayerLayout
             }
+        }
+        .toolbar {
+            if isIPad {
+                iPadToolbar
+            } else if isLandscape {
+                iPhoneLandscapeToolbar
+            } else {
+                iPhoneToolbar
+            }
+        }
+        .sheet(isPresented: $showingChapters) {
+            PlayerChaptersSheet(player: player, audiobook: audiobook)
+        }
+        .sheet(isPresented: $showingSpeedPicker) {
+            PlayerSpeedSheet(player: player)
+                .presentationDetents([.height(250)])
+        }
+        .sheet(isPresented: $showingSleepTimer) {
+            SleepTimerView(player: player)
+                .presentationDetents([.height(450)])
         }
     }
 
@@ -105,20 +139,6 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .toolbar {
-            iPadToolbar
-        }
-        .sheet(isPresented: $showingChapters) {
-            PlayerChaptersSheet(player: player, audiobook: audiobook)
-        }
-        .sheet(isPresented: $showingSpeedPicker) {
-            PlayerSpeedSheet(player: player)
-                .presentationDetents([.height(250)])
-        }
-        .sheet(isPresented: $showingSleepTimer) {
-            SleepTimerView(player: player)
-                .presentationDetents([.height(450)])
-        }
     }
 
     @ToolbarContentBuilder
@@ -163,24 +183,10 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                     chapters: sortedChapters,
                     showsChapterSkipButtons: true
                 )
-                .padding(.bottom, 16)
             }
         }
-        .padding(.all, 16)
-        .toolbar {
-            iPhoneToolbar
-        }
-        .sheet(isPresented: $showingChapters) {
-            PlayerChaptersSheet(player: player, audiobook: audiobook)
-        }
-        .sheet(isPresented: $showingSpeedPicker) {
-            PlayerSpeedSheet(player: player)
-                .presentationDetents([.height(250)])
-        }
-        .sheet(isPresented: $showingSleepTimer) {
-            SleepTimerView(player: player)
-                .presentationDetents([.height(450)])
-        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
     }
 
     @ToolbarContentBuilder
@@ -197,7 +203,73 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             Button { showingSleepTimer = true } label: {
                 Label("Sleep Timer", systemImage: "moon")
             }
+            .tint(player.isSleepTimerActive ? .accentColor : nil)
         }
+    }
+
+    @ToolbarContentBuilder
+    private var iPhoneLandscapeToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button { showingChapters = true } label: {
+                Label("Chapters", systemImage: "list.bullet")
+            }
+            Button { showingSpeedPicker = true } label: {
+                Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
+            }
+            Button { showingSleepTimer = true } label: {
+                Label("Sleep Timer", systemImage: "moon")
+            }
+            .tint(player.isSleepTimerActive ? .accentColor : nil)
+        }
+    }
+
+    // MARK: - iPhone Landscape Layout
+
+    private var iPhoneLandscapeLayout: some View {
+        GeometryReader { geometry in
+            let artworkSize = geometry.size.height * 0.4
+
+            VStack(spacing: 8) {
+                // Top: Artwork and metadata side by side
+                HStack(spacing: 16) {
+                    artworkView
+                        .frame(width: artworkSize, height: artworkSize)
+
+                    VStack(spacing: 4) {
+                        Text(audiobook.title)
+                            .font(.headline)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+
+                        Text(audiobook.author)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if let chapter = currentChapter {
+                            Text(chapter.title)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                // Bottom: Controls (no chapter title, shown above)
+                if let sortedChapters {
+                    PlayerControlsView(
+                        player: player,
+                        chapters: sortedChapters,
+                        showsChapterSkipButtons: true,
+                        showsChapterTitle: false
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Metadata Section (iPad)
