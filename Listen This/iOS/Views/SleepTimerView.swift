@@ -18,6 +18,27 @@ struct SleepTimerView<Player: AudioPlayer & Observable>: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            if player.isSleepTimerActive {
+                activeTimerView
+            } else {
+                timerSelectionView
+            }
+
+            if !player.isSleepTimerActive {
+                actionButtons
+            } else {
+                cancelButton
+            }
+
+            Spacer()
+        }
+        .padding(.top)
+    }
+
+    // MARK: - Timer Selection View
+
+    private var timerSelectionView: some View {
+        Group {
             HStack {
                 Text("Sleep Timer")
                     .font(.headline)
@@ -60,69 +81,111 @@ struct SleepTimerView<Player: AudioPlayer & Observable>: View {
                 }
             }
             .padding(.horizontal)
+        }
+    }
 
-            HStack(spacing: 12) {
-                // End of Chapter option
-                Button {
-                    player.setSleepTimerEndOfChapter()
-                    dismiss()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "text.bookmark")
-                            .font(.title3)
-                        Text("End of Chapter")
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray5))
-                    )
-                }
-                .buttonStyle(.plain)
+    // MARK: - Active Timer View
 
-                // Set Timer button
-                Button {
-                    player.setSleepTimer(minutes: Int(selectedMinutes))
-                    dismiss()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark")
-                            .font(.title3)
-                        Text("Set Timer")
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.accentColor)
-                    )
-                    .foregroundStyle(.white)
-                }
-                .buttonStyle(.plain)
+    private var activeTimerView: some View {
+        VStack(spacing: 24) {
+            HStack {
+                Text("Sleep Timer Active")
+                    .font(.headline)
+                Spacer()
             }
             .padding(.horizontal)
 
-            if player.isSleepTimerActive {
-                Button(role: .destructive) {
-                    player.cancelSleepTimer()
-                    dismiss()
-                } label: {
-                    Text("Cancel Sleep Timer")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.red.opacity(0.15))
-                        )
+            VStack(spacing: 8) {
+                if player.sleepAtEndOfChapter {
+                    Image(systemName: "text.bookmark")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.tint)
+                    Text("End of Chapter")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                } else {
+                    Text(formattedRemaining)
+                        .font(.system(size: 72, weight: .thin, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.tint)
+                    Text("remaining")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 32)
         }
-        .padding(.top)
+    }
+
+    // MARK: - Action Buttons
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                player.setSleepTimerEndOfChapter()
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bookmark")
+                        .font(.title3)
+                    Text("End of Chapter")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemGray5))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                player.setSleepTimer(minutes: Int(selectedMinutes))
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark")
+                        .font(.title3)
+                    Text("Set Timer")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.accentColor)
+                )
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Cancel Button
+
+    private var cancelButton: some View {
+        Button(role: .destructive) {
+            player.cancelSleepTimer()
+            dismiss()
+        } label: {
+            Text("Cancel Sleep Timer")
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.red.opacity(0.15))
+                )
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Helpers
+
+    private var formattedRemaining: String {
+        let remaining = Int(player.sleepTimerRemaining)
+        return String(format: "%d:%02d", remaining / 60, remaining % 60)
     }
 }

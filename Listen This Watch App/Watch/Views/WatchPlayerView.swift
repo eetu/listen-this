@@ -249,33 +249,30 @@ struct WatchPlayerView: View {
     private var sleepTimerSheet: some View {
         List {
             if let player = playerService {
-                Section {
-                    ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
-                        Button {
-                            player.setSleepTimer(minutes: minutes)
-                            showingSleepTimer = false
-                        } label: {
-                            HStack {
-                                Text("\(minutes) min")
-                                Spacer()
+                if player.isSleepTimerActive {
+                    // Active timer display
+                    Section {
+                        VStack(alignment: .center, spacing: 8) {
+                            if player.sleepAtEndOfChapter {
+                                Image(systemName: "text.bookmark")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.tint)
+                                Text("End of Chapter")
+                                    .font(.headline)
+                            } else {
+                                Text(formatTime(player.sleepTimerRemaining))
+                                    .font(.system(size: 48, weight: .thin, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.tint)
+                                Text("remaining")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
                     }
-                }
 
-                Section {
-                    Button {
-                        player.setSleepTimerEndOfChapter()
-                        showingSleepTimer = false
-                    } label: {
-                        HStack {
-                            Label("End of Chapter", systemImage: "text.bookmark")
-                            Spacer()
-                        }
-                    }
-                }
-
-                if player.isSleepTimerActive {
                     Section {
                         Button(role: .destructive) {
                             player.cancelSleepTimer()
@@ -284,10 +281,37 @@ struct WatchPlayerView: View {
                             Text("Cancel Timer")
                         }
                     }
+                } else {
+                    // Timer selection
+                    Section {
+                        ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+                            Button {
+                                player.setSleepTimer(minutes: minutes)
+                                showingSleepTimer = false
+                            } label: {
+                                HStack {
+                                    Text("\(minutes) min")
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+
+                    Section {
+                        Button {
+                            player.setSleepTimerEndOfChapter()
+                            showingSleepTimer = false
+                        } label: {
+                            HStack {
+                                Label("End of Chapter", systemImage: "text.bookmark")
+                                Spacer()
+                            }
+                        }
+                    }
                 }
             }
         }
-        .navigationTitle("Sleep Timer")
+        .navigationTitle(playerService?.isSleepTimerActive == true ? "Timer Active" : "Sleep Timer")
     }
 
     // MARK: - Helpers
