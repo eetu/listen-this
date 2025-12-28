@@ -52,37 +52,43 @@ struct CacheSettingsView: View {
                     if cachedAudiobooks.isEmpty {
                         Text("No audiobooks cached locally. Play an audiobook to download it for offline listening.")
                     } else {
-                        Text("\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached locally for offline playback.")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached locally for offline playback.")
+
+                            // Warning if over limit but can't clean up
+                            if isOverLimit && !canCleanup {
+                                Text("⚠️ Cache is over limit, but all \(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? " is" : "s are") protected by 'Keep Recent' setting. Increase the cache limit or reduce 'Keep Recent Audiobooks' count to allow cleanup.")
+                                    .foregroundStyle(.orange)
+                                    .font(.caption)
+                                    .padding(.top, 4)
+                            } else if isOverLimit {
+                                Text("ℹ️ Cache is over limit. Auto cleanup will remove oldest audiobooks when playing new content, keeping the \(settings.keepRecentCount) most recent.")
+                                    .foregroundStyle(.blue)
+                                    .font(.caption)
+                                    .padding(.top, 4)
+                            }
+                        }
                     }
                 }
             }
 
             // MARK: - Cache Settings
             Section {
-                Picker("Maximum Cache Size", selection: Binding(
-                    get: { CacheSettings.shared.maxCacheSizeGB },
-                    set: { CacheSettings.shared.maxCacheSizeGB = $0 }
-                )) {
+                Picker("Maximum Cache Size", selection: $settings.maxCacheSizeGB) {
                     ForEach(CacheSettings.cacheSizePresets, id: \.self) { size in
                         Text(CacheSettings.formatCacheSize(size))
                             .tag(size)
                     }
                 }
 
-                Picker("Keep Recent Audiobooks", selection: Binding(
-                    get: { CacheSettings.shared.keepRecentCount },
-                    set: { CacheSettings.shared.keepRecentCount = $0 }
-                )) {
+                Picker("Keep Recent Audiobooks", selection: $settings.keepRecentCount) {
                     ForEach(CacheSettings.keepRecentPresets, id: \.self) { count in
                         Text("\(count)")
                             .tag(count)
                     }
                 }
 
-                Toggle("Auto Cleanup", isOn: Binding(
-                    get: { CacheSettings.shared.autoCleanupEnabled },
-                    set: { CacheSettings.shared.autoCleanupEnabled = $0 }
-                ))
+                Toggle("Auto Cleanup", isOn: $settings.autoCleanupEnabled)
             } header: {
                 Text("Cache Settings")
             } footer: {
@@ -186,6 +192,15 @@ struct CacheSettingsView: View {
         } else {
             return .blue
         }
+    }
+
+    private var isOverLimit: Bool {
+        currentCacheSize > settings.maxCacheSizeBytes
+    }
+
+    private var canCleanup: Bool {
+        // Can only cleanup if we have more cached audiobooks than the "keep recent" count
+        cachedAudiobooks.count > settings.keepRecentCount
     }
 
     // MARK: - Methods
