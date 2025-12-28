@@ -10,7 +10,6 @@ import SwiftData
 
 struct CacheSettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var settings = CacheSettings.shared
     @State private var currentCacheSize: Int64 = 0
     @State private var cachedAudiobooks: [CachedAudiobookInfo] = []
     @State private var isLoading = true
@@ -35,7 +34,7 @@ struct CacheSettingsView: View {
                 HStack {
                     Text("Limit")
                     Spacer()
-                    Text(CacheSettings.formatCacheSize(settings.maxCacheSizeGB))
+                    Text(CacheSettings.formatCacheSize(CacheSettings.shared.maxCacheSizeGB))
                         .foregroundStyle(.secondary)
                 }
 
@@ -58,8 +57,8 @@ struct CacheSettingsView: View {
             // MARK: - Cache Settings
             Section {
                 Picker("Maximum Cache Size", selection: Binding(
-                    get: { settings.maxCacheSizeGB },
-                    set: { settings.maxCacheSizeGB = $0 }
+                    get: { CacheSettings.shared.maxCacheSizeGB },
+                    set: { CacheSettings.shared.maxCacheSizeGB = $0 }
                 )) {
                     ForEach(CacheSettings.cacheSizePresets, id: \.self) { size in
                         Text(CacheSettings.formatCacheSize(size))
@@ -68,8 +67,8 @@ struct CacheSettingsView: View {
                 }
 
                 Picker("Keep Recent Audiobooks", selection: Binding(
-                    get: { settings.keepRecentCount },
-                    set: { settings.keepRecentCount = $0 }
+                    get: { CacheSettings.shared.keepRecentCount },
+                    set: { CacheSettings.shared.keepRecentCount = $0 }
                 )) {
                     ForEach(CacheSettings.keepRecentPresets, id: \.self) { count in
                         Text("\(count)")
@@ -78,8 +77,8 @@ struct CacheSettingsView: View {
                 }
 
                 Toggle("Auto Cleanup", isOn: Binding(
-                    get: { settings.autoCleanupEnabled },
-                    set: { settings.autoCleanupEnabled = $0 }
+                    get: { CacheSettings.shared.autoCleanupEnabled },
+                    set: { CacheSettings.shared.autoCleanupEnabled = $0 }
                 ))
             } header: {
                 Text("Cache Settings")
@@ -172,8 +171,8 @@ struct CacheSettingsView: View {
     // MARK: - Computed Properties
 
     private var usagePercentage: Double {
-        guard settings.maxCacheSizeBytes > 0 else { return 0 }
-        return min(Double(currentCacheSize) / Double(settings.maxCacheSizeBytes), 1.0)
+        guard CacheSettings.shared.maxCacheSizeBytes > 0 else { return 0 }
+        return min(Double(currentCacheSize) / Double(CacheSettings.shared.maxCacheSizeBytes), 1.0)
     }
 
     private var usageColor: Color {
@@ -246,6 +245,7 @@ struct CacheSettingsView: View {
         isCleaningUp = true
 
         let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        let settings = CacheSettings.shared
 
         do {
             try await cacheManager.cleanupOrphanedCaches()
