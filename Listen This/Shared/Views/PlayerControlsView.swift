@@ -182,10 +182,12 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 // Play/Pause icon
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(playFont)
+                    .frame(width: 60, height: 60)
             }
 #else
             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                 .font(playFont)
+                .frame(width: 60, height: 60)
 #endif
         }
     }
