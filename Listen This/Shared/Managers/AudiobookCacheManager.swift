@@ -182,15 +182,66 @@ final class AudiobookCacheManager: CacheManager {
     
     /// Check if cache is over a certain size and clean up if needed
     /// Uses CacheSettings.shared.maxCacheSizeBytes if no size is specified
+    /// Evicts oldest files while respecting keepRecentCount minimum
     func cleanupIfNeeded(maxSize: Int64? = nil) async throws {
         // Only run if auto cleanup is enabled
         guard CacheSettings.shared.autoCleanupEnabled else { return }
 
         let limit = maxSize ?? CacheSettings.shared.maxCacheSizeBytes
-        let currentSize = getCacheSize()
+        var currentSize = getCacheSize()
 
-        if currentSize > limit {
-            try await evictOldCaches()
+        // If under limit, nothing to do
+        if currentSize <= limit {
+            return
+        }
+
+        // Get all audiobooks sorted by last access (oldest first for eviction)
+        let descriptor = FetchDescriptor<Audiobook>(
+            sortBy: [SortDescriptor(\.lastAccessedDate, order: .reverse)]
+        )
+        let audiobooks = try modelContext.fetch(descriptor)
+
+        // Find cached audiobooks (most recent first due to sort order)
+        let cachedAudiobooks = audiobooks.filter { $0.isFileCached }
+
+        let keepRecentCount = CacheSettings.shared.keepRecentCount
+
+        // Evict oldest files until under limit, but keep at least keepRecentCount files
+        var freedSpace: Int64 = 0
+        var deletedCount = 0
+
+        // Start from the oldest (end of array) and work backwards
+        for audiobook in cachedAudiobooks.reversed() {
+            // Stop if we're under the limit
+            if currentSize - freedSpace <= limit {
+                break
+            }
+
+            // Protect the most recent N audiobooks
+            let remainingCount = cachedAudiobooks.count - deletedCount
+            if remainingCount <= keepRecentCount {
+                // Can't delete any more without violating keepRecentCount
+                break
+            }
+
+            // Delete this cached file
+            guard let cachePath = audiobook.expectedCachePath else {
+                continue
+            }
+
+            let cacheURL = URL(fileURLWithPath: cachePath)
+
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: cacheURL.path),
+               let size = attrs[.size] as? Int64 {
+                try FileManager.default.removeItem(at: cacheURL)
+                freedSpace += size
+                deletedCount += 1
+                print("📦 [Cache] Evicted '\(audiobook.title)' (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))) to free space")
+            }
+        }
+
+        if deletedCount > 0 {
+            print("📦 [Cache] Cleanup freed \(ByteCountFormatter.string(fromByteCount: freedSpace, countStyle: .file)) by removing \(deletedCount) file(s)")
         }
     }
 }
