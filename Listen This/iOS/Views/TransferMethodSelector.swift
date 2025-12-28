@@ -386,7 +386,7 @@ struct TransferMethodSettingsView: View {
                                 Text("CloudKit Chunks")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
-                                Text("200MB chunks, 5-10x faster")
+                                Text("100MB chunks, 5-10x faster")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text("Best for: Large files (>50MB)")
