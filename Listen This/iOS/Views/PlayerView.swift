@@ -123,25 +123,30 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
 
     @ToolbarContentBuilder
     private var iPadToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button { showingChapters = true } label: {
-                Label("Chapters", systemImage: "list.bullet")
-            }
-
-            Button { showingSpeedPicker = true } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "gauge.with.dots.needle.67percent")
-                    if player.playbackRate != 1.0 {
-                        Text("\(player.playbackRate, specifier: "%.1f")×")
-                            .font(.caption)
+        ToolbarItemGroup(placement: .bottomBar) {
+            Spacer()
+            HStack(spacing: 32) {
+                Button { showingChapters = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "list.bullet")
+                        Text("Chapters")
                     }
                 }
+                Button { showingSpeedPicker = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "gauge.with.dots.needle.67percent")
+                        Text("Speed")
+                    }
+                }
+                Button { showingSleepTimer = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "moon")
+                        Text("Sleep Timer")
+                    }
+                }
+                .tint(player.isSleepTimerActive ? .accentColor : nil)
             }
-
-            Button { showingSleepTimer = true } label: {
-                Label("Sleep Timer", systemImage: "moon")
-            }
-            .tint(player.isSleepTimerActive ? .accentColor : nil)
+            Spacer()
         }
     }
 
