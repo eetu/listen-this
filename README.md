@@ -9,7 +9,7 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
 - Offline playback with smart caching on Apple Watch
 - Independent Watch operation without iPhone connection
 - Display chapter information and artwork
-- Support for multiple content sources (iCloud Drive, Jellyfin, AudiobookShelf)
+- Support for multiple content sources (iCloud Drive, with Jellyfin and AudiobookShelf planned)
 - WatchConnectivity integration for direct file transfers between iPhone and Watch
 
 ## Project Status
@@ -109,7 +109,7 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
    - File download status monitoring
    - Security-scoped resource access
 
-### Step 5: WatchConnectivity Integration (IN PROGRESS)
+### Step 5: WatchConnectivity Integration (COMPLETED)
 
 **Completed Components:**
 
@@ -126,11 +126,11 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
    - Automatic WatchConnectivity session activation
    - Transfer retry logic
 
-3. **Watch Receiver (Planned)**
-   - Receive files from iPhone
+3. **Watch Receiver**
+   - Receive files via Bluetooth (WatchConnectivity) or WiFi (CloudKit)
    - Save to Watch cache directory
    - Update CacheEntry models
-   - Progress notifications
+   - Download method selection UI
 
 ### Next Steps
 
@@ -316,12 +316,11 @@ Run: Cmd+R
 - [ ] Advanced download management
 - [ ] Offline mode improvements
 
-### Phase 3: Apple Watch (Planned)
-- [ ] watchOS app
-- [ ] Independent playback
-- [ ] Download manager for Watch
-- [ ] Cache management
-- [ ] Complications
+### Phase 3: Apple Watch (COMPLETED) ✅
+- [x] watchOS app
+- [x] Independent playback
+- [x] Download manager for Watch (Bluetooth + CloudKit WiFi)
+- [x] Cache management
 
 ### Phase 4: Polish & Enhancement (Planned)
 - [ ] Bookmarks
@@ -379,7 +378,7 @@ Private project - All rights reserved
 ---
 
 **Last Updated**: December 27, 2025
-**Status**: Phase 1 MVP Complete, Phase 2 In Progress
+**Status**: Phase 1 MVP Complete, Phase 3 Apple Watch Complete
 **Recent**: Cross-device playback sync with conflict resolution
 **CloudKit**: Configured and Active
-**WatchConnectivity**: Implemented for File Transfers
+**WatchConnectivity**: Bluetooth and CloudKit WiFi transfers implemented
