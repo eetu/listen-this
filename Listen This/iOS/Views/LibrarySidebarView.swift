@@ -22,8 +22,6 @@ struct LibrarySidebarView: View {
     // Sheet state - storing IDs instead of model objects
     @State private var deleteAudiobookId: UUID?
     @State private var transferAudiobookId: UUID?
-    @State private var cloudKitAudiobookId: UUID?
-    @State private var bluetoothAudiobookId: UUID?
 
     var filteredAudiobooks: [Audiobook] {
         if searchText.isEmpty {
@@ -57,6 +55,28 @@ struct LibrarySidebarView: View {
         List(filteredAudiobooks, selection: $selectedAudiobook) { book in
             LibrarySidebarRow(audiobook: book, connectivity: connectivity)
                 .tag(book)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    // Delete action
+                    if book.isFileCached || book.iCloudRelativePath != nil {
+                        Button(role: .destructive) {
+                            deleteAudiobookId = book.id
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(.red)
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    // Transfer to Watch
+                    if connectivity.isPaired && connectivity.isWatchAppInstalled {
+                        Button {
+                            transferAudiobookId = book.id
+                        } label: {
+                            Label("Transfer", systemImage: "applewatch")
+                        }
+                        .tint(.blue)
+                    }
+                }
                 .contextMenu {
                     contextMenuItems(for: book, connectivity: connectivity)
                 }
@@ -105,42 +125,8 @@ struct LibrarySidebarView: View {
         )) {
             if let id = transferAudiobookId,
                let audiobook = audiobooks.first(where: { $0.id == id }) {
-                TransferMethodSheet(
-                    audiobook: audiobook,
-                    onSelectCloudKit: {
-                        cloudKitAudiobookId = id
-                        transferAudiobookId = nil
-                    },
-                    onSelectBluetooth: {
-                        bluetoothAudiobookId = id
-                        transferAudiobookId = nil
-                    },
-                    onCancel: {
-                        transferAudiobookId = nil
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: .init(
-            get: { cloudKitAudiobookId != nil },
-            set: { if !$0 { cloudKitAudiobookId = nil } }
-        )) {
-            if let id = cloudKitAudiobookId,
-               let audiobook = audiobooks.first(where: { $0.id == id }) {
                 NavigationStack {
-                    CloudKitTransferView(audiobook: audiobook)
-                }
-            }
-        }
-        .sheet(isPresented: .init(
-            get: { bluetoothAudiobookId != nil },
-            set: { if !$0 { bluetoothAudiobookId = nil } }
-        )) {
-            if let id = bluetoothAudiobookId,
-               let audiobook = audiobooks.first(where: { $0.id == id }) {
-                NavigationStack {
-                    WatchConnectivityTransferView(audiobook: audiobook)
-                        .environment(connectivity)
+                    AutoTransferView(audiobook: audiobook)
                 }
             }
         }
