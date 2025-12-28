@@ -16,6 +16,9 @@ struct CacheSettingsView: View {
     @State private var isCleaningUp = false
     @State private var showClearAllConfirmation = false
 
+    // Observe the shared settings to trigger UI updates
+    @State private var settings = CacheSettings.shared
+
     var body: some View {
         Form {
             // MARK: - Current Usage
@@ -34,7 +37,7 @@ struct CacheSettingsView: View {
                 HStack {
                     Text("Limit")
                     Spacer()
-                    Text(CacheSettings.formatCacheSize(CacheSettings.shared.maxCacheSizeGB))
+                    Text(CacheSettings.formatCacheSize(settings.maxCacheSizeGB))
                         .foregroundStyle(.secondary)
                 }
 
@@ -171,8 +174,8 @@ struct CacheSettingsView: View {
     // MARK: - Computed Properties
 
     private var usagePercentage: Double {
-        guard CacheSettings.shared.maxCacheSizeBytes > 0 else { return 0 }
-        return min(Double(currentCacheSize) / Double(CacheSettings.shared.maxCacheSizeBytes), 1.0)
+        guard settings.maxCacheSizeBytes > 0 else { return 0 }
+        return min(Double(currentCacheSize) / Double(settings.maxCacheSizeBytes), 1.0)
     }
 
     private var usageColor: Color {
@@ -245,7 +248,6 @@ struct CacheSettingsView: View {
         isCleaningUp = true
 
         let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-        let settings = CacheSettings.shared
 
         do {
             try await cacheManager.cleanupOrphanedCaches()
