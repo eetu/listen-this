@@ -1,14 +1,14 @@
 //
-//  LibrarySidebarView.swift
-//  listen this
+//  LibraryView.swift
+//  Listen This
 //
-//  Created on 27.12.2025.
+//  Main library view showing audiobook collection
 //
 
 import SwiftUI
 import SwiftData
 
-struct LibrarySidebarView: View {
+struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Audiobook.lastAccessedDate, order: .reverse) private var audiobooks: [Audiobook]
     @State private var connectivity: iOSWatchConnectivityManager?
@@ -53,7 +53,7 @@ struct LibrarySidebarView: View {
     @ViewBuilder
     private func sidebarContent(connectivity: iOSWatchConnectivityManager) -> some View {
         List(filteredAudiobooks, selection: $selectedAudiobook) { book in
-            LibrarySidebarRow(audiobook: book, connectivity: connectivity)
+            LibraryRow(audiobook: book, connectivity: connectivity)
                 .tag(book)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     // Delete action
@@ -109,7 +109,7 @@ struct LibrarySidebarView: View {
         )) {
             if let id = deleteAudiobookId,
                let audiobook = audiobooks.first(where: { $0.id == id }) {
-                DeleteOptionsSheet(
+                DeleteAudiobookSheet(
                     audiobook: audiobook,
                     connectivity: connectivity,
                     modelContext: modelContext,
@@ -126,7 +126,7 @@ struct LibrarySidebarView: View {
             if let id = transferAudiobookId,
                let audiobook = audiobooks.first(where: { $0.id == id }) {
                 NavigationStack {
-                    AutoTransferView(audiobook: audiobook)
+                    AutoTransferSheet(audiobook: audiobook)
                 }
             }
         }
@@ -154,12 +154,12 @@ struct LibrarySidebarView: View {
     }
 }
 
-// MARK: - Sidebar Row Component
+// MARK: - Library Row Component
 
-struct LibrarySidebarRow: View {
+struct LibraryRow: View {
     let audiobook: Audiobook
     let connectivity: iOSWatchConnectivityManager
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Artwork thumbnail
@@ -179,18 +179,18 @@ struct LibrarySidebarRow: View {
                             .foregroundStyle(.secondary)
                     }
             }
-            
+
             // Book info
             VStack(alignment: .leading, spacing: 4) {
                 Text(audiobook.title)
                     .font(.headline)
                     .lineLimit(2)
-                
+
                 Text(audiobook.author)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                
+
                 // Progress indicator
                 if let session = audiobook.playbackSession,
                    session.currentPosition > 0 {
@@ -207,7 +207,7 @@ struct LibrarySidebarRow: View {
 #Preview {
     @Previewable @State var selectedAudiobook: Audiobook?
     NavigationStack {
-        LibrarySidebarView(selectedAudiobook: $selectedAudiobook)
+        LibraryView(selectedAudiobook: $selectedAudiobook)
             .modelContainer(for: [Audiobook.self, Chapter.self, PlaybackSession.self, CacheEntry.self])
     }
 }

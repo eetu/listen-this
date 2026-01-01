@@ -140,37 +140,14 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
 
 ## Project Structure
 
-```
-Listen This/
-├── Models/
-│   ├── Audiobook.swift
-│   ├── Chapter.swift
-│   ├── PlaybackSession.swift
-│   ├── CacheEntry.swift
-│   └── ContentSource.swift
-├── Services/
-│   ├── AudioPlayerService.swift
-│   ├── AudiobookLibraryService.swift
-│   ├── AudiobookCacheManager.swift
-│   ├── iCloudDriveProvider.swift
-│   ├── WatchConnectivityManager.swift
-│   └── WatchAudioPlayerService.swift
-├── Views/
-│   ├── iOS/
-│   │   ├── LibraryView.swift
-│   │   ├── PlayerView.swift
-│   │   ├── SettingsView.swift
-│   │   └── ImportView.swift
-│   └── watchOS/
-│       └── WatchPlayerView.swift
-├── Utilities/
-│   └── AudiobookError.swift
-├── ContentView.swift
-├── Listen_ThisApp.swift
-└── README.md
-```
+- **Shared/** - Cross-platform code (Models, Services, Managers, shared Views)
+- **iOS/Views/** - iOS views organized by feature (Library, Player, Settings, Transfer, Import)
+- **Watch/** - watchOS-specific views and services
+- **Docs/** - Architecture documentation
 
-**File Organization**: Maintain proper folder structure. See `Architechture.md` for complete system architecture and implementation details.
+Views use feature-based grouping with naming convention: `*View` for screens, `*Sheet` for modals.
+
+See [Architechture.md](Listen%20This/Docs/Architechture.md) for complete structure and system architecture.
 
 ## Requirements
 

@@ -24,18 +24,20 @@ final class PlaybackSettings {
         static let rememberSpeedPerBook = "rememberSpeedPerBook"
     }
 
+    // MARK: - Stored Properties (for @Observable tracking)
+
+    private var _rememberSpeedPerBook: Bool
+    private var _skipBackwardInterval: Int
+    private var _skipForwardInterval: Int
+    private var _defaultSleepTimerMinutes: Int
+
     // MARK: - Playback Speed
 
     /// Whether to remember playback speed per audiobook
     var rememberSpeedPerBook: Bool {
-        get {
-            // Default to true if not set
-            if UserDefaults.standard.object(forKey: Keys.rememberSpeedPerBook) == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: Keys.rememberSpeedPerBook)
-        }
+        get { _rememberSpeedPerBook }
         set {
+            _rememberSpeedPerBook = newValue
             UserDefaults.standard.set(newValue, forKey: Keys.rememberSpeedPerBook)
         }
     }
@@ -44,22 +46,18 @@ final class PlaybackSettings {
 
     /// Skip backward interval in seconds
     var skipBackwardInterval: Int {
-        get {
-            let stored = UserDefaults.standard.integer(forKey: Keys.skipBackwardInterval)
-            return stored > 0 ? stored : 15
-        }
+        get { _skipBackwardInterval }
         set {
+            _skipBackwardInterval = newValue
             UserDefaults.standard.set(newValue, forKey: Keys.skipBackwardInterval)
         }
     }
 
     /// Skip forward interval in seconds
     var skipForwardInterval: Int {
-        get {
-            let stored = UserDefaults.standard.integer(forKey: Keys.skipForwardInterval)
-            return stored > 0 ? stored : 30
-        }
+        get { _skipForwardInterval }
         set {
+            _skipForwardInterval = newValue
             UserDefaults.standard.set(newValue, forKey: Keys.skipForwardInterval)
         }
     }
@@ -74,10 +72,9 @@ final class PlaybackSettings {
 
     /// Default sleep timer duration in minutes (0 = no default, -1 = end of chapter)
     var defaultSleepTimerMinutes: Int {
-        get {
-            UserDefaults.standard.integer(forKey: Keys.defaultSleepTimerMinutes)
-        }
+        get { _defaultSleepTimerMinutes }
         set {
+            _defaultSleepTimerMinutes = newValue
             UserDefaults.standard.set(newValue, forKey: Keys.defaultSleepTimerMinutes)
         }
     }
@@ -130,5 +127,22 @@ final class PlaybackSettings {
 
     // MARK: - Init
 
-    private init() {}
+    private init() {
+        // Load from UserDefaults with defaults
+        let defaults = UserDefaults.standard
+
+        if defaults.object(forKey: Keys.rememberSpeedPerBook) == nil {
+            _rememberSpeedPerBook = true
+        } else {
+            _rememberSpeedPerBook = defaults.bool(forKey: Keys.rememberSpeedPerBook)
+        }
+
+        let storedBackward = defaults.integer(forKey: Keys.skipBackwardInterval)
+        _skipBackwardInterval = storedBackward > 0 ? storedBackward : 15
+
+        let storedForward = defaults.integer(forKey: Keys.skipForwardInterval)
+        _skipForwardInterval = storedForward > 0 ? storedForward : 30
+
+        _defaultSleepTimerMinutes = defaults.integer(forKey: Keys.defaultSleepTimerMinutes)
+    }
 }

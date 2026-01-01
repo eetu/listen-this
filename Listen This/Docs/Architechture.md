@@ -1068,35 +1068,42 @@ WATCHOS_DEPLOYMENT_TARGET = 10.0
 
 ```
 Listen This/
-├── Models/
-│   ├── Audiobook.swift                 # Main audiobook model
-│   ├── Chapter.swift                   # Chapter metadata
-│   ├── PlaybackSession.swift          # Playback state
-│   ├── CacheEntry.swift               # Cache metadata (optional)
-│   └── ContentSource.swift            # Provider protocol
-├── Services/
-│   ├── AudioPlayerService.swift       # iOS/iPadOS playback
-│   ├── AudiobookLibraryService.swift  # Library management
-│   ├── AudiobookCacheManager.swift    # Cache operations
-│   ├── iCloudDriveProvider.swift      # iCloud file import
-│   ├── WatchConnectivityManager.swift # Watch file transfers
-│   └── WatchAudioPlayerService.swift  # Watch playback
-├── Views/
-│   ├── iOS/
-│   │   ├── LibraryView.swift
-│   │   ├── PlayerView.swift
-│   │   ├── SettingsView.swift
-│   │   └── ImportView.swift
-│   └── watchOS/
-│       └── WatchPlayerView.swift
-├── Utilities/
-│   └── AudiobookError.swift
-├── ContentView.swift                   # Main navigation
-├── Listen_ThisApp.swift               # App entry point
-├── README.md
-├── Architechture.md
-└── CLAUDE.md                          # Development guidelines
+├── Shared/                 # Cross-platform code (iOS + watchOS)
+│   ├── Models/             # SwiftData entities synced via CloudKit
+│   ├── Services/           # Business logic (playback, caching, providers)
+│   ├── Managers/           # Platform managers (CloudKit, WatchConnectivity)
+│   └── Views/              # Shared SwiftUI components
+│
+├── iOS/
+│   ├── Views/              # iOS views, organized by feature (see below)
+│   └── Managers/           # iOS-specific managers
+│
+├── Docs/                   # Architecture documentation
+└── Preview/                # SwiftUI preview helpers
+
+Listen This Watch App/
+└── Watch/
+    ├── Views/              # watchOS views
+    └── Services/           # Watch-specific services
 ```
+
+### View Organization
+
+iOS views are grouped by **feature** rather than by type:
+
+| Folder | Purpose |
+|--------|---------|
+| `Library/` | Audiobook browsing, search, deletion |
+| `Player/` | Playback controls, sleep timer, chapters |
+| `Settings/` | App preferences, storage, sync configuration |
+| `Transfer/` | Watch file transfers and method selection |
+| `Import/` | File import from iCloud Drive |
+
+**Conventions:**
+- `*View` suffix for full screens
+- `*Sheet` suffix for modal presentations
+- Shared components used across features go in `Shared/Views/`
+- Root `ContentView.swift` stays at `iOS/Views/` level
 
 ---
 

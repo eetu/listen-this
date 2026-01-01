@@ -1,8 +1,8 @@
 //
 //  SettingsView.swift
-//  listen this
+//  Listen This
 //
-//  Created by Eetu Sutinen on 14.12.2025.
+//  Main settings navigation hub
 //
 
 import SwiftUI
@@ -18,7 +18,7 @@ struct SettingsView: View {
                 // MARK: - Playback
                 Section {
                     NavigationLink {
-                        PlaybackPreferencesView()
+                        PlaybackSettingsView()
                     } label: {
                         Label("Playback", systemImage: "play.circle")
                     }
@@ -31,7 +31,7 @@ struct SettingsView: View {
                 // MARK: - Storage
                 Section {
                     NavigationLink {
-                        CacheSettingsView()
+                        StorageSettingsView()
                     } label: {
                         Label("Local Storage", systemImage: "internaldrive")
                     }

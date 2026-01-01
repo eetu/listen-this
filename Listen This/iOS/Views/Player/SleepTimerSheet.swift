@@ -1,6 +1,13 @@
+//
+//  SleepTimerSheet.swift
+//  Listen This
+//
+//  Sheet for configuring sleep timer with presets and custom duration
+//
+
 import SwiftUI
 
-struct SleepTimerView<Player: AudioPlayer & Observable>: View {
+struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
     @Bindable var player: Player
 
     @Environment(\.dismiss) private var dismiss
@@ -11,9 +18,19 @@ struct SleepTimerView<Player: AudioPlayer & Observable>: View {
 
     init(player: Player) {
         self.player = player
-        // Initialize with current timer or default to 15 minutes
+        // Initialize with current timer, user's default, or fallback to 15 minutes
         let current = player.sleepTimerRemaining
-        _selectedMinutes = State(initialValue: current > 0 ? Double(Int(current / 60)) : 15.0)
+        if current > 0 {
+            _selectedMinutes = State(initialValue: Double(Int(current / 60)))
+        } else {
+            let defaultMinutes = PlaybackSettings.shared.defaultSleepTimerMinutes
+            // Use default if set and positive (not "None" or "End of Chapter")
+            if defaultMinutes > 0 {
+                _selectedMinutes = State(initialValue: Double(defaultMinutes))
+            } else {
+                _selectedMinutes = State(initialValue: 15.0)
+            }
+        }
     }
 
     var body: some View {

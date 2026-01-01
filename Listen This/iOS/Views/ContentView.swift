@@ -19,7 +19,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // Sidebar: Always show library list
-            LibrarySidebarView(selectedAudiobook: $selectedAudiobook)
+            LibraryView(selectedAudiobook: $selectedAudiobook)
                 .navigationTitle("Library")
         } detail: {
             // Detail: Show player when audiobook is selected
@@ -27,7 +27,7 @@ struct ContentView: View {
                 PlayerView(audiobook: audiobook)
                     .id("player-\(audiobook.id)") // Maintain view identity
             } else {
-                LibraryDetailView()
+                LibraryEmptyView()
             }
         }
         .navigationSplitViewStyle(.balanced)

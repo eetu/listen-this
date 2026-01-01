@@ -1,5 +1,5 @@
 //
-//  PlaybackPreferencesView.swift
+//  PlaybackSettingsView.swift
 //  Listen This
 //
 //  Settings view for playback preferences
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct PlaybackPreferencesView: View {
+struct PlaybackSettingsView: View {
     @State private var settings = PlaybackSettings.shared
 
     var body: some View {
@@ -75,6 +75,6 @@ struct PlaybackPreferencesView: View {
 
 #Preview {
     NavigationStack {
-        PlaybackPreferencesView()
+        PlaybackSettingsView()
     }
 }

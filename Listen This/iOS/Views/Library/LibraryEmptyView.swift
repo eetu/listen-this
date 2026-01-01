@@ -1,13 +1,13 @@
 //
-//  LibraryDetailView.swift
-//  listen this
+//  LibraryEmptyView.swift
+//  Listen This
 //
-//  Created on 27.12.2025.
+//  Placeholder view shown when no audiobook is selected
 //
 
 import SwiftUI
 
-struct LibraryDetailView: View {
+struct LibraryEmptyView: View {
     var body: some View {
         ContentUnavailableView(
             "Select an Audiobook",
@@ -18,5 +18,5 @@ struct LibraryDetailView: View {
 }
 
 #Preview {
-    LibraryDetailView()
+    LibraryEmptyView()
 }

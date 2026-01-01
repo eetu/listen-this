@@ -1,5 +1,5 @@
 //
-//  CacheSettingsView.swift
+//  StorageSettingsView.swift
 //  Listen This
 //
 //  Settings view for local cache management
@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 
-struct CacheSettingsView: View {
+struct StorageSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var currentCacheSize: Int64 = 0
     @State private var cachedAudiobooks: [CachedAudiobookInfo] = []
@@ -57,12 +57,12 @@ struct CacheSettingsView: View {
 
                             // Warning if over limit but can't clean up
                             if isOverLimit && !canCleanup {
-                                Text("⚠️ Cache is over limit, but all \(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? " is" : "s are") protected by 'Keep Recent' setting. Increase the cache limit or reduce 'Keep Recent Audiobooks' count to allow cleanup.")
+                                Text("Cache is over limit, but all \(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? " is" : "s are") protected by 'Keep Recent' setting. Increase the cache limit or reduce 'Keep Recent Audiobooks' count to allow cleanup.")
                                     .foregroundStyle(.orange)
                                     .font(.caption)
                                     .padding(.top, 4)
                             } else if isOverLimit {
-                                Text("ℹ️ Cache is over limit. Auto cleanup will remove oldest audiobooks when playing new content, keeping the \(settings.keepRecentCount) most recent.")
+                                Text("Cache is over limit. Auto cleanup will remove oldest audiobooks when playing new content, keeping the \(settings.keepRecentCount) most recent.")
                                     .foregroundStyle(.blue)
                                     .font(.caption)
                                     .padding(.top, 4)
@@ -269,7 +269,7 @@ struct CacheSettingsView: View {
             try await cacheManager.evictOldCaches(keepingCount: settings.keepRecentCount)
             try await cacheManager.cleanupIfNeeded(maxSize: settings.maxCacheSizeBytes)
         } catch {
-            print("[CacheSettings] Cleanup error: \(error)")
+            print("[StorageSettings] Cleanup error: \(error)")
         }
 
         await loadCacheInfo()
@@ -301,7 +301,7 @@ private struct CachedAudiobookInfo: Identifiable {
 
 #Preview {
     NavigationStack {
-        CacheSettingsView()
+        StorageSettingsView()
             .modelContainer(for: Audiobook.self)
     }
 }

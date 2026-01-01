@@ -107,7 +107,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 .presentationDetents([.height(250)])
         }
         .sheet(isPresented: $showingSleepTimer) {
-            SleepTimerView(player: player)
+            SleepTimerSheet(player: player)
                 .presentationDetents([.height(450)])
         }
     }
