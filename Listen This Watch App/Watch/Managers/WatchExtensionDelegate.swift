@@ -7,8 +7,9 @@
 //
 
 import Foundation
-import WatchKit
 import WatchConnectivity
+import WatchKit
+internal import os
 
 /// Extension delegate that handles background tasks for file transfers
 /// Critical for receiving files when app is not in foreground
@@ -38,13 +39,15 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
         //
         // Use KVO to observe both properties and complete tasks when conditions are met.
 
-        activationStateObservation = WCSession.default.observe(\.activationState) { [weak self] _, _ in
+        activationStateObservation = WCSession.default.observe(\.activationState) {
+            [weak self] _, _ in
             DispatchQueue.main.async {
                 self?.completeBackgroundTasks()
             }
         }
 
-        hasContentPendingObservation = WCSession.default.observe(\.hasContentPending) { [weak self] _, _ in
+        hasContentPendingObservation = WCSession.default.observe(\.hasContentPending) {
+            [weak self] _, _ in
             DispatchQueue.main.async {
                 self?.completeBackgroundTasks()
             }
@@ -64,7 +67,7 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
 
             case let snapshotTask as WKSnapshotRefreshBackgroundTask:
                 // Handle snapshot refresh - complete immediately
-                print("[ExtensionDelegate] Handling snapshot refresh task")
+                AppLogger.general.info("[ExtensionDelegate] Handling snapshot refresh task")
                 snapshotTask.setTaskCompleted(
                     restoredDefaultState: true,
                     estimatedSnapshotExpiration: Date.distantFuture,
@@ -73,12 +76,14 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
 
             case let appRefreshTask as WKApplicationRefreshBackgroundTask:
                 // Handle app refresh - complete immediately
-                print("[ExtensionDelegate] Handling app refresh task")
+                AppLogger.general.info("[ExtensionDelegate] Handling app refresh task")
                 appRefreshTask.setTaskCompletedWithSnapshot(false)
 
             default:
                 // Handle any other background task - complete immediately
-                print("⚠️ [ExtensionDelegate] Unknown background task type: \(type(of: task)), completing immediately")
+                AppLogger.general.warning(
+                    "[ExtensionDelegate] Unknown background task type: \(type(of: task)), completing immediately"
+                )
                 task.setTaskCompletedWithSnapshot(false)
             }
         }
@@ -96,8 +101,11 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
         // CRITICAL: Only complete when session is activated AND no content is pending
         // hasContentPending == false means all data has been received and processed
         guard WCSession.default.activationState == .activated,
-              WCSession.default.hasContentPending == false else {
-            print("[ExtensionDelegate] Waiting for session (activated: \(WCSession.default.activationState == .activated), pending: \(WCSession.default.hasContentPending))")
+            WCSession.default.hasContentPending == false
+        else {
+            AppLogger.watchConnectivity.info(
+                "[ExtensionDelegate] Waiting for session (activated: \(WCSession.default.activationState == .activated), pending: \(WCSession.default.hasContentPending))"
+            )
             return
         }
 
@@ -106,9 +114,10 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
 
         // Schedule a snapshot refresh to update UI
         let date = Date(timeIntervalSinceNow: 1)
-        WKApplication.shared().scheduleSnapshotRefresh(withPreferredDate: date, userInfo: nil) { error in
+        WKApplication.shared().scheduleSnapshotRefresh(withPreferredDate: date, userInfo: nil) {
+            error in
             if let error = error {
-                print("⚠️ [ExtensionDelegate] Snapshot refresh error: \(error)")
+                AppLogger.general.warning("[ExtensionDelegate] Snapshot refresh error: \(error)")
             }
         }
 
@@ -127,18 +136,18 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
     }
 
     func applicationDidBecomeActive() {
-        print("[ExtensionDelegate] Watch app did become active")
+        AppLogger.general.info("[ExtensionDelegate] Watch app did become active")
     }
 
     func applicationWillResignActive() {
-        print("[ExtensionDelegate] Watch app will resign active")
+        AppLogger.general.info("[ExtensionDelegate] Watch app will resign active")
     }
 
     func applicationDidEnterBackground() {
-        print("[ExtensionDelegate] Watch app entered background")
+        AppLogger.general.info("[ExtensionDelegate] Watch app entered background")
     }
 
     func applicationWillEnterForeground() {
-        print("[ExtensionDelegate] Watch app entering foreground")
+        AppLogger.general.info("[ExtensionDelegate] Watch app entering foreground")
     }
 }

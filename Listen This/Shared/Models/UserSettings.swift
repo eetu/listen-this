@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
 
 // MARK: - Sleep Timer Default
@@ -25,7 +26,10 @@ enum SleepTimerDefault: Equatable, Codable, CaseIterable {
 
     /// All available presets for picker UI
     static var allCases: [SleepTimerDefault] {
-        [.none, .endOfChapter, .minutes5, .minutes10, .minutes15, .minutes30, .minutes45, .minutes60, .minutes90, .minutes120]
+        [
+            .none, .endOfChapter, .minutes5, .minutes10, .minutes15, .minutes30, .minutes45,
+            .minutes60, .minutes90, .minutes120,
+        ]
     }
 
     /// Minutes value (nil for none, nil for endOfChapter)
@@ -73,7 +77,7 @@ enum SleepTimerDefault: Equatable, Codable, CaseIterable {
         case 60: self = .minutes60
         case 90: self = .minutes90
         case 120: self = .minutes120
-        default: self = .minutes15 // fallback
+        default: self = .minutes15  // fallback
         }
     }
 
@@ -248,7 +252,7 @@ final class SettingsManager {
                 settings = newSettings
             }
         } catch {
-            print("[SettingsManager] Failed to load settings: \(error)")
+            AppLogger.settings.error("Failed to load settings: \(error.localizedDescription)")
             // Create in-memory settings as fallback
             settings = UserSettings()
         }
@@ -259,7 +263,7 @@ final class SettingsManager {
         do {
             try context.save()
         } catch {
-            print("[SettingsManager] Failed to save settings: \(error)")
+            AppLogger.settings.error("Failed to save settings: \(error.localizedDescription)")
         }
     }
 

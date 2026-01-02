@@ -5,9 +5,10 @@
 //  Single, compiling, cross-platform audio player service
 //
 
-import Foundation
 import AVFoundation
+import Foundation
 import MediaPlayer
+import OSLog
 import SwiftData
 
 // MARK: - Concrete Implementation
@@ -16,15 +17,9 @@ import SwiftData
 @Observable
 final class AudioPlayerService: AudioPlayer {
 
-    // MARK: - Diagnostics (DEBUG only)
+    // MARK: - Logger
 
-    private enum PlaybackDiagnostics {
-        static func log(_ message: String) {
-            #if DEBUG
-            print("[SharedAudioPlayer] \(message)")
-            #endif
-        }
-    }
+    private let logger = AppLogger.player
 
     // MARK: - Audio Session Controller
 
@@ -48,7 +43,8 @@ final class AudioPlayerService: AudioPlayer {
                 try AVAudioSession.sharedInstance()
                     .setActive(false, options: .notifyOthersOnDeactivation)
             } catch {
-                PlaybackDiagnostics.log("Failed to deactivate audio session: \(error)")
+                AppLogger.player.error(
+                    "Failed to deactivate audio session: \(error.localizedDescription)")
             }
         }
     }
@@ -87,7 +83,7 @@ final class AudioPlayerService: AudioPlayer {
     var loadError: Error?
 
     #if os(iOS)
-    private var securityScopedURL: URL?
+        private var securityScopedURL: URL?
     #endif
 
     // MARK: - Sleep Timer
@@ -126,7 +122,7 @@ final class AudioPlayerService: AudioPlayer {
         do {
             try AudioSessionController.configure()
         } catch {
-            PlaybackDiagnostics.log("Audio session configuration failed: \(error)")
+            logger.error("Audio session configuration failed: \(error.localizedDescription)")
         }
     }
 
@@ -163,7 +159,7 @@ final class AudioPlayerService: AudioPlayer {
     func load(audiobook: Audiobook) async {
         // Skip reload if this audiobook is already loaded and playing
         if self.audiobook?.id == audiobook.id, player != nil {
-            PlaybackDiagnostics.log("Audiobook already loaded, skipping reload")
+            logger.debug("Audiobook already loaded, skipping reload")
             return
         }
 
@@ -173,23 +169,23 @@ final class AudioPlayerService: AudioPlayer {
 
         do {
             let url = try await resolveFileURL(for: audiobook)
-            print("[AudioPlayer] Creating asset for URL: \(url.path)")
+            logger.info("Creating asset for URL: \(url.path)")
 
             // For iCloud files, we need to coordinate access
             let asset: AVURLAsset
             if url.path.contains("Mobile Documents") {
-                print("[AudioPlayer] Using file coordination for iCloud file")
+                logger.debug("Using file coordination for iCloud file")
                 asset = try await loadAssetWithCoordination(from: url)
             } else {
                 asset = AVURLAsset(url: url)
             }
 
-            print("[AudioPlayer] Checking if asset is playable...")
+            logger.debug("Checking if asset is playable...")
             let isPlayable = try await asset.load(.isPlayable)
-            print("[AudioPlayer] Asset isPlayable: \(isPlayable)")
+            logger.debug("Asset isPlayable: \(isPlayable)")
 
             guard isPlayable else {
-                print("[AudioPlayer] Asset is not playable")
+                logger.error("Asset is not playable")
                 throw AudiobookError.fileNotFound
             }
 
@@ -199,7 +195,7 @@ final class AudioPlayerService: AudioPlayer {
 
             let durationTime = try await asset.load(.duration)
             duration = durationTime.seconds
-            print("[AudioPlayer] Loaded successfully, duration: \(duration)")
+            logger.info("Loaded successfully, duration: \(self.duration)")
 
             // Observe player rate to keep isPlaying in sync with actual playback state
             setupRateObserver(for: newPlayer)
@@ -209,7 +205,7 @@ final class AudioPlayerService: AudioPlayer {
             updateNowPlayingInfo()
 
         } catch {
-            print("[AudioPlayer] Load error: \(error)")
+            logger.error("Load error: \(error.localizedDescription)")
             loadError = error
         }
     }
@@ -219,7 +215,9 @@ final class AudioPlayerService: AudioPlayer {
             let coordinator = NSFileCoordinator()
             var coordinatorError: NSError?
 
-            coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinatorError) { coordinatedURL in
+            coordinator.coordinate(
+                readingItemAt: url, options: .withoutChanges, error: &coordinatorError
+            ) { coordinatedURL in
                 let asset = AVURLAsset(url: coordinatedURL)
                 continuation.resume(returning: asset)
             }
@@ -231,42 +229,42 @@ final class AudioPlayerService: AudioPlayer {
     }
 
     private func resolveFileURL(for audiobook: Audiobook) async throws -> URL {
-        print("[AudioPlayer] Resolving file URL for: \(audiobook.title)")
-        print("[AudioPlayer] - filename: \(audiobook.filename ?? "nil")")
-        print("[AudioPlayer] - iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
-        print("[AudioPlayer] - isFileCached: \(audiobook.isFileCached)")
-        print("[AudioPlayer] - expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")
+        logger.debug("Resolving file URL for: \(audiobook.title)")
+        logger.debug("- filename: \(audiobook.filename ?? "nil")")
+        logger.debug("- iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
+        logger.debug("- isFileCached: \(audiobook.isFileCached)")
+        logger.debug("- expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")
 
         if audiobook.isFileCached, let cached = audiobook.cacheFileURL {
-            print("[AudioPlayer] Using cached file: \(cached.path)")
+            logger.info("Using cached file: \(cached.path)")
             return cached
         }
 
         if let cloudURL = audiobook.iCloudFileURL {
-            print("[AudioPlayer] Trying iCloud URL: \(cloudURL.path)")
+            logger.debug("Trying iCloud URL: \(cloudURL.path)")
 
             #if os(iOS)
-            _ = cloudURL.startAccessingSecurityScopedResource()
-            securityScopedURL = cloudURL
+                _ = cloudURL.startAccessingSecurityScopedResource()
+                securityScopedURL = cloudURL
             #endif
 
             let fileExists = FileManager.default.fileExists(atPath: cloudURL.path)
-            print("[AudioPlayer] File exists at iCloud path: \(fileExists)")
+            logger.debug("File exists at iCloud path: \(fileExists)")
 
             // Check if file needs to be downloaded from iCloud
             if !fileExists {
-                print("[AudioPlayer] Starting iCloud download...")
+                logger.info("Starting iCloud download...")
                 try await downloadiCloudFile(at: cloudURL)
             }
 
             guard FileManager.default.fileExists(atPath: cloudURL.path) else {
-                print("[AudioPlayer] File still not found after download attempt")
+                logger.error("File still not found after download attempt")
                 throw AudiobookError.fileNotFound
             }
             return cloudURL
         }
 
-        print("[AudioPlayer] No valid file URL found")
+        logger.error("No valid file URL found")
         throw AudiobookError.fileNotFound
     }
 
@@ -314,7 +312,7 @@ final class AudioPlayerService: AudioPlayer {
                 }
             }
         } catch {
-            PlaybackDiagnostics.log("Play failed: \(error)")
+            logger.error("Play failed: \(error.localizedDescription)")
         }
     }
 
@@ -393,7 +391,8 @@ final class AudioPlayerService: AudioPlayer {
                 let shouldBePlaying = player.rate > 0
                 if self.isPlaying != shouldBePlaying {
                     self.isPlaying = shouldBePlaying
-                    PlaybackDiagnostics.log("Player rate changed, isPlaying synced to: \(shouldBePlaying)")
+                    self.logger.debug(
+                        "Player rate changed, isPlaying synced to: \(shouldBePlaying)")
                 }
             }
         }
@@ -430,7 +429,7 @@ final class AudioPlayerService: AudioPlayer {
             MPMediaItemPropertyTitle: audiobook.title,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentPosition,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? playbackRate : 0
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? playbackRate : 0,
         ]
 
         if !audiobook.author.isEmpty {
@@ -443,11 +442,12 @@ final class AudioPlayerService: AudioPlayer {
         }
 
         #if os(iOS)
-        if let data = audiobook.artworkData,
-           let image = UIImage(data: data) {
-            info[MPMediaItemPropertyArtwork] =
-                MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        }
+            if let data = audiobook.artworkData,
+                let image = UIImage(data: data)
+            {
+                info[MPMediaItemPropertyArtwork] =
+                    MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            }
         #endif
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -491,8 +491,9 @@ final class AudioPlayerService: AudioPlayer {
             case .ended:
                 if let rawOptions =
                     info[AVAudioSessionInterruptionOptionKey] as? UInt,
-                   AVAudioSession.InterruptionOptions(rawValue: rawOptions)
-                       .contains(.shouldResume) {
+                    AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+                        .contains(.shouldResume)
+                {
                     await play()
                 }
             @unknown default:
@@ -538,20 +539,25 @@ final class AudioPlayerService: AudioPlayer {
     private func savePlaybackState() {
         guard let audiobook else { return }
 
-        let session = audiobook.playbackSession ?? {
-            let s = PlaybackSession()
-            audiobook.playbackSession = s
-            modelContext.insert(s)
-            return s
-        }()
+        let session =
+            audiobook.playbackSession
+            ?? {
+                let s = PlaybackSession()
+                audiobook.playbackSession = s
+                modelContext.insert(s)
+                return s
+            }()
 
         // Check if CloudKit synced newer data from another device
         // If the session's lastPlayed is newer than what we loaded,
         // and we haven't actually played yet (no local changes), don't overwrite
         if let knownTimestamp = lastKnownPlayedTimestamp,
-           session.lastPlayed > knownTimestamp {
+            session.lastPlayed > knownTimestamp
+        {
             // Remote has newer data - adopt it instead of overwriting
-            PlaybackDiagnostics.log("Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state")
+            logger.info(
+                "Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state"
+            )
             currentPosition = session.currentPosition
             currentChapterIndex = session.currentChapter
             playbackRate = session.playbackRate
@@ -595,7 +601,9 @@ final class AudioPlayerService: AudioPlayer {
         }
 
         // Check if chapter changed and we should sleep at end of chapter
-        if sleepAtEndOfChapter && currentChapterIndex != previousChapterIndex && currentChapterIndex > previousChapterIndex {
+        if sleepAtEndOfChapter && currentChapterIndex != previousChapterIndex
+            && currentChapterIndex > previousChapterIndex
+        {
             Task {
                 await pause()
                 cancelSleepTimer()
@@ -656,8 +664,8 @@ final class AudioPlayerService: AudioPlayer {
         rateObserver = nil
 
         #if os(iOS)
-        securityScopedURL?.stopAccessingSecurityScopedResource()
-        securityScopedURL = nil
+            securityScopedURL?.stopAccessingSecurityScopedResource()
+            securityScopedURL = nil
         #endif
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
