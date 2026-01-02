@@ -15,13 +15,15 @@ import WatchConnectivity
 @main
 struct Listen_ThisApp: App {
     // MARK: - SwiftData Model Container
-    
+
     let modelContainer: ModelContainer
-    
+
     #if os(iOS)
     // Watch Connectivity Manager
     @State private var watchConnectivity = iOSWatchConnectivityManager.shared
     #endif
+
+    @Environment(\.scenePhase) private var scenePhase
     
     init() {
         do {
@@ -88,6 +90,41 @@ struct Listen_ThisApp: App {
                 }
         }
         .modelContainer(modelContainer)
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
+        }
+    }
+
+    // MARK: - Scene Phase Handling
+
+    private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+        if newPhase == .background {
+            // App entering background - save playback state
+            print("[iOS App] Entering background, saving playback state")
+
+            Task { @MainActor in
+                // Save context to ensure latest data is persisted
+                try? modelContainer.mainContext.save()
+
+                #if os(iOS)
+                // If iPhone becomes reachable later, sync will happen automatically
+                // via sessionReachabilityDidChange
+                if watchConnectivity.isReachable {
+                    print("[iOS App] iPhone is reachable, will sync on reconnection")
+                }
+                #endif
+            }
+        } else if newPhase == .active && oldPhase == .background {
+            // App becoming active from background
+            print("[iOS App] Becoming active from background")
+
+            #if os(iOS)
+            // Check if Watch Connectivity became reachable while we were in background
+            if watchConnectivity.isReachable {
+                print("[iOS App] iPhone is reachable after background, sync will trigger automatically")
+            }
+            #endif
+        }
     }
 }
 

@@ -20,6 +20,7 @@ struct Listen_ThisWatchApp: App {
     @State private var transferCheckTimer: Timer?
     @State private var cleanupTimer: Timer?
     @State private var storeRemoteChangeNotification: NSObjectProtocol?
+    @Environment(\.scenePhase) private var scenePhase
 
     let modelContainer: ModelContainer
     
@@ -84,6 +85,9 @@ struct Listen_ThisWatchApp: App {
                 }
         }
         .modelContainer(modelContainer)
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
+        }
     }
     
     // MARK: - Transfer Monitoring
@@ -125,6 +129,34 @@ struct Listen_ThisWatchApp: App {
         }
     }
     
+    // MARK: - Scene Phase Handling
+
+    private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+        if newPhase == .background {
+            // App entering background - save playback state and sync
+            print("[WatchApp] Entering background, saving playback state")
+
+            Task { @MainActor in
+                // Save context to ensure latest data is persisted
+                try? modelContainer.mainContext.save()
+
+                // If Watch becomes reachable later, sync will happen automatically
+                // via sessionReachabilityDidChange
+                if watchConnectivityManager.isReachable {
+                    print("[WatchApp] Watch is reachable, will sync on reconnection")
+                }
+            }
+        } else if newPhase == .active && oldPhase == .background {
+            // App becoming active from background
+            print("[WatchApp] Becoming active from background")
+
+            // Check if Watch Connectivity became reachable while we were in background
+            if watchConnectivityManager.isReachable {
+                print("[WatchApp] Watch is reachable after background, sync will trigger automatically")
+            }
+        }
+    }
+
     /// Removes cache files for audiobooks that no longer exist in the database
     /// This handles cases where the audiobook was deleted from iPhone while Watch was offline
     @MainActor
