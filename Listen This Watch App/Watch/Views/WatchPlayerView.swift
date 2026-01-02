@@ -2,8 +2,6 @@
 //  WatchPlayerView.swift
 //  Listen This Watch App
 //
-//  Created by Eetu Sutinen on 18.12.2025.
-//
 
 import AVFoundation
 import MediaPlayer

@@ -2,11 +2,9 @@
 //  ContentView.swift
 //  listen this
 //
-//  Created by Eetu Sutinen on 13.12.2025.
-//
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -25,7 +23,7 @@ struct ContentView: View {
             // Detail: Show player when audiobook is selected
             if let audiobook = selectedAudiobook {
                 PlayerView(audiobook: audiobook)
-                    .id("player-\(audiobook.id)") // Maintain view identity
+                    .id("player-\(audiobook.id)")  // Maintain view identity
             } else {
                 LibraryEmptyView()
             }
@@ -60,4 +58,3 @@ struct ContentView: View {
         .modelContainer(for: [Audiobook.self, Chapter.self, PlaybackSession.self, CacheEntry.self])
         .environment(\.horizontalSizeClass, .regular)
 }
-

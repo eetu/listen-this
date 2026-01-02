@@ -2,8 +2,6 @@
 //  ChapterTitleView.swift
 //  Listen This
 //
-//  Created by Eetu Sutinen on 21.12.2025.
-//
 
 import SwiftUI
 
@@ -20,17 +18,17 @@ struct ChapterTitleView: View {
 
     private var titleFont: Font {
         #if os(iOS)
-        .headline
+            .headline
         #else
-        .system(size: 12)
+            .system(size: 12)
         #endif
     }
 
     private var bottomPadding: CGFloat {
         #if os(iOS)
-        12
+            12
         #else
-        0
+            0
         #endif
     }
 }

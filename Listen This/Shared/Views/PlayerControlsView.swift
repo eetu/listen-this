@@ -2,8 +2,6 @@
 //  PlayerControlsView.swift
 //  Listen This
 //
-//  Created by Eetu Sutinen on 21.12.2025.
-//
 
 import SwiftUI
 
@@ -19,7 +17,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     /// Volume for visual feedback (watchOS only)
     #if os(watchOS)
-    @Binding var volume: Float
+        @Binding var volume: Float
     #endif
 
     /// Playback settings
@@ -73,28 +71,28 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     private var progressView: some View {
         VStack(spacing: 2) {
 
-#if os(watchOS)
-            ProgressView(
-                value: chapterProgress.elapsed,
-                total: chapterProgress.duration
-            )
-            .controlSize(.mini)
-#endif
+            #if os(watchOS)
+                ProgressView(
+                    value: chapterProgress.elapsed,
+                    total: chapterProgress.duration
+                )
+                .controlSize(.mini)
+            #endif
 
-#if os(iOS)
-            Slider(
-                value: Binding(
-                    get: { chapterProgress.elapsed },
-                    set: { newValue in
-                        let chapterStart = currentChapter?.startTime ?? 0
-                        Task {
-                            await player.seek(to: chapterStart + newValue)
+            #if os(iOS)
+                Slider(
+                    value: Binding(
+                        get: { chapterProgress.elapsed },
+                        set: { newValue in
+                            let chapterStart = currentChapter?.startTime ?? 0
+                            Task {
+                                await player.seek(to: chapterStart + newValue)
+                            }
                         }
-                    }
-                ),
-                in: 0...max(chapterProgress.duration, 0.01)
-            )
-#endif
+                    ),
+                    in: 0...max(chapterProgress.duration, 0.01)
+                )
+            #endif
 
             HStack {
                 Text(formatTime(chapterProgress.elapsed))
@@ -175,41 +173,41 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     : await player.play()
             }
         } label: {
-#if os(watchOS)
-            ZStack {
-                // Volume ring
-                VolumeRing(volume: volume)
+            #if os(watchOS)
+                ZStack {
+                    // Volume ring
+                    VolumeRing(volume: volume)
 
-                // Play/Pause icon
+                    // Play/Pause icon
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(playFont)
+                        .frame(width: 60, height: 60)
+                }
+            #else
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(playFont)
                     .frame(width: 60, height: 60)
-            }
-#else
-            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                .font(playFont)
-                .frame(width: 60, height: 60)
-#endif
+            #endif
         }
     }
 
     private var spacing: CGFloat {
         #if os(iOS)
-        32
+            32
         #elseif os(watchOS)
-        16
+            16
         #endif
     }
-    
+
     private var skipFont: Font {
         .system(size: 30)
     }
 
     private var playFont: Font {
         #if os(iOS)
-        .system(size: 60)
+            .system(size: 60)
         #elseif os(watchOS)
-        .system(size: 50)
+            .system(size: 50)
         #endif
     }
 
@@ -226,49 +224,49 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 // MARK: - Volume Ring
 
 #if os(watchOS)
-struct VolumeRing: View {
-    let volume: Float
-    @State private var showRing = false
-    @State private var hideTask: Task<Void, Never>?
+    struct VolumeRing: View {
+        let volume: Float
+        @State private var showRing = false
+        @State private var hideTask: Task<Void, Never>?
 
-    var body: some View {
-        ZStack {
-            // Background ring
-            Circle()
-                .stroke(Color.white.opacity(0.2), lineWidth: 3)
-                .frame(width: 80, height: 80)
+        var body: some View {
+            ZStack {
+                // Background ring
+                Circle()
+                    .stroke(Color.white.opacity(0.2), lineWidth: 3)
+                    .frame(width: 80, height: 80)
 
-            // Volume level ring
-            Circle()
-                .trim(from: 0, to: showRing ? CGFloat(volume) : 0)
-                .stroke(
-                    Color.white,
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .frame(width: 80, height: 80)
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.3), value: volume)
+                // Volume level ring
+                Circle()
+                    .trim(from: 0, to: showRing ? CGFloat(volume) : 0)
+                    .stroke(
+                        Color.white,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.3), value: volume)
+            }
+            .opacity(showRing ? 1 : 0)
+            .onChange(of: volume) { _, _ in
+                showVolumeRing()
+            }
         }
-        .opacity(showRing ? 1 : 0)
-        .onChange(of: volume) { _, _ in
-            showVolumeRing()
-        }
-    }
 
-    private func showVolumeRing() {
-        hideTask?.cancel()
-        showRing = true
+        private func showVolumeRing() {
+            hideTask?.cancel()
+            showRing = true
 
-        hideTask = Task {
-            try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled {
-                await MainActor.run {
-                    showRing = false
+            hideTask = Task {
+                try? await Task.sleep(for: .seconds(2))
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        showRing = false
+                    }
                 }
             }
         }
     }
-}
 #endif
 
 //
@@ -276,111 +274,111 @@ struct VolumeRing: View {
 //
 
 #if os(watchOS)
-#Preview("Paused · Middle Chapter") {
-    @Previewable @State var volume: Float = 0.7
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: false,
-            currentPosition: 180,
-            duration: 510,
-            currentChapterIndex: 1
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: false,
-        volume: $volume
-    )
-    .padding()
-}
+    #Preview("Paused · Middle Chapter") {
+        @Previewable @State var volume: Float = 0.7
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: false,
+                currentPosition: 180,
+                duration: 510,
+                currentChapterIndex: 1
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: false,
+            volume: $volume
+        )
+        .padding()
+    }
 #else
-#Preview("Paused · Middle Chapter") {
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: false,
-            currentPosition: 180,
-            duration: 510,
-            currentChapterIndex: 1
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: true
-    )
-    .padding()
-}
+    #Preview("Paused · Middle Chapter") {
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: false,
+                currentPosition: 180,
+                duration: 510,
+                currentChapterIndex: 1
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: true
+        )
+        .padding()
+    }
 #endif
 
 #if os(watchOS)
-#Preview("Playing · First Chapter") {
-    @Previewable @State var volume: Float = 0.5
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: true,
-            currentPosition: 45,
-            duration: 510,
-            currentChapterIndex: 0
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: false,
-        volume: $volume
-    )
-    .padding()
-}
+    #Preview("Playing · First Chapter") {
+        @Previewable @State var volume: Float = 0.5
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: true,
+                currentPosition: 45,
+                duration: 510,
+                currentChapterIndex: 0
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: false,
+            volume: $volume
+        )
+        .padding()
+    }
 #else
-#Preview("Playing · First Chapter") {
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: true,
-            currentPosition: 45,
-            duration: 510,
-            currentChapterIndex: 0
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: true
-    )
-    .padding()
-}
+    #Preview("Playing · First Chapter") {
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: true,
+                currentPosition: 45,
+                duration: 510,
+                currentChapterIndex: 0
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: true
+        )
+        .padding()
+    }
 #endif
 
 #if os(watchOS)
-#Preview("Error State · No Chapter Buttons") {
-    @Previewable @State var volume: Float = 0.3
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: false,
-            currentPosition: 0,
-            duration: 0,
-            currentChapterIndex: 0,
-            loadError: NSError(
-                domain: "Preview",
-                code: -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to load audio"
-                ]
-            )
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: false,
-        volume: $volume
-    )
-    .padding()
-}
+    #Preview("Error State · No Chapter Buttons") {
+        @Previewable @State var volume: Float = 0.3
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: false,
+                currentPosition: 0,
+                duration: 0,
+                currentChapterIndex: 0,
+                loadError: NSError(
+                    domain: "Preview",
+                    code: -1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to load audio"
+                    ]
+                )
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: false,
+            volume: $volume
+        )
+        .padding()
+    }
 #else
-#Preview("Error State · No Chapter Buttons") {
-    PlayerControlsView(
-        player: MockAudioPlayerService(
-            isPlaying: false,
-            currentPosition: 0,
-            duration: 0,
-            currentChapterIndex: 0,
-            loadError: NSError(
-                domain: "Preview",
-                code: -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to load audio"
-                ]
-            )
-        ),
-        chapters: PreviewData.chapters,
-        showsChapterSkipButtons: false
-    )
-    .padding()
-}
+    #Preview("Error State · No Chapter Buttons") {
+        PlayerControlsView(
+            player: MockAudioPlayerService(
+                isPlaying: false,
+                currentPosition: 0,
+                duration: 0,
+                currentChapterIndex: 0,
+                loadError: NSError(
+                    domain: "Preview",
+                    code: -1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to load audio"
+                    ]
+                )
+            ),
+            chapters: PreviewData.chapters,
+            showsChapterSkipButtons: false
+        )
+        .padding()
+    }
 #endif

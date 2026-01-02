@@ -2,8 +2,6 @@
 //  WatchTransferProgress.swift
 //  Listen This
 //
-//  Created by Eetu Sutinen on 27.12.2025.
-//
 
 import Foundation
 
@@ -15,18 +13,19 @@ struct WatchTransferProgress: Equatable {
     let totalBytes: Int64
     var bytesTransferred: Int64
     var isActive: Bool
-    
+
     var progress: Double {
         guard totalBytes > 0 else { return 0 }
         return Double(bytesTransferred) / Double(totalBytes)
     }
-    
+
     var progressPercentage: Int {
         Int(progress * 100)
     }
-    
+
     var progressText: String {
-        let transferred = ByteCountFormatter.string(fromByteCount: bytesTransferred, countStyle: .file)
+        let transferred = ByteCountFormatter.string(
+            fromByteCount: bytesTransferred, countStyle: .file)
         let total = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
         return "\(transferred) / \(total)"
     }
@@ -39,7 +38,7 @@ enum WatchTransferError: LocalizedError {
     case fileNotCached
     case fileNotFound
     case transferFailed
-    
+
     var errorDescription: String? {
         switch self {
         case .sessionUnavailable:

@@ -2,8 +2,6 @@
 //  Listen_ThisApp.swift
 //  Listen This Watch App
 //
-//  Created by Eetu Sutinen on 14.12.2025.
-//
 
 import Combine
 import SwiftData
