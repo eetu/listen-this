@@ -33,7 +33,8 @@ struct Listen_ThisWatchApp: App {
                 Audiobook.self,
                 Chapter.self,
                 PlaybackSession.self,
-                CacheEntry.self
+                CacheEntry.self,
+                UserSettings.self
             ])
 
             let modelConfiguration = ModelConfiguration(
@@ -56,6 +57,9 @@ struct Listen_ThisWatchApp: App {
             WatchLibraryView()
                 .environment(watchConnectivityManager)
                 .onAppear {
+                    // Configure SettingsManager with model context
+                    SettingsManager.shared.configure(modelContext: modelContainer.mainContext)
+
                     // Configure the connectivity manager with model context
                     watchConnectivityManager.configure(modelContext: modelContainer.mainContext)
                     
