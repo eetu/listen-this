@@ -305,12 +305,12 @@ final class AudioPlayerService: AudioPlayer {
             updateNowPlayingInfo()
 
             // Start default sleep timer if configured
-            let settings = PlaybackSettings.shared
             if !isSleepTimerActive {
-                if settings.defaultSleepTimerMinutes == PlaybackSettings.sleepTimerEndOfChapter {
+                let defaultTimer = SettingsManager.shared.defaultSleepTimer
+                if defaultTimer == .endOfChapter {
                     setSleepTimerEndOfChapter()
-                } else if settings.defaultSleepTimerMinutes > 0 {
-                    setSleepTimer(minutes: settings.defaultSleepTimerMinutes)
+                } else if let minutes = defaultTimer.minutes {
+                    setSleepTimer(minutes: minutes)
                 }
             }
         } catch {
@@ -342,13 +342,13 @@ final class AudioPlayerService: AudioPlayer {
 
     /// Skip backward using the configured interval from settings
     func skipBackward() async {
-        let interval = Double(PlaybackSettings.shared.skipBackwardInterval)
+        let interval = Double(SettingsManager.shared.skipBackwardInterval)
         _ = await seek(to: currentPosition - interval)
     }
 
     /// Skip forward using the configured interval from settings
     func skipForward() async {
-        let interval = Double(PlaybackSettings.shared.skipForwardInterval)
+        let interval = Double(SettingsManager.shared.skipForwardInterval)
         _ = await seek(to: currentPosition + interval)
     }
 
@@ -525,7 +525,7 @@ final class AudioPlayerService: AudioPlayer {
         currentChapterIndex = session.currentChapter
 
         // Use per-book speed if enabled, otherwise use 1.0x
-        if PlaybackSettings.shared.rememberSpeedPerBook {
+        if SettingsManager.shared.rememberSpeedPerBook {
             playbackRate = session.playbackRate
         } else {
             playbackRate = 1.0

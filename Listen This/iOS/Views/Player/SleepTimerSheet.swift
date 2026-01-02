@@ -12,26 +12,12 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedMinutes: Double
+    @State private var selectedTimer: SleepTimerDefault = .minutes15
+    @State private var customMinutes: Int = 15
+    @State private var hasInitialized = false
 
-    private let presets: [Int] = [5, 10, 15, 30, 45, 60]
-
-    init(player: Player) {
-        self.player = player
-        // Initialize with current timer, user's default, or fallback to 15 minutes
-        let current = player.sleepTimerRemaining
-        if current > 0 {
-            _selectedMinutes = State(initialValue: Double(Int(current / 60)))
-        } else {
-            let defaultMinutes = PlaybackSettings.shared.defaultSleepTimerMinutes
-            // Use default if set and positive (not "None" or "End of Chapter")
-            if defaultMinutes > 0 {
-                _selectedMinutes = State(initialValue: Double(defaultMinutes))
-            } else {
-                _selectedMinutes = State(initialValue: 15.0)
-            }
-        }
-    }
+    // Presets to show as quick-select buttons (excluding none and end of chapter)
+    private let presets: [SleepTimerDefault] = [.minutes5, .minutes10, .minutes15, .minutes30, .minutes45, .minutes60]
 
     var body: some View {
         VStack(spacing: 24) {
@@ -50,6 +36,28 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
             Spacer()
         }
         .padding(.top)
+        .onAppear {
+            guard !hasInitialized else { return }
+            hasInitialized = true
+
+            // Initialize with current timer or user's default
+            let current = player.sleepTimerRemaining
+            if current > 0 {
+                let mins = Int(current / 60)
+                customMinutes = mins
+                // Try to match to a preset, otherwise keep as custom
+                selectedTimer = SleepTimerDefault(rawValue: mins)
+            } else if player.sleepAtEndOfChapter {
+                selectedTimer = .endOfChapter
+            } else {
+                // Use user's default setting
+                let defaultTimer = SettingsManager.shared.defaultSleepTimer
+                selectedTimer = defaultTimer
+                if let mins = defaultTimer.minutes {
+                    customMinutes = mins
+                }
+            }
+        }
     }
 
     // MARK: - Timer Selection View
@@ -62,41 +70,66 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
 
                 Spacer()
 
-                Text("\(Int(selectedMinutes)) min")
-                    .monospacedDigit()
+                if selectedTimer != .endOfChapter {
+                    Text("\(customMinutes) min")
+                        .monospacedDigit()
+                }
             }
             .padding(.horizontal)
 
             Slider(
-                value: $selectedMinutes,
-                in: 1...90,
+                value: Binding(
+                    get: { Double(customMinutes) },
+                    set: {
+                        customMinutes = Int($0)
+                        // Update selectedTimer to match if it's a preset, otherwise keep current
+                        selectedTimer = SleepTimerDefault(rawValue: customMinutes)
+                    }
+                ),
+                in: 1...120,
                 step: 1
             )
+            .disabled(selectedTimer == .endOfChapter)
             .padding(.horizontal)
 
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 3), spacing: 12) {
-                ForEach(presets, id: \.self) { minutes in
+            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 8) {
+                ForEach(presets, id: \.self) { preset in
                     Button {
-                        selectedMinutes = Double(minutes)
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text("\(minutes)")
-                                .font(.title2.bold())
-                            Text("minutes")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        selectedTimer = preset
+                        if let mins = preset.minutes {
+                            customMinutes = mins
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Int(selectedMinutes) == minutes ? Color.accentColor : Color(.systemGray5))
-                        )
-                        .foregroundStyle(Int(selectedMinutes) == minutes ? .white : .primary)
+                    } label: {
+                        Text("\(preset.minutes ?? 0) min")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(selectedTimer == preset ? Color.accentColor : Color(.systemGray5))
+                            )
+                            .foregroundStyle(selectedTimer == preset ? .white : .primary)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal)
+
+            // End of Chapter button as a separate full-width option
+            Button {
+                selectedTimer = .endOfChapter
+            } label: {
+                Text("End of Chapter")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selectedTimer == .endOfChapter ? Color.accentColor : Color(.systemGray5))
+                    )
+                    .foregroundStyle(selectedTimer == .endOfChapter ? .white : .primary)
+            }
+            .buttonStyle(.plain)
             .padding(.horizontal)
         }
     }
@@ -138,36 +171,16 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
     // MARK: - Action Buttons
 
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button {
+        Button {
+            if selectedTimer == .endOfChapter {
                 player.setSleepTimerEndOfChapter()
-                dismiss()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "text.bookmark")
-                        .font(.title3)
-                    Text("End of Chapter")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemGray5))
-                )
+            } else {
+                player.setSleepTimer(minutes: customMinutes)
             }
-            .buttonStyle(.plain)
-
-            Button {
-                player.setSleepTimer(minutes: Int(selectedMinutes))
-                dismiss()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark")
-                        .font(.title3)
-                    Text("Set Timer")
-                        .font(.headline)
-                }
+            dismiss()
+        } label: {
+            Text(selectedTimer == .endOfChapter ? "Set End of Chapter" : "Set \(customMinutes) min Timer")
+                .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(
@@ -175,9 +188,8 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
                         .fill(Color.accentColor)
                 )
                 .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
         }
+        .buttonStyle(.plain)
         .padding(.horizontal)
     }
 

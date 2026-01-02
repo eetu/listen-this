@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct PlaybackSettingsView: View {
-    @State private var settings = PlaybackSettings.shared
+    @State private var settings = SettingsManager.shared
 
     var body: some View {
         Form {
@@ -30,8 +30,8 @@ struct PlaybackSettingsView: View {
                     get: { settings.skipBackwardInterval },
                     set: { settings.skipBackwardInterval = $0 }
                 )) {
-                    ForEach(PlaybackSettings.skipIntervalPresets, id: \.self) { interval in
-                        Text(PlaybackSettings.formatInterval(interval))
+                    ForEach(SettingsManager.skipIntervalPresets, id: \.self) { interval in
+                        Text(SettingsManager.formatInterval(interval))
                             .tag(interval)
                     }
                 }
@@ -40,8 +40,8 @@ struct PlaybackSettingsView: View {
                     get: { settings.skipForwardInterval },
                     set: { settings.skipForwardInterval = $0 }
                 )) {
-                    ForEach(PlaybackSettings.skipIntervalPresets, id: \.self) { interval in
-                        Text(PlaybackSettings.formatInterval(interval))
+                    ForEach(SettingsManager.skipIntervalPresets, id: \.self) { interval in
+                        Text(SettingsManager.formatInterval(interval))
                             .tag(interval)
                     }
                 }
@@ -54,12 +54,12 @@ struct PlaybackSettingsView: View {
             // MARK: - Sleep Timer
             Section {
                 Picker("Default Sleep Timer", selection: Binding(
-                    get: { settings.defaultSleepTimerMinutes },
-                    set: { settings.defaultSleepTimerMinutes = $0 }
+                    get: { settings.defaultSleepTimer },
+                    set: { settings.defaultSleepTimer = $0 }
                 )) {
-                    ForEach(PlaybackSettings.sleepTimerPresets, id: \.self) { minutes in
-                        Text(PlaybackSettings.formatSleepTimer(minutes))
-                            .tag(minutes)
+                    ForEach(SleepTimerDefault.allCases, id: \.self) { preset in
+                        Text(preset.displayText)
+                            .tag(preset)
                     }
                 }
             } header: {

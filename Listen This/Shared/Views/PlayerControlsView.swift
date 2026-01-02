@@ -23,7 +23,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     #endif
 
     /// Playback settings
-    @State private var settings = PlaybackSettings.shared
+    @State private var settings = SettingsManager.shared
 
     // MARK: - Computed
 
