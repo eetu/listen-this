@@ -158,20 +158,77 @@ final class WatchConnectivityManager: NSObject, WatchConnectivity {
         guard let session = session else {
             return
         }
-        
+
         // Remove from active transfers immediately for UI responsiveness
         activeTransfers.removeValue(forKey: audiobookId.uuidString)
-        
+
         // If reachable, send cancel command to iPhone
         if session.isReachable {
             let message = [
                 "command": "cancelTransfer",
                 "audiobookId": audiobookId.uuidString
             ]
-            
+
             session.sendMessage(message, replyHandler: nil) { error in
                 // Failed to send cancel request
             }
+        }
+    }
+
+    // MARK: - Playback Progress Sync
+
+    /// Sync playback progress to iPhone when connection is established
+    /// This ensures iPhone gets latest Watch progress immediately upon reconnection
+    private func syncPlaybackProgress() async {
+        guard let session = session, session.isReachable else {
+            return
+        }
+
+        guard let modelContext = modelContext else {
+            return
+        }
+
+        do {
+            // Fetch all audiobooks with playback sessions
+            let descriptor = FetchDescriptor<Audiobook>()
+            let audiobooks = try modelContext.fetch(descriptor)
+
+            // Find audiobooks with recent playback activity (within last 24 hours)
+            let dayAgo = Date().addingTimeInterval(-86400)
+            let recentlyPlayed = audiobooks.filter { audiobook in
+                guard let session = audiobook.playbackSession else { return false }
+                return session.lastPlayed > dayAgo
+            }
+
+            guard !recentlyPlayed.isEmpty else {
+                return
+            }
+
+            // Send progress for each recently played audiobook
+            for audiobook in recentlyPlayed {
+                guard let playbackSession = audiobook.playbackSession else { continue }
+
+                let message: [String: Any] = [
+                    "command": "syncPlaybackProgress",
+                    "audiobookId": audiobook.id.uuidString,
+                    "currentPosition": playbackSession.currentPosition,
+                    "currentChapter": playbackSession.currentChapter,
+                    "playbackRate": playbackSession.playbackRate,
+                    "lastPlayed": playbackSession.lastPlayed.timeIntervalSince1970,
+                    "progressPercentage": playbackSession.progressPercentage,
+                    "isCompleted": playbackSession.isCompleted
+                ]
+
+                // Use sendMessage for immediate delivery (requires reachability)
+                session.sendMessage(message, replyHandler: nil) { error in
+                    print("⚠️ [WatchConnectivity] Failed to sync progress for \(audiobook.title): \(error.localizedDescription)")
+                }
+            }
+
+            print("✅ [WatchConnectivity] Synced progress for \(recentlyPlayed.count) audiobook(s) to iPhone")
+
+        } catch {
+            print("⚠️ [WatchConnectivity] Failed to sync playback progress: \(error)")
         }
     }
     
@@ -251,6 +308,11 @@ extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
             self.isReachable = session.isReachable
+
+            // When Watch becomes reachable, sync playback progress to iPhone
+            if session.isReachable {
+                await self.syncPlaybackProgress()
+            }
         }
     }
     
@@ -278,7 +340,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
     
     private func handleMessage(_ message: [String: Any]) {
         guard let command = message["command"] as? String else { return }
-        
+
         switch command {
         case "updateMetadata":
             handleMetadataUpdate(message)
@@ -291,6 +353,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
         case "requestCachedList":
             // iPhone is asking which books are cached on Watch
             sendCachedAudiobookList()
+        case "syncPlaybackProgress":
+            handlePlaybackProgressSync(message)
         case "deleteAudiobook":
             // Delete is handled in handleMessageWithReply since it needs a response
             break
@@ -446,15 +510,71 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
     
     // MARK: - Handle Metadata Updates
-    
+
     private func handleMetadataUpdate(_ message: [String: Any]) {
         guard modelContext != nil else { return }
-        
+
         // Extract audiobook data from message
         // This would be sent from iPhone when a new book is added
-        
+
         // Implementation depends on your metadata structure
         // For now, just log that we received it
+    }
+
+    /// Handle playback progress sync from iPhone
+    private func handlePlaybackProgressSync(_ message: [String: Any]) {
+        guard let audiobookIdString = message["audiobookId"] as? String,
+              let audiobookId = UUID(uuidString: audiobookIdString),
+              let currentPosition = message["currentPosition"] as? Double,
+              let currentChapter = message["currentChapter"] as? Int,
+              let playbackRate = message["playbackRate"] as? Double,
+              let lastPlayedTimestamp = message["lastPlayed"] as? TimeInterval,
+              let progressPercentage = message["progressPercentage"] as? Double,
+              let isCompleted = message["isCompleted"] as? Bool,
+              let modelContext = modelContext else {
+            return
+        }
+
+        do {
+            // Find the audiobook
+            let descriptor = FetchDescriptor<Audiobook>(
+                predicate: #Predicate { $0.id == audiobookId }
+            )
+
+            guard let audiobook = try modelContext.fetch(descriptor).first else {
+                return
+            }
+
+            let iPhoneLastPlayed = Date(timeIntervalSince1970: lastPlayedTimestamp)
+
+            // Get or create playback session
+            let session = audiobook.playbackSession ?? {
+                let s = PlaybackSession()
+                audiobook.playbackSession = s
+                modelContext.insert(s)
+                return s
+            }()
+
+            // Only update if iPhone has newer data (timestamp-based conflict resolution)
+            if iPhoneLastPlayed > session.lastPlayed {
+                session.currentPosition = currentPosition
+                session.currentChapter = currentChapter
+                session.playbackRate = playbackRate
+                session.lastPlayed = iPhoneLastPlayed
+                session.progressPercentage = progressPercentage
+                session.isCompleted = isCompleted
+
+                try modelContext.save()
+
+                print("✅ [WatchConnectivity] Adopted newer iPhone progress for \(audiobook.title)")
+                print("   Position: \(Int(currentPosition))s, Chapter: \(currentChapter), Last played: \(iPhoneLastPlayed)")
+            } else {
+                print("ℹ️ [WatchConnectivity] Watch has newer progress for \(audiobook.title), keeping local state")
+            }
+
+        } catch {
+            print("⚠️ [WatchConnectivity] Failed to sync progress from iPhone: \(error)")
+        }
     }
     
     private func handleTransferStarted(_ message: [String: Any]) {
