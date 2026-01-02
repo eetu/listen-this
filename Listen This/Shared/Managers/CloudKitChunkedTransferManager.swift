@@ -6,15 +6,16 @@
 //  Enables fast, reliable audiobook transfers to Apple Watch
 //
 
-import Foundation
 import CloudKit
-import SwiftData
+import Foundation
+import OSLog
 import Observation
+import SwiftData
 
 #if os(iOS)
-import UIKit
+    import UIKit
 #elseif os(watchOS)
-import WatchKit
+    import WatchKit
 #endif
 
 // MARK: - Concrete Implementation
@@ -32,13 +33,14 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private let container: CKContainer
     private let database: CKDatabase
     private let modelContext: ModelContext
+    private let logger = AppLogger.cloudKit
 
     // MARK: - Background Execution
 
     #if os(iOS)
-    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+        private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
     #elseif os(watchOS)
-    private var extendedRuntimeSession: WKExtendedRuntimeSession?
+        private var extendedRuntimeSession: WKExtendedRuntimeSession?
     #endif
 
     // MARK: - Observable State
@@ -134,7 +136,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         activeUploads.removeValue(forKey: audiobookId)
         activeDownloads.removeValue(forKey: audiobookId)
     }
-    
+
     // MARK: - Download
 
     func downloadAudiobook(_ audiobook: Audiobook) async throws -> URL {
@@ -192,7 +194,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
                 try await deleteAudiobookFromCloud(audiobookId: audiobook.id)
             } catch {
                 // Log error but don't fail the download since file is already saved
-                print("[CloudKitChunkedTransferManager] Failed to cleanup from iCloud: \(error)")
+                logger.error("Failed to cleanup from iCloud: \(error.localizedDescription)")
             }
         }
 
@@ -207,30 +209,31 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
         // Delete all chunks
         var recordsToDelete: [CKRecord.ID] = []
-        
+
         for chunkIndex in 0..<manifest.chunkCount {
             let chunkRecordId = CKRecord.ID(
                 recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
             )
             recordsToDelete.append(chunkRecordId)
         }
-        
+
         // Delete manifest
         recordsToDelete.append(manifest.recordId)
-        
+
         // Batch delete (CloudKit allows up to 400 operations)
         let batchSize = 400
         for startIndex in stride(from: 0, to: recordsToDelete.count, by: batchSize) {
             let endIndex = min(startIndex + batchSize, recordsToDelete.count)
             let batch = Array(recordsToDelete[startIndex..<endIndex])
-            
+
             // Use modern async API to properly await deletion
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
                 let operation = CKModifyRecordsOperation(
                     recordsToSave: nil,
                     recordIDsToDelete: batch
                 )
-                
+
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
                     case .success:
@@ -239,7 +242,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
                         continuation.resume(throwing: error)
                     }
                 }
-                
+
                 database.add(operation)
             }
         }
@@ -264,7 +267,8 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
             let endIndex = min(startIndex + batchSize, recordsToDelete.count)
             let batch = Array(recordsToDelete[startIndex..<endIndex])
 
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
                 let operation = CKModifyRecordsOperation(
                     recordsToSave: nil,
                     recordIDsToDelete: batch
@@ -289,8 +293,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private func retry<T>(_ operation: () async throws -> T) async throws -> T {
         var attempt = 0
         while true {
-            do { return try await operation() }
-            catch {
+            do { return try await operation() } catch {
                 attempt += 1
                 guard attempt <= maxRetryCount else { throw error }
                 try await Task.sleep(
@@ -334,26 +337,26 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
     private func beginBackgroundExecution() {
         #if os(iOS)
-        backgroundTaskId = UIApplication.shared.beginBackgroundTask {
-            Task { @MainActor in
-                self.endBackgroundExecution()
+            backgroundTaskId = UIApplication.shared.beginBackgroundTask {
+                Task { @MainActor in
+                    self.endBackgroundExecution()
+                }
             }
-        }
         #elseif os(watchOS)
-        extendedRuntimeSession = WKExtendedRuntimeSession()
-        extendedRuntimeSession?.start()
+            extendedRuntimeSession = WKExtendedRuntimeSession()
+            extendedRuntimeSession?.start()
         #endif
     }
 
     private func endBackgroundExecution() {
         #if os(iOS)
-        if backgroundTaskId != .invalid {
-            UIApplication.shared.endBackgroundTask(backgroundTaskId)
-            backgroundTaskId = .invalid
-        }
+            if backgroundTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+                backgroundTaskId = .invalid
+            }
         #elseif os(watchOS)
-        extendedRuntimeSession?.invalidate()
-        extendedRuntimeSession = nil
+            extendedRuntimeSession?.invalidate()
+            extendedRuntimeSession = nil
         #endif
     }
 
@@ -456,7 +459,7 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         let record = try await database.record(for: recordId)
 
         guard let asset = record["data"] as? CKAsset,
-              let url = asset.fileURL
+            let url = asset.fileURL
         else {
             throw ChunkTransferError.readFailed
         }
@@ -464,28 +467,31 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         return try Data(contentsOf: url)
     }
 
-    private func fetchExistingChunkIndexes(audiobookId: UUID, expectedChunkCount: Int) async throws -> Set<Int> {
-        print("[CloudKitChunkedTransferManager] Fetching existing chunk indexes for: \(audiobookId)")
-        print("[CloudKitChunkedTransferManager] Expected chunk count: \(expectedChunkCount)")
+    private func fetchExistingChunkIndexes(audiobookId: UUID, expectedChunkCount: Int) async throws
+        -> Set<Int>
+    {
+        logger.debug("Fetching existing chunk indexes for: \(audiobookId)")
+        logger.debug("Expected chunk count: \(expectedChunkCount)")
 
         var indexes = Set<Int>()
 
         // Check each chunk individually since batch fetch seems to hang on watchOS
         // This is slower but more reliable
         for chunkIndex in 0..<expectedChunkCount {
-            let chunkRecordId = CKRecord.ID(recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)")
+            let chunkRecordId = CKRecord.ID(
+                recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)")
 
             do {
-                print("[CloudKitChunkedTransferManager] Checking chunk \(chunkIndex)...")
+                logger.debug("Checking chunk \(chunkIndex)...")
                 _ = try await database.record(for: chunkRecordId)
                 indexes.insert(chunkIndex)
-                print("[CloudKitChunkedTransferManager] ✓ Chunk \(chunkIndex) exists")
+                logger.debug("Chunk \(chunkIndex) exists")
             } catch {
-                print("[CloudKitChunkedTransferManager] ✗ Chunk \(chunkIndex) not found: \(error.localizedDescription)")
+                logger.debug("Chunk \(chunkIndex) not found: \(error.localizedDescription)")
             }
         }
 
-        print("[CloudKitChunkedTransferManager] Found \(indexes.count) of \(expectedChunkCount) chunks")
+        logger.info("Found \(indexes.count) of \(expectedChunkCount) chunks")
         return indexes
     }
 
@@ -536,9 +542,9 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 /// Represents the availability status of audiobook chunks in CloudKit
 /// Used to determine if chunks can be uploaded (iPhone) or downloaded (Watch)
 enum ChunkAvailability: Equatable {
-    case notUploaded           // No chunks in CloudKit - Watch cannot download
+    case notUploaded  // No chunks in CloudKit - Watch cannot download
     case partiallyUploaded(existingChunks: Set<Int>)  // Some chunks exist - can resume upload
-    case fullyUploaded         // All chunks in CloudKit - Watch can download
+    case fullyUploaded  // All chunks in CloudKit - Watch can download
 }
 
 // MARK: - Supporting Types
@@ -557,16 +563,16 @@ struct ChunkTransferProgress: Equatable {
     var completedChunks: Int
     var bytesTransferred: Int64 = 0
     let isUploading: Bool
-    
+
     var progress: Double {
         guard totalChunks > 0 else { return 0 }
         return Double(completedChunks) / Double(totalChunks)
     }
-    
+
     var progressPercentage: Int {
         Int(progress * 100)
     }
-    
+
     var progressText: String {
         let transferred = ByteCountFormatter.string(
             fromByteCount: bytesTransferred,
@@ -578,7 +584,7 @@ struct ChunkTransferProgress: Equatable {
         )
         return "\(transferred) / \(total)"
     }
-    
+
     var statusText: String {
         if isUploading {
             return "Uploading chunk \(completedChunks + 1) of \(totalChunks)"
@@ -597,7 +603,7 @@ enum ChunkTransferError: LocalizedError {
     case incompleteUpload
     case networkError
     static let alreadyUploaded = ChunkTransferError.incompleteUpload
-    
+
     var errorDescription: String? {
         switch self {
         case .fileNotAvailable:
@@ -617,4 +623,3 @@ enum ChunkTransferError: LocalizedError {
         }
     }
 }
-

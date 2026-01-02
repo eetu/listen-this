@@ -5,21 +5,22 @@
 //  Manage CloudKit storage and uploaded audiobooks
 //
 
-import SwiftUI
-import SwiftData
 import CloudKit
+import OSLog
+import SwiftData
+import SwiftUI
 
 struct CloudKitStorageView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var audiobooks: [Audiobook]
-    
+
     @State private var transferManager: CloudKitChunkedTransferManager?
     @State private var uploadedAudiobooks: [UploadedAudiobook] = []
     @State private var isLoading = false
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var totalStorageUsed: Int64 = 0
-    
+
     var body: some View {
         List {
             Section {
@@ -30,11 +31,14 @@ struct CloudKitStorageView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text(ByteCountFormatter.string(fromByteCount: totalStorageUsed, countStyle: .file))
-                            .foregroundStyle(.secondary)
+                        Text(
+                            ByteCountFormatter.string(
+                                fromByteCount: totalStorageUsed, countStyle: .file)
+                        )
+                        .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 HStack {
                     Text("Free Tier")
                     Spacer()
@@ -44,9 +48,11 @@ struct CloudKitStorageView: View {
             } header: {
                 Text("CloudKit Storage")
             } footer: {
-                Text("CloudKit provides 1GB free storage per user. Additional storage available with iCloud+ subscription.")
+                Text(
+                    "CloudKit provides 1GB free storage per user. Additional storage available with iCloud+ subscription."
+                )
             }
-            
+
             Section {
                 if uploadedAudiobooks.isEmpty && !isLoading {
                     Text("No audiobooks uploaded to CloudKit")
@@ -64,9 +70,11 @@ struct CloudKitStorageView: View {
             } header: {
                 Text("Uploaded Audiobooks")
             } footer: {
-                Text("These audiobooks are uploaded to CloudKit and can be downloaded on your Apple Watch.")
+                Text(
+                    "These audiobooks are uploaded to CloudKit and can be downloaded on your Apple Watch."
+                )
             }
-            
+
             Section {
                 Button("Refresh Storage Info") {
                     Task {
@@ -74,7 +82,7 @@ struct CloudKitStorageView: View {
                     }
                 }
                 .disabled(isLoading)
-                
+
                 Button("Clear All CloudKit Data", role: .destructive) {
                     Task {
                         await clearAllData()
@@ -86,7 +94,7 @@ struct CloudKitStorageView: View {
         .navigationTitle("CloudKit Storage")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showingError) {
-            Button("OK") { }
+            Button("OK") {}
         } message: {
             Text(errorMessage)
         }
@@ -95,27 +103,27 @@ struct CloudKitStorageView: View {
             await loadStorageInfo()
         }
     }
-    
+
     // MARK: - Actions
-    
+
     private func loadStorageInfo() async {
         isLoading = true
-        
+
         do {
             // Query CloudKit for all manifest records
             let container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
             let database = container.privateCloudDatabase
-            
+
             // Create query filtering by isComplete field (must be queryable in CloudKit schema)
             // Use isComplete == 1 because we store it as Int64 (0 = false, 1 = true)
             let query = CKQuery(
                 recordType: "AudiobookManifest",
                 predicate: NSPredicate(format: "isComplete == %@", NSNumber(value: 1))
             )
-            
+
             // Sort by upload date (newest first)
             query.sortDescriptors = [NSSortDescriptor(key: "uploadDate", ascending: false)]
-            
+
             // Use the correct async API signature
             let (matchResults, _) = try await database.records(
                 matching: query,
@@ -123,55 +131,58 @@ struct CloudKitStorageView: View {
                 desiredKeys: ["audiobookId", "title", "fileSize", "uploadDate", "isComplete"],
                 resultsLimit: 100
             )
-            
+
             var uploads: [UploadedAudiobook] = []
             var totalSize: Int64 = 0
-            
+
             for (_, result) in matchResults {
                 switch result {
                 case .success(let record):
                     // Extract values - query already filtered for isComplete == 1
                     if let audiobookId = record["audiobookId"] as? UUID,
-                       let title = record["title"] as? String,
-                       let fileSize = record["fileSize"] as? Int64,
-                       let uploadDate = record["uploadDate"] as? Date {
-                        
-                        uploads.append(UploadedAudiobook(
-                            audiobookId: audiobookId,
-                            title: title,
-                            fileSize: fileSize,
-                            uploadDate: uploadDate
-                        ))
-                        
+                        let title = record["title"] as? String,
+                        let fileSize = record["fileSize"] as? Int64,
+                        let uploadDate = record["uploadDate"] as? Date
+                    {
+
+                        uploads.append(
+                            UploadedAudiobook(
+                                audiobookId: audiobookId,
+                                title: title,
+                                fileSize: fileSize,
+                                uploadDate: uploadDate
+                            ))
+
                         totalSize += fileSize
                     }
                 case .failure(let error):
-                    print("❌ Failed to load record: \(error)")
+                    AppLogger.cloudKit.error("Failed to load record: \(error.localizedDescription)")
                 }
             }
-            
+
             await MainActor.run {
                 // Already sorted by CloudKit query (newest first)
                 uploadedAudiobooks = uploads
                 totalStorageUsed = totalSize
                 isLoading = false
-                
-                print("✅ Loaded \(uploads.count) audiobooks from CloudKit")
-                print("📊 Total storage used: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))")
+
+                AppLogger.cloudKit.info("Loaded \(uploads.count) audiobooks from CloudKit")
+                AppLogger.cloudKit.debug(
+                    "Total storage used: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))"
+                )
             }
-            
+
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to load storage info: \(error.localizedDescription)"
                 showingError = true
                 isLoading = false
-                
-                print("❌ CloudKit query error: \(error)")
-                isLoading = false
+
+                AppLogger.cloudKit.error("CloudKit query error: \(error.localizedDescription)")
             }
         }
     }
-    
+
     private func deleteFromCloud(_ audiobookId: UUID) async {
         guard let manager = transferManager else { return }
 
@@ -192,20 +203,21 @@ struct CloudKitStorageView: View {
             }
         }
     }
-    
+
     private func clearAllData() async {
         guard let manager = transferManager else { return }
-        
+
         isLoading = true
-        
+
         for uploaded in uploadedAudiobooks {
             do {
                 try await manager.deleteAudiobookFromCloud(audiobookId: uploaded.audiobookId)
             } catch {
-                print("Failed to delete \(uploaded.title): \(error)")
+                AppLogger.cloudKit.error(
+                    "Failed to delete \(uploaded.title): \(error.localizedDescription)")
             }
         }
-        
+
         await MainActor.run {
             uploadedAudiobooks = []
             totalStorageUsed = 0
@@ -221,29 +233,29 @@ struct UploadedAudiobook: Identifiable {
     let title: String
     let fileSize: Int64
     let uploadDate: Date
-    
+
     var id: UUID { audiobookId }
 }
 
 struct UploadedAudiobookRow: View {
     let uploaded: UploadedAudiobook
     let onDelete: () -> Void
-    
+
     @State private var showingDeleteConfirm = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(uploaded.title)
                 .font(.headline)
-            
+
             HStack {
                 Text(ByteCountFormatter.string(fromByteCount: uploaded.fileSize, countStyle: .file))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                
+
                 Text("•")
                     .foregroundStyle(.secondary)
-                
+
                 Text(uploaded.uploadDate, style: .relative)
                     .font(.caption)
                     .foregroundStyle(.secondary)

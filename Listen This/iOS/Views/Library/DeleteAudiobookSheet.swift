@@ -5,8 +5,9 @@
 //  Sheet for deleting audiobooks with options for local or cloud deletion
 //
 
-import SwiftUI
+import OSLog
 import SwiftData
+import SwiftUI
 
 struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: View {
     let audiobook: Audiobook
@@ -103,8 +104,10 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                     Text("Delete \"\(audiobook.title)\"?")
                 } footer: {
                     if isOnWatch {
-                        Text("Audiobook is also on your Apple Watch. Deleting everywhere will remove it from Watch too.")
-                            .font(.caption2)
+                        Text(
+                            "Audiobook is also on your Apple Watch. Deleting everywhere will remove it from Watch too."
+                        )
+                        .font(.caption2)
                     }
                 }
 
@@ -156,7 +159,7 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
             onDismiss()
 
         } catch {
-            print("[DeleteAudiobookSheet] Deletion failed: \(error)")
+            AppLogger.general.error("Deletion failed: \(error.localizedDescription)")
             deleteErrorMessage = error.localizedDescription
             showDeleteError = true
             isDeleting = false

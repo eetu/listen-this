@@ -5,11 +5,12 @@
 //  Created by Eetu Sutinen on 13.12.2025.
 //
 
-import SwiftUI
+import OSLog
 import SwiftData
+import SwiftUI
 
 #if os(iOS)
-import WatchConnectivity
+    import WatchConnectivity
 #endif
 
 @main
@@ -19,12 +20,12 @@ struct Listen_ThisApp: App {
     let modelContainer: ModelContainer
 
     #if os(iOS)
-    // Watch Connectivity Manager
-    @State private var watchConnectivity = iOSWatchConnectivityManager.shared
+        // Watch Connectivity Manager
+        @State private var watchConnectivity = iOSWatchConnectivityManager.shared
     #endif
 
     @Environment(\.scenePhase) private var scenePhase
-    
+
     init() {
         do {
             // All models in a single schema with CloudKit sync
@@ -36,7 +37,7 @@ struct Listen_ThisApp: App {
                 Chapter.self,
                 PlaybackSession.self,
                 CacheEntry.self,
-                UserSettings.self
+                UserSettings.self,
             ])
 
             let modelConfiguration = ModelConfiguration(
@@ -54,38 +55,42 @@ struct Listen_ThisApp: App {
 
         } catch {
             // Provide more helpful error message
-            print("ModelContainer initialization error: \(error)")
-            print("Error details: \(error.localizedDescription)")
+            AppLogger.general.error(
+                "ModelContainer initialization error: \(error.localizedDescription)")
             fatalError("Could not initialize ModelContainer. See console for details.")
         }
     }
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 #if os(iOS)
-                .environment(watchConnectivity)
+                    .environment(watchConnectivity)
                 #endif
                 .onAppear {
                     // Configure SettingsManager with model context
                     SettingsManager.shared.configure(modelContext: modelContainer.mainContext)
 
                     #if os(iOS)
-                    // Configure Watch Connectivity with model context
-                    watchConnectivity.configure(modelContext: modelContainer.mainContext)
-                    
-                    // Check for outstanding transfers
-                    watchConnectivity.checkOutstandingTransfers()
-                    
-                    if let session = WCSession.default as WCSession?, session.activationState == .activated {
-                        let outstanding = session.outstandingFileTransfers
-                        print("[iOS App] Outstanding file transfers: \(outstanding.count)")
-                        for transfer in outstanding {
-                            if let title = transfer.file.metadata?["title"] as? String {
-                                print("   - \(title) (transferring: \(transfer.isTransferring))")
+                        // Configure Watch Connectivity with model context
+                        watchConnectivity.configure(modelContext: modelContainer.mainContext)
+
+                        // Check for outstanding transfers
+                        watchConnectivity.checkOutstandingTransfers()
+
+                        if let session = WCSession.default as WCSession?,
+                            session.activationState == .activated
+                        {
+                            let outstanding = session.outstandingFileTransfers
+                            AppLogger.watchConnectivity.debug(
+                                "Outstanding file transfers: \(outstanding.count)")
+                            for transfer in outstanding {
+                                if let title = transfer.file.metadata?["title"] as? String {
+                                    AppLogger.watchConnectivity.debug(
+                                        "- \(title) (transferring: \(transfer.isTransferring))")
+                                }
                             }
                         }
-                    }
                     #endif
                 }
         }
@@ -100,31 +105,32 @@ struct Listen_ThisApp: App {
     private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
         if newPhase == .background {
             // App entering background - save playback state
-            print("[iOS App] Entering background, saving playback state")
+            AppLogger.general.debug("Entering background, saving playback state")
 
             Task { @MainActor in
                 // Save context to ensure latest data is persisted
                 try? modelContainer.mainContext.save()
 
                 #if os(iOS)
-                // If iPhone becomes reachable later, sync will happen automatically
-                // via sessionReachabilityDidChange
-                if watchConnectivity.isReachable {
-                    print("[iOS App] iPhone is reachable, will sync on reconnection")
-                }
+                    // If iPhone becomes reachable later, sync will happen automatically
+                    // via sessionReachabilityDidChange
+                    if watchConnectivity.isReachable {
+                        AppLogger.watchConnectivity.debug(
+                            "iPhone is reachable, will sync on reconnection")
+                    }
                 #endif
             }
         } else if newPhase == .active && oldPhase == .background {
             // App becoming active from background
-            print("[iOS App] Becoming active from background")
+            AppLogger.general.debug("Becoming active from background")
 
             #if os(iOS)
-            // Check if Watch Connectivity became reachable while we were in background
-            if watchConnectivity.isReachable {
-                print("[iOS App] iPhone is reachable after background, sync will trigger automatically")
-            }
+                // Check if Watch Connectivity became reachable while we were in background
+                if watchConnectivity.isReachable {
+                    AppLogger.watchConnectivity.debug(
+                        "iPhone is reachable after background, sync will trigger automatically")
+                }
             #endif
         }
     }
 }
-

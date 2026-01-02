@@ -5,8 +5,9 @@
 //  Settings view for local cache management
 //
 
-import SwiftUI
+import OSLog
 import SwiftData
+import SwiftUI
 
 struct StorageSettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -50,22 +51,30 @@ struct StorageSettingsView: View {
             } footer: {
                 if !isLoading {
                     if cachedAudiobooks.isEmpty {
-                        Text("No audiobooks cached locally. Play an audiobook to download it for offline listening.")
+                        Text(
+                            "No audiobooks cached locally. Play an audiobook to download it for offline listening."
+                        )
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached locally for offline playback.")
+                            Text(
+                                "\(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? "" : "s") cached locally for offline playback."
+                            )
 
                             // Warning if over limit but can't clean up
                             if isOverLimit && !canCleanup {
-                                Text("Cache is over limit, but all \(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? " is" : "s are") protected by 'Keep Recent' setting. Increase the cache limit or reduce 'Keep Recent Audiobooks' count to allow cleanup.")
-                                    .foregroundStyle(.orange)
-                                    .font(.caption)
-                                    .padding(.top, 4)
+                                Text(
+                                    "Cache is over limit, but all \(cachedAudiobooks.count) audiobook\(cachedAudiobooks.count == 1 ? " is" : "s are") protected by 'Keep Recent' setting. Increase the cache limit or reduce 'Keep Recent Audiobooks' count to allow cleanup."
+                                )
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                                .padding(.top, 4)
                             } else if isOverLimit {
-                                Text("Cache is over limit. Auto cleanup will remove oldest audiobooks when playing new content, keeping the \(settings.keepRecentCount) most recent.")
-                                    .foregroundStyle(.blue)
-                                    .font(.caption)
-                                    .padding(.top, 4)
+                                Text(
+                                    "Cache is over limit. Auto cleanup will remove oldest audiobooks when playing new content, keeping the \(settings.keepRecentCount) most recent."
+                                )
+                                .foregroundStyle(.blue)
+                                .font(.caption)
+                                .padding(.top, 4)
                             }
                         }
                     }
@@ -92,7 +101,9 @@ struct StorageSettingsView: View {
             } header: {
                 Text("Cache Settings")
             } footer: {
-                Text("When auto cleanup is enabled, older cached audiobooks will be automatically removed when the cache exceeds the limit, keeping the most recently played ones.")
+                Text(
+                    "When auto cleanup is enabled, older cached audiobooks will be automatically removed when the cache exceeds the limit, keeping the most recently played ones."
+                )
             }
 
             // MARK: - Cached Audiobooks
@@ -120,7 +131,9 @@ struct StorageSettingsView: View {
                 } header: {
                     Text("Cached Audiobooks")
                 } footer: {
-                    Text("Swipe to delete individual cached files. The audiobook will remain in your library.")
+                    Text(
+                        "Swipe to delete individual cached files. The audiobook will remain in your library."
+                    )
                 }
             }
 
@@ -150,7 +163,9 @@ struct StorageSettingsView: View {
             } header: {
                 Text("Actions")
             } footer: {
-                Text("Clean Up removes orphaned files and evicts old audiobooks based on your settings. Clear All removes all cached files.")
+                Text(
+                    "Clean Up removes orphaned files and evicts old audiobooks based on your settings. Clear All removes all cached files."
+                )
             }
         }
         .navigationTitle("Local Storage")
@@ -173,7 +188,9 @@ struct StorageSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove all cached audiobook files. Your library and playback progress will not be affected.")
+            Text(
+                "This will remove all cached audiobook files. Your library and playback progress will not be affected."
+            )
         }
     }
 
@@ -218,14 +235,18 @@ struct StorageSettingsView: View {
         )
 
         if let audiobooks = try? modelContext.fetch(descriptor) {
-            cachedAudiobooks = audiobooks
+            cachedAudiobooks =
+                audiobooks
                 .filter { $0.isFileCached }
                 .compactMap { audiobook -> CachedAudiobookInfo? in
                     guard let cachePath = audiobook.expectedCachePath else { return nil }
                     let cacheURL = URL(fileURLWithPath: cachePath)
 
-                    guard let attrs = try? FileManager.default.attributesOfItem(atPath: cacheURL.path),
-                          let size = attrs[.size] as? Int64 else {
+                    guard
+                        let attrs = try? FileManager.default.attributesOfItem(
+                            atPath: cacheURL.path),
+                        let size = attrs[.size] as? Int64
+                    else {
                         return nil
                     }
 
@@ -269,7 +290,7 @@ struct StorageSettingsView: View {
             try await cacheManager.evictOldCaches(keepingCount: settings.keepRecentCount)
             try await cacheManager.cleanupIfNeeded(maxSize: settings.maxCacheSizeBytes)
         } catch {
-            print("[StorageSettings] Cleanup error: \(error)")
+            AppLogger.cache.error("Cleanup error: \(error.localizedDescription)")
         }
 
         await loadCacheInfo()

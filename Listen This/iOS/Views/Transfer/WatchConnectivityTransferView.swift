@@ -6,29 +6,30 @@
 //  Uses Bluetooth/WiFi Direct for file transfer (alternative to CloudKit)
 //
 
-import SwiftUI
+import OSLog
 import SwiftData
+import SwiftUI
 
 struct WatchConnectivityTransferView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(iOSWatchConnectivityManager.self) private var connectivity
-    
+
     let audiobook: Audiobook
-    
+
     @State private var cacheManager: AudiobookCacheManager?
     @State private var isTransferring = false
     @State private var showingError = false
     @State private var errorMessage = ""
-    
+
     var activeTransfer: WatchTransferProgress? {
         connectivity.activeTransfers[audiobook.id.uuidString]
     }
-    
+
     var hasActiveTransfer: Bool {
         activeTransfer != nil
     }
-    
+
     var buttonText: String {
         if hasActiveTransfer {
             return "Transferring..."
@@ -46,20 +47,20 @@ struct WatchConnectivityTransferView: View {
             }
         }
     }
-    
+
     var buttonBackground: Color {
         (isTransferring || hasActiveTransfer) ? Color.gray.opacity(0.6) : Color.blue
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Audiobook info
                 audiobookHeader
-                
+
                 // Watch status
                 watchStatusCard
-                
+
                 // Transfer status or action
                 if let transfer = activeTransfer {
                     transferProgressCard(transfer)
@@ -79,7 +80,7 @@ struct WatchConnectivityTransferView: View {
             }
         }
         .alert("Transfer Error", isPresented: $showingError) {
-            Button("OK") { }
+            Button("OK") {}
         } message: {
             Text(errorMessage)
         }
@@ -88,13 +89,14 @@ struct WatchConnectivityTransferView: View {
             connectivity.configure(modelContext: modelContext)
         }
     }
-    
+
     // MARK: - Audiobook Header
-    
+
     private var audiobookHeader: some View {
         VStack(spacing: 16) {
             if let artworkData = audiobook.artworkData,
-               let uiImage = UIImage(data: artworkData) {
+                let uiImage = UIImage(data: artworkData)
+            {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -102,22 +104,24 @@ struct WatchConnectivityTransferView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(radius: 5)
             }
-            
+
             VStack(spacing: 8) {
                 Text(audiobook.title)
                     .font(.title2)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
-                
+
                 Text(audiobook.author)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                
+
                 if audiobook.fileSize > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "doc")
-                        Text(ByteCountFormatter.string(fromByteCount: audiobook.fileSize, countStyle: .file))
+                        Text(
+                            ByteCountFormatter.string(
+                                fromByteCount: audiobook.fileSize, countStyle: .file))
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -125,20 +129,20 @@ struct WatchConnectivityTransferView: View {
             }
         }
     }
-    
+
     // MARK: - Watch Status Card
-    
+
     private var watchStatusCard: some View {
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: connectivity.isPaired ? "applewatch" : "applewatch.slash")
                     .foregroundStyle(connectivity.isPaired ? .green : .secondary)
                     .font(.title2)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Apple Watch")
                         .font(.headline)
-                    
+
                     if connectivity.isPaired {
                         if connectivity.isReachable {
                             Label("Connected", systemImage: "checkmark.circle.fill")
@@ -155,7 +159,7 @@ struct WatchConnectivityTransferView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Spacer()
             }
             .padding()
@@ -164,9 +168,9 @@ struct WatchConnectivityTransferView: View {
             .shadow(color: .black.opacity(0.05), radius: 5)
         }
     }
-    
+
     // MARK: - Transfer Progress
-    
+
     private func transferProgressCard(_ transfer: WatchTransferProgress) -> some View {
         VStack(spacing: 16) {
             VStack(spacing: 12) {
@@ -178,7 +182,7 @@ struct WatchConnectivityTransferView: View {
                     Text(transfer.isActive ? "Transferring..." : "Transfer Complete")
                         .font(.headline)
                 }
-                
+
                 if transfer.isActive {
                     Text("Keep your Apple Watch nearby")
                         .font(.caption)
@@ -188,7 +192,7 @@ struct WatchConnectivityTransferView: View {
             .padding()
             .background(transfer.isActive ? Color.blue.opacity(0.1) : Color.green.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            
+
             if transfer.isActive {
                 Button(role: .destructive) {
                     connectivity.cancelTransfer(for: audiobook.id.uuidString)
@@ -203,10 +207,10 @@ struct WatchConnectivityTransferView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.largeTitle)
                         .foregroundStyle(.green)
-                    
+
                     Text("Transfer Complete")
                         .font(.headline)
-                    
+
                     Text("The audiobook is now available on your Apple Watch")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -216,9 +220,9 @@ struct WatchConnectivityTransferView: View {
             }
         }
     }
-    
+
     // MARK: - Transfer Action
-    
+
     private var transferActionCard: some View {
         VStack(spacing: 16) {
             if audiobook.isFileCached {
@@ -227,34 +231,46 @@ struct WatchConnectivityTransferView: View {
                         await transferAudiobook()
                     }
                 } label: {
-                    Label(buttonText, systemImage: hasActiveTransfer ? "arrow.clockwise" : "applewatch.and.arrow.forward")
-                        .font(.headline)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
+                    Label(
+                        buttonText,
+                        systemImage: hasActiveTransfer
+                            ? "arrow.clockwise" : "applewatch.and.arrow.forward"
+                    )
+                    .font(.headline)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isTransferring || hasActiveTransfer || !connectivity.isPaired || !connectivity.isWatchAppInstalled)
-                                
+                .disabled(
+                    isTransferring || hasActiveTransfer || !connectivity.isPaired
+                        || !connectivity.isWatchAppInstalled)
+
             } else {
                 Button {
                     Task {
                         await downloadAndTransfer()
                     }
                 } label: {
-                    Label(buttonText, systemImage: hasActiveTransfer ? "arrow.clockwise" : "arrow.down.circle.fill")
-                        .font(.headline)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
+                    Label(
+                        buttonText,
+                        systemImage: hasActiveTransfer
+                            ? "arrow.clockwise" : "arrow.down.circle.fill"
+                    )
+                    .font(.headline)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
                 }
-                .disabled(isTransferring || hasActiveTransfer || !connectivity.isPaired || !connectivity.isWatchAppInstalled)
+                .disabled(
+                    isTransferring || hasActiveTransfer || !connectivity.isPaired
+                        || !connectivity.isWatchAppInstalled)
             }
-            
+
             // Tips
             VStack(alignment: .leading, spacing: 8) {
                 Label("Make sure your Apple Watch is nearby", systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                
+
                 Label("Large files may take several minutes", systemImage: "clock")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -265,28 +281,29 @@ struct WatchConnectivityTransferView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
-    
+
     // MARK: - Actions
-    
+
     private func transferAudiobook() async {
         guard cacheManager != nil else { return }
-        
+
         // Prevent duplicate transfers
         if hasActiveTransfer {
-            print("⚠️ [iOS Transfer] Transfer already in progress for: \(audiobook.title)")
+            AppLogger.watchConnectivity.warning(
+                "Transfer already in progress for: \(audiobook.title)")
             return
         }
-        
+
         isTransferring = true
-        
+
         do {
             // Transfer to watch
             try await connectivity.transferAudiobook(audiobook)
-            
+
             await MainActor.run {
                 isTransferring = false
             }
-            
+
         } catch let error as WatchTransferError {
             await MainActor.run {
                 errorMessage = error.localizedDescription
@@ -301,29 +318,30 @@ struct WatchConnectivityTransferView: View {
             }
         }
     }
-    
+
     private func downloadAndTransfer() async {
         guard let cacheManager = cacheManager else { return }
-        
+
         // Prevent duplicate transfers
         if hasActiveTransfer {
-            print("⚠️ [iOS Transfer] Transfer already in progress for: \(audiobook.title)")
+            AppLogger.watchConnectivity.warning(
+                "Transfer already in progress for: \(audiobook.title)")
             return
         }
-        
+
         isTransferring = true
-        
+
         do {
             // First download from iCloud
             _ = try await audiobook.downloadAndCache(using: cacheManager)
-            
+
             // Then transfer to watch
             try await connectivity.transferAudiobook(audiobook)
-            
+
             await MainActor.run {
                 isTransferring = false
             }
-            
+
         } catch let error as WatchTransferError {
             await MainActor.run {
                 errorMessage = error.localizedDescription
