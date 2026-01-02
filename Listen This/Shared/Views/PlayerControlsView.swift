@@ -72,11 +72,13 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         VStack(spacing: 2) {
 
             #if os(watchOS)
-                ProgressView(
+                WatchProgressBar(
                     value: chapterProgress.elapsed,
-                    total: chapterProgress.duration
+                    total: chapterProgress.duration,
+                    height: 7,
+                    foregroundColor: .blue,
+                    backgroundColor: .white.opacity(0.2)
                 )
-                .controlSize(.mini)
             #endif
 
             #if os(iOS)
