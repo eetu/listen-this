@@ -1,0 +1,10 @@
+{
+  "lsp": {
+    "sourcekit-lsp": {
+      "binary": {
+        "path": "/usr/bin/sourcekit-lsp",
+        "arguments": ["--default-workspace-type", "buildServer"],
+      },
+    },
+  },
+}
