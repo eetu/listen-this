@@ -188,7 +188,7 @@ final class AudiobookCacheManager: CacheManager {
         guard CacheSettings.shared.autoCleanupEnabled else { return }
 
         let limit = maxSize ?? CacheSettings.shared.maxCacheSizeBytes
-        var currentSize = getCacheSize()
+        let currentSize = getCacheSize()
 
         // If under limit, nothing to do
         if currentSize <= limit {
