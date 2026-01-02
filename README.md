@@ -193,11 +193,28 @@ Add these capabilities in Xcode:
 
 ### 4. Build and Run
 
+```bash
+# Clean Build Folder: Cmd+Shift+K
+# Build: Cmd+B
+# Run: Cmd+R
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This"
 ```
-Clean Build Folder: Cmd+Shift+K
-Build: Cmd+B
-Run: Cmd+R
+
+### 5. Editor Setup (Optional)
+
+For LSP support in editors like Zed, VS Code, or Neovim:
+
+**Install xcode-build-server:**
+```bash
+brew install xcode-build-server
 ```
+
+**Generate buildServer.json:**
+```bash
+xcode-build-server config -project "Listen This.xcodeproj" -scheme "Listen This"
+```
+
+This creates a `buildServer.json` file that enables SourceKit LSP to provide code completion, type checking, and navigation in your editor. The file contains machine-specific paths and is not committed to git - each developer needs to generate it on their machine.
 
 ## Current Features
 
