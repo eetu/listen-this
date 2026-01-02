@@ -63,3 +63,29 @@ Cross-device sync uses timestamp comparison in `AudioPlayerService.savePlaybackS
 - All models sync via CloudKit Private Database
 - `PlaybackSession.lastPlayed` is key field for sync conflict resolution
 - Cache state is device-local (not synced)
+
+## Xcode & Build Configuration
+
+### Project Files
+- **Xcode Project**: `Listen This.xcodeproj`
+- **Main Scheme**: `Listen This`
+- **Test Target**: `Listen This AppTests`
+- **Watch Target**: `Listen This Watch App`
+
+### Build Commands
+```bash
+# Build project
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This"
+
+# Run tests
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
+
+# Clean build
+xcodebuild clean -project "Listen This.xcodeproj" -scheme "Listen This"
+```
+
+### LSP Setup (for non-Xcode editors)
+- Requires `xcode-build-server` (install via Homebrew)
+- Generate config: `xcode-build-server config -project "Listen This.xcodeproj" -scheme "Listen This"`
+- Creates `buildServer.json` (not committed to git - contains machine-specific paths)
+- Enables SourceKit LSP in editors like Zed, VS Code, Neovim
