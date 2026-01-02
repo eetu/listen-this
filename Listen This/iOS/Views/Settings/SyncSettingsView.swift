@@ -11,25 +11,21 @@ import CloudKit
 
 struct SyncSettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var settings = SyncSettings.shared
+    @State private var settings = SettingsManager.shared
     @State private var iCloudStatus: CKAccountStatus?
     @State private var isCheckingStatus = true
     @State private var isSyncing = false
     @State private var syncError: String?
     @State private var audiobookCount = 0
     @State private var sessionCount = 0
+    @State private var lastSyncDate: Date?
 
     var body: some View {
         Form {
             // MARK: - iCloud Status
             Section {
                 HStack {
-                    Label {
-                        Text("iCloud Account")
-                    } icon: {
-                        Image(systemName: statusIcon)
-                            .foregroundStyle(statusColor)
-                    }
+                    Text("iCloud Account")
 
                     Spacer()
 
@@ -44,7 +40,7 @@ struct SyncSettingsView: View {
                 HStack {
                     Text("Last Sync")
                     Spacer()
-                    Text(settings.formattedLastSync())
+                    Text(formattedLastSync)
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -66,7 +62,7 @@ struct SyncSettingsView: View {
             } header: {
                 Text("Sync Options")
             } footer: {
-                Text("When enabled, your library and playback progress will sync across all your devices signed into the same iCloud account.")
+                Text("When enabled, your library, settings, and playback progress will sync across all your devices signed into the same iCloud account.")
             }
 
             // MARK: - Sync Data
@@ -134,6 +130,12 @@ struct SyncSettingsView: View {
                     )
 
                     SyncInfoRow(
+                        icon: "gearshape.2",
+                        title: "Settings Sync",
+                        description: "Playback preferences sync across all your devices"
+                    )
+
+                    SyncInfoRow(
                         icon: "clock.arrow.circlepath",
                         title: "Conflict Resolution",
                         description: "Most recent playback position wins when syncing between devices"
@@ -166,6 +168,15 @@ struct SyncSettingsView: View {
 
     private var isICloudAvailable: Bool {
         iCloudStatus == .available
+    }
+
+    private var formattedLastSync: String {
+        guard let date = lastSyncDate else {
+            return "Never"
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private var statusIcon: String {
@@ -239,6 +250,9 @@ struct SyncSettingsView: View {
 
         audiobookCount = (try? modelContext.fetchCount(audiobookDescriptor)) ?? 0
         sessionCount = (try? modelContext.fetchCount(sessionDescriptor)) ?? 0
+
+        // Get last modified from settings as proxy for last sync
+        lastSyncDate = settings.settings?.lastModified
     }
 
     @MainActor
@@ -251,8 +265,8 @@ struct SyncSettingsView: View {
             // to ensure pending changes are pushed
             try modelContext.save()
 
-            // Mark sync as completed
-            settings.markSyncCompleted()
+            // Update last sync display
+            lastSyncDate = Date()
 
             // Reload stats
             await loadSyncStats()
