@@ -41,10 +41,10 @@ struct WatchPlayerView: View {
 
             VStack(spacing: 0) {
                 if audiobook.isFileCached {
-                    if let playerService, let sortedChapters {
+                    if let playerService {
                         PlayerControlsView(
                             player: playerService,
-                            chapters: sortedChapters,
+                            audiobook: audiobook,
                             showsChapterSkipButtons: false,
                             volume: $currentVolume
                         )

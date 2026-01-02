@@ -4,12 +4,13 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - View
 
 struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     @Bindable var player: Player
-    let chapters: [Chapter]
+    let audiobook: Audiobook
 
     /// Feature flags
     let showsChapterSkipButtons: Bool
@@ -23,7 +24,14 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     /// Playback settings
     @State private var settings = SettingsManager.shared
 
+    /// Progress color extracted from artwork
+    @State private var progressColor: Color = .blue
+
     // MARK: - Computed
+
+    private var chapters: [Chapter] {
+        audiobook.chapters?.sorted(by: { $0.index < $1.index }) ?? []
+    }
 
     private var currentChapter: Chapter? {
         guard
@@ -64,6 +72,22 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
             }
         }
         .padding(.top, 32)
+        .task(id: audiobook.id) {
+            extractProgressColor()
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func extractProgressColor() {
+        guard let artworkData = audiobook.artworkData,
+            let image = UIImage(data: artworkData),
+            let dominantColor = image.dominantColor()
+        else {
+            progressColor = .blue
+            return
+        }
+        progressColor = dominantColor
     }
 
     // MARK: - Progress
@@ -76,8 +100,8 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     value: chapterProgress.elapsed,
                     total: chapterProgress.duration,
                     height: 7,
-                    foregroundColor: .blue,
-                    backgroundColor: .white.opacity(0.2)
+                    foregroundColor: progressColor,
+                    backgroundColor: Color.white.opacity(0.3)
                 )
             #endif
 
@@ -94,6 +118,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     ),
                     in: 0...max(chapterProgress.duration, 0.01)
                 )
+                .tint(progressColor)
             #endif
 
             HStack {
@@ -285,7 +310,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 duration: 510,
                 currentChapterIndex: 1
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: false,
             volume: $volume
         )
@@ -300,7 +325,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 duration: 510,
                 currentChapterIndex: 1
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: true
         )
         .padding()
@@ -317,7 +342,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 duration: 510,
                 currentChapterIndex: 0
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: false,
             volume: $volume
         )
@@ -332,7 +357,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 duration: 510,
                 currentChapterIndex: 0
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: true
         )
         .padding()
@@ -356,7 +381,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     ]
                 )
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: false,
             volume: $volume
         )
@@ -378,7 +403,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     ]
                 )
             ),
-            chapters: PreviewData.chapters,
+            audiobook: PreviewData.audiobook,
             showsChapterSkipButtons: false
         )
         .padding()
