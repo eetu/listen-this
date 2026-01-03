@@ -2,8 +2,6 @@
 //  Listen_ThisApp.swift
 //  Listen This
 //
-//  Created by Eetu Sutinen on 13.12.2025.
-//
 
 import OSLog
 import SwiftData

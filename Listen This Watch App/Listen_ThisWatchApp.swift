@@ -2,13 +2,12 @@
 //  Listen_ThisApp.swift
 //  Listen This Watch App
 //
-//  Created by Eetu Sutinen on 14.12.2025.
-//
 
-import SwiftUI
-import SwiftData
-import WatchConnectivity
 import Combine
+import SwiftData
+import SwiftUI
+import WatchConnectivity
+internal import os
 
 // Disambiguate WatchConnectivityManager for Watch target
 typealias WatchManager = WatchConnectivityManager
@@ -23,7 +22,7 @@ struct Listen_ThisWatchApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     let modelContainer: ModelContainer
-    
+
     init() {
         do {
             // All models in a single schema with CloudKit sync
@@ -35,7 +34,7 @@ struct Listen_ThisWatchApp: App {
                 Chapter.self,
                 PlaybackSession.self,
                 CacheEntry.self,
-                UserSettings.self
+                UserSettings.self,
             ])
 
             let modelConfiguration = ModelConfiguration(
@@ -52,7 +51,7 @@ struct Listen_ThisWatchApp: App {
             fatalError("Failed to create ModelContainer: \(error)")
         }
     }
-    
+
     var body: some Scene {
         WindowGroup {
             WatchLibraryView()
@@ -63,20 +62,20 @@ struct Listen_ThisWatchApp: App {
 
                     // Configure the connectivity manager with model context
                     watchConnectivityManager.configure(modelContext: modelContainer.mainContext)
-                    
+
                     // Check for any ongoing or pending transfers
                     watchConnectivityManager.checkPendingTransfers()
-                    
+
                     // Perform initial cleanup of orphaned caches
                     Task {
                         await performOrphanedCacheCleanup()
                     }
-                                        
+
                     // Start periodic transfer status logging
                     startTransferMonitoring()
-                    
+
                     // Start periodic orphaned cache cleanup (every 5 minutes)
-                    startPeriodicCleanup()                    
+                    startPeriodicCleanup()
                 }
                 .onDisappear {
                     stopTransferMonitoring()
@@ -89,25 +88,25 @@ struct Listen_ThisWatchApp: App {
             handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
         }
     }
-    
+
     // MARK: - Transfer Monitoring
-    
+
     private func startTransferMonitoring() {
         // Log transfer status every 10 seconds
         transferCheckTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
-                _ = watchConnectivityManager.activeTransfers.count                
+                _ = watchConnectivityManager.activeTransfers.count
             }
         }
     }
-    
+
     private func stopTransferMonitoring() {
         transferCheckTimer?.invalidate()
         transferCheckTimer = nil
     }
-    
+
     // MARK: - Orphaned Cache Cleanup
-    
+
     private func startPeriodicCleanup() {
         // Clean up orphaned caches every 5 minutes
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { _ in
@@ -116,25 +115,25 @@ struct Listen_ThisWatchApp: App {
             }
         }
     }
-    
+
     private func stopPeriodicCleanup() {
         cleanupTimer?.invalidate()
         cleanupTimer = nil
     }
-        
+
     private func stopObservingCloudKitChanges() {
         if let observer = storeRemoteChangeNotification {
             NotificationCenter.default.removeObserver(observer)
             storeRemoteChangeNotification = nil
         }
     }
-    
+
     // MARK: - Scene Phase Handling
 
     private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
         if newPhase == .background {
             // App entering background - save playback state and sync
-            print("[WatchApp] Entering background, saving playback state")
+            AppLogger.general.info("[WatchApp] Entering background, saving playback state")
 
             Task { @MainActor in
                 // Save context to ensure latest data is persisted
@@ -143,16 +142,19 @@ struct Listen_ThisWatchApp: App {
                 // If Watch becomes reachable later, sync will happen automatically
                 // via sessionReachabilityDidChange
                 if watchConnectivityManager.isReachable {
-                    print("[WatchApp] Watch is reachable, will sync on reconnection")
+                    AppLogger.general.info(
+                        "[WatchApp] Watch is reachable, will sync on reconnection")
                 }
             }
         } else if newPhase == .active && oldPhase == .background {
             // App becoming active from background
-            print("[WatchApp] Becoming active from background")
+            AppLogger.general.info("[WatchApp] Becoming active from background")
 
             // Check if Watch Connectivity became reachable while we were in background
             if watchConnectivityManager.isReachable {
-                print("[WatchApp] Watch is reachable after background, sync will trigger automatically")
+                AppLogger.general.info(
+                    "[WatchApp] Watch is reachable after background, sync will trigger automatically"
+                )
             }
         }
     }
@@ -161,17 +163,17 @@ struct Listen_ThisWatchApp: App {
     /// This handles cases where the audiobook was deleted from iPhone while Watch was offline
     @MainActor
     private func performOrphanedCacheCleanup() async {
-        print("🧹 [WatchApp] Starting orphaned cache cleanup...")
-        
+        AppLogger.cache.info("[WatchApp] Starting orphaned cache cleanup...")
+
         let context = modelContainer.mainContext
-        
+
         // Get all audiobook IDs currently in database
         let descriptor = FetchDescriptor<Audiobook>()
         guard let audiobooks = try? context.fetch(descriptor) else {
-            print("⚠️ [WatchApp] Failed to fetch audiobooks")
+            AppLogger.cache.warning("[WatchApp] Failed to fetch audiobooks")
             return
         }
-        
+
         // Build a set of known filenames (for faster lookup)
         var knownFilenames = Set<String>()
         for audiobook in audiobooks {
@@ -187,17 +189,19 @@ struct Listen_ThisWatchApp: App {
         )[0].appendingPathComponent("Audiobooks")
 
         guard FileManager.default.fileExists(atPath: cacheDir.path) else {
-            print("✅ [WatchApp] No cache directory found, nothing to clean")
+            AppLogger.cache.info("[WatchApp] No cache directory found, nothing to clean")
             return
         }
 
         // Get all cached files
-        guard let cachedFiles = try? FileManager.default.contentsOfDirectory(
-            at: cacheDir,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            print("⚠️ [WatchApp] Failed to read cache directory")
+        guard
+            let cachedFiles = try? FileManager.default.contentsOfDirectory(
+                at: cacheDir,
+                includingPropertiesForKeys: [.fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            AppLogger.cache.warning("[WatchApp] Failed to read cache directory")
             return
         }
 
@@ -213,19 +217,22 @@ struct Listen_ThisWatchApp: App {
                 // Orphaned cache file - delete it
                 do {
                     // Get file size before deleting
-                    if let fileSize = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64 {
+                    if let fileSize = try? FileManager.default.attributesOfItem(
+                        atPath: fileURL.path)[.size] as? Int64
+                    {
                         freedSpace += fileSize
                     }
-                    
+
                     try FileManager.default.removeItem(at: fileURL)
                     removedCount += 1
-                    print("🗑️ [WatchApp] Removed orphaned cache: \(filename)")
+                    AppLogger.cache.info("[WatchApp] Removed orphaned cache: \(filename)")
                 } catch {
-                    print("⚠️ [WatchApp] Failed to remove orphaned cache \(filename): \(error)")
+                    AppLogger.cache.warning(
+                        "[WatchApp] Failed to remove orphaned cache \(filename): \(error)")
                 }
             }
         }
-        
+
         // Also clean up orphaned CacheEntry records in database
         let cacheEntryDescriptor = FetchDescriptor<CacheEntry>()
         if let cacheEntries = try? context.fetch(cacheEntryDescriptor) {
@@ -233,21 +240,24 @@ struct Listen_ThisWatchApp: App {
                 // If the audiobook no longer exists, delete the cache entry
                 if entry.audiobook == nil {
                     context.delete(entry)
-                    print("🗑️ [WatchApp] Removed orphaned CacheEntry: \(entry.filePath)")
+                    AppLogger.cache.info(
+                        "[WatchApp] Removed orphaned CacheEntry: \(entry.filePath)")
                 }
             }
-            
+
             try? context.save()
         }
-        
+
         if removedCount > 0 {
             let freedSpaceMB = Double(freedSpace) / 1_000_000.0
-            print("✅ [WatchApp] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB")
-            
+            AppLogger.cache.info(
+                "[WatchApp] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB"
+            )
+
             // Update the cached book list sent to iPhone
             watchConnectivityManager.sendCachedAudiobookList()
         } else {
-            print("✅ [WatchApp] No orphaned caches found")
+            AppLogger.cache.info("[WatchApp] No orphaned caches found")
         }
     }
 }

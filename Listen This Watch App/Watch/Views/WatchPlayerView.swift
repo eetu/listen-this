@@ -2,13 +2,11 @@
 //  WatchPlayerView.swift
 //  Listen This Watch App
 //
-//  Created by Eetu Sutinen on 18.12.2025.
-//
 
-import SwiftUI
-import SwiftData
 import AVFoundation
 import MediaPlayer
+import SwiftData
+import SwiftUI
 import WatchKit
 
 struct WatchPlayerView: View {
@@ -43,10 +41,10 @@ struct WatchPlayerView: View {
 
             VStack(spacing: 0) {
                 if audiobook.isFileCached {
-                    if let playerService, let sortedChapters {
+                    if let playerService {
                         PlayerControlsView(
                             player: playerService,
-                            chapters: sortedChapters,
+                            audiobook: audiobook,
                             showsChapterSkipButtons: false,
                             volume: $currentVolume
                         )
@@ -68,7 +66,9 @@ struct WatchPlayerView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if audiobook.isFileCached {
-                    Button { showingContextMenu = true } label: {
+                    Button {
+                        showingContextMenu = true
+                    } label: {
                         Image(systemName: "ellipsis")
                     }
                 }
@@ -99,7 +99,8 @@ struct WatchPlayerView: View {
     private var backgroundArtworkView: some View {
         Group {
             if let data = audiobook.artworkData,
-               let image = UIImage(data: data) {
+                let image = UIImage(data: data)
+            {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -115,7 +116,9 @@ struct WatchPlayerView: View {
     private var bottomToolbar: some View {
         HStack {
             if sortedChapters != nil {
-                Button { showingChapterList = true } label: {
+                Button {
+                    showingChapterList = true
+                } label: {
                     Image(systemName: "list.bullet")
                         .font(.caption)
                         .foregroundStyle(.white)
@@ -382,7 +385,7 @@ struct VolumeView: WKInterfaceObjectRepresentable {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: Audiobook.self, configurations: config)
     let context = ModelContext(container)
-    
+
     let audiobook = Audiobook(
         title: "The Hobbit",
         author: "J.R.R. Tolkien",
@@ -391,7 +394,7 @@ struct VolumeView: WKInterfaceObjectRepresentable {
         fileSize: 500_000_000
     )
     context.insert(audiobook)
-    
+
     return NavigationStack {
         WatchPlayerView(audiobook: audiobook)
             .modelContainer(container)

@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import AVKit
+import SwiftData
+import SwiftUI
 
 // MARK: - Production Wrapper (for Navigation)
 
@@ -48,7 +48,6 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     @State private var showingChapters = false
     @State private var showingSpeedPicker = false
     @State private var showingSleepTimer = false
-
 
     var sortedChapters: [Chapter]? {
         audiobook.chapters?.sorted(by: { $0.index < $1.index })
@@ -127,16 +126,14 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
 
             Spacer()
 
-            if let sortedChapters {
-                PlayerControlsView(
-                    player: player,
-                    chapters: sortedChapters,
-                    showsChapterSkipButtons: true
-                )
-                .frame(maxWidth: 600)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 32)
-            }
+            PlayerControlsView(
+                player: player,
+                audiobook: audiobook,
+                showsChapterSkipButtons: true
+            )
+            .frame(maxWidth: 600)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 32)
         }
         .frame(maxWidth: .infinity)
     }
@@ -146,19 +143,25 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
         ToolbarItemGroup(placement: .bottomBar) {
             Spacer()
             HStack(spacing: 32) {
-                Button { showingChapters = true } label: {
+                Button {
+                    showingChapters = true
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "list.bullet")
                         Text("Chapters")
                     }
                 }
-                Button { showingSpeedPicker = true } label: {
+                Button {
+                    showingSpeedPicker = true
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "gauge.with.dots.needle.67percent")
                         Text("Speed")
                     }
                 }
-                Button { showingSleepTimer = true } label: {
+                Button {
+                    showingSleepTimer = true
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "moon")
                         Text("Sleep Timer")
@@ -177,13 +180,11 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             artworkView
                 .padding(.top, 8)
             Spacer()
-            if let sortedChapters {
-                PlayerControlsView(
-                    player: player,
-                    chapters: sortedChapters,
-                    showsChapterSkipButtons: true
-                )
-            }
+            PlayerControlsView(
+                player: player,
+                audiobook: audiobook,
+                showsChapterSkipButtons: true
+            )
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -192,15 +193,21 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     @ToolbarContentBuilder
     private var iPhoneToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
-            Button { showingChapters = true } label: {
+            Button {
+                showingChapters = true
+            } label: {
                 Label("Chapters", systemImage: "list.bullet")
             }
             Spacer()
-            Button { showingSpeedPicker = true } label: {
+            Button {
+                showingSpeedPicker = true
+            } label: {
                 Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
             }
             Spacer()
-            Button { showingSleepTimer = true } label: {
+            Button {
+                showingSleepTimer = true
+            } label: {
                 Label("Sleep Timer", systemImage: "moon")
             }
             .tint(player.isSleepTimerActive ? .accentColor : nil)
@@ -210,13 +217,19 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     @ToolbarContentBuilder
     private var iPhoneLandscapeToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button { showingChapters = true } label: {
+            Button {
+                showingChapters = true
+            } label: {
                 Label("Chapters", systemImage: "list.bullet")
             }
-            Button { showingSpeedPicker = true } label: {
+            Button {
+                showingSpeedPicker = true
+            } label: {
                 Label("Speed", systemImage: "gauge.with.dots.needle.67percent")
             }
-            Button { showingSleepTimer = true } label: {
+            Button {
+                showingSleepTimer = true
+            } label: {
                 Label("Sleep Timer", systemImage: "moon")
             }
             .tint(player.isSleepTimerActive ? .accentColor : nil)
@@ -257,14 +270,12 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
                 .frame(maxWidth: .infinity)
 
                 // Bottom: Controls (no chapter title, shown above)
-                if let sortedChapters {
-                    PlayerControlsView(
-                        player: player,
-                        chapters: sortedChapters,
-                        showsChapterSkipButtons: true,
-                        showsChapterTitle: false
-                    )
-                }
+                PlayerControlsView(
+                    player: player,
+                    audiobook: audiobook,
+                    showsChapterSkipButtons: true,
+                    showsChapterTitle: false
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -292,7 +303,8 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
     private var artworkView: some View {
         Group {
             if let data = audiobook.artworkData,
-               let image = UIImage(data: data) {
+                let image = UIImage(data: data)
+            {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -376,13 +388,16 @@ private struct PlayerChaptersSheet<Player: AudioPlayer & Observable>: View {
                 }
                 .task {
                     // Scroll to current chapter after a brief delay to ensure list is rendered
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 seconds
 
                     if let chapters = audiobook.chapters,
-                       player.currentChapterIndex >= 0,
-                       player.currentChapterIndex < chapters.count {
+                        player.currentChapterIndex >= 0,
+                        player.currentChapterIndex < chapters.count
+                    {
                         let sortedChapters = chapters.sorted(by: { $0.index < $1.index })
-                        if let currentChapter = sortedChapters.first(where: { $0.index == player.currentChapterIndex }) {
+                        if let currentChapter = sortedChapters.first(where: {
+                            $0.index == player.currentChapterIndex
+                        }) {
                             withAnimation {
                                 proxy.scrollTo(currentChapter.id, anchor: .center)
                             }
@@ -443,7 +458,9 @@ private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
                             .padding(.vertical, 10)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(abs(selectedSpeed - speed) < 0.01 ? Color.accentColor : Color(.systemGray5))
+                                    .fill(
+                                        abs(selectedSpeed - speed) < 0.01
+                                            ? Color.accentColor : Color(.systemGray5))
                             )
                             .foregroundStyle(abs(selectedSpeed - speed) < 0.01 ? .white : .primary)
                     }

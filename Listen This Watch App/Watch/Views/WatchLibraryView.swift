@@ -2,12 +2,11 @@
 //  WatchLibraryView.swift
 //  Listen This Watch App
 //
-//  Created by Eetu Sutinen on 18.12.2025.
-//
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 import WatchConnectivity
+internal import os
 
 struct WatchLibraryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -42,24 +41,24 @@ struct WatchLibraryView: View {
         }
         .onAppear {
             connectivity.configure(modelContext: modelContext)
-            
+
             // Send cached book list to iPhone when view appears
             connectivity.sendCachedAudiobookList()
-            
+
             // Clean up orphaned cache files (files that no longer have audiobook entries)
             Task {
                 await cleanupOrphanedCaches()
             }
         }
     }
-    
+
     // MARK: - Orphaned Cache Cleanup
-    
+
     /// Removes cache files for audiobooks that no longer exist in the database
     /// This handles cases where the audiobook was deleted from iPhone while Watch was offline
     @MainActor
     private func cleanupOrphanedCaches() async {
-        print("🧹 [WatchLibraryView] Starting orphaned cache cleanup...")
+        AppLogger.cache.info("[WatchLibraryView] Starting orphaned cache cleanup...")
 
         // Build a set of known filenames (for faster lookup)
         var knownFilenames = Set<String>()
@@ -76,17 +75,19 @@ struct WatchLibraryView: View {
         )[0].appendingPathComponent("Audiobooks")
 
         guard FileManager.default.fileExists(atPath: cacheDir.path) else {
-            print("✅ [WatchLibraryView] No cache directory found, nothing to clean")
+            AppLogger.cache.info("[WatchLibraryView] No cache directory found, nothing to clean")
             return
         }
 
         // Get all cached files
-        guard let cachedFiles = try? FileManager.default.contentsOfDirectory(
-            at: cacheDir,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            print("⚠️ [WatchLibraryView] Failed to read cache directory")
+        guard
+            let cachedFiles = try? FileManager.default.contentsOfDirectory(
+                at: cacheDir,
+                includingPropertiesForKeys: [.fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            AppLogger.cache.warning("[WatchLibraryView] Failed to read cache directory")
             return
         }
 
@@ -102,46 +103,52 @@ struct WatchLibraryView: View {
                 // Orphaned cache file - delete it
                 do {
                     // Get file size before deleting
-                    if let fileSize = try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64 {
+                    if let fileSize = try? FileManager.default.attributesOfItem(
+                        atPath: fileURL.path)[.size] as? Int64
+                    {
                         freedSpace += fileSize
                     }
-                    
+
                     try FileManager.default.removeItem(at: fileURL)
                     removedCount += 1
-                    print("🗑️ [WatchLibraryView] Removed orphaned cache: \(filename)")
+                    AppLogger.cache.info("[WatchLibraryView] Removed orphaned cache: \(filename)")
                 } catch {
-                    print("⚠️ [WatchLibraryView] Failed to remove orphaned cache \(filename): \(error)")
+                    AppLogger.cache.warning(
+                        "[WatchLibraryView] Failed to remove orphaned cache \(filename): \(error)"
+                    )
                 }
             }
         }
-        
+
         if removedCount > 0 {
             let freedSpaceMB = Double(freedSpace) / 1_000_000.0
-            print("✅ [WatchLibraryView] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB")
-            
+            AppLogger.cache.info(
+                "[WatchLibraryView] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB"
+            )
+
             // Update the cached book list sent to iPhone
             connectivity.sendCachedAudiobookList()
         } else {
-            print("✅ [WatchLibraryView] No orphaned caches found")
+            AppLogger.cache.info("[WatchLibraryView] No orphaned caches found")
         }
     }
-    
+
     // MARK: - Empty State
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             Image(systemName: "books.vertical")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            
+
             Text("No Books")
                 .font(.headline)
-            
+
             Text("Add books on your iPhone")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            
+
             if connectivity.isReachable {
                 Button {
                     connectivity.requestLibrarySync()
@@ -159,9 +166,9 @@ struct WatchLibraryView: View {
         }
         .padding()
     }
-    
+
     // MARK: - Audiobook List
-    
+
     private var audiobookList: some View {
         List {
             ForEach(audiobooks) { audiobook in
@@ -176,15 +183,18 @@ struct WatchLibraryView: View {
                     },
                     modelContext: modelContext
                 )
-                .id(audiobook.id) // Explicit ID to maintain row identity
+                .id(audiobook.id)  // Explicit ID to maintain row identity
             }
         }
-        .sheet(isPresented: .init(
-            get: { downloadOptionsAudiobookId != nil },
-            set: { if !$0 { downloadOptionsAudiobookId = nil } }
-        )) {
+        .sheet(
+            isPresented: .init(
+                get: { downloadOptionsAudiobookId != nil },
+                set: { if !$0 { downloadOptionsAudiobookId = nil } }
+            )
+        ) {
             if let id = downloadOptionsAudiobookId,
-               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                let audiobook = audiobooks.first(where: { $0.id == id })
+            {
                 DownloadOptionsSheet(
                     audiobook: audiobook,
                     onSelectCloudKit: {
@@ -198,61 +208,76 @@ struct WatchLibraryView: View {
                 )
             }
         }
-        .sheet(isPresented: .init(
-            get: { cloudKitDownloadAudiobookId != nil },
-            set: { if !$0 { cloudKitDownloadAudiobookId = nil } }
-        )) {
+        .sheet(
+            isPresented: .init(
+                get: { cloudKitDownloadAudiobookId != nil },
+                set: { if !$0 { cloudKitDownloadAudiobookId = nil } }
+            )
+        ) {
             if let id = cloudKitDownloadAudiobookId,
-               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                let audiobook = audiobooks.first(where: { $0.id == id })
+            {
                 NavigationStack {
                     CloudKitTransferView(audiobook: audiobook)
                 }
             }
         }
-        .sheet(isPresented: .init(
-            get: { bluetoothDownloadAudiobookId != nil },
-            set: { if !$0 { bluetoothDownloadAudiobookId = nil } }
-        )) {
+        .sheet(
+            isPresented: .init(
+                get: { bluetoothDownloadAudiobookId != nil },
+                set: { if !$0 { bluetoothDownloadAudiobookId = nil } }
+            )
+        ) {
             if let id = bluetoothDownloadAudiobookId,
-               let audiobook = audiobooks.first(where: { $0.id == id }) {
+                let audiobook = audiobooks.first(where: { $0.id == id })
+            {
                 NavigationStack {
                     WatchTransferStatusView(audiobook: audiobook)
                 }
             }
         }
     }
-    
+
     // MARK: - Actions
-    
+
     private func removeDownload(for audiobook: Audiobook) {
-        print("🗑️ [WatchLibraryView] Removing cache for: \(audiobook.title)")
-        print("📂 [WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
-        print("📂 [WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
-        print("📂 [WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
+        AppLogger.cache.info("[WatchLibraryView] Removing cache for: \(audiobook.title)")
+        AppLogger.cache.info(
+            "[WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
+        AppLogger.cache.info(
+            "[WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
+        AppLogger.cache.info("[WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
 
         // Remove the cache entry and file WITHOUT animation
         // Animation can cause SwiftData to have issues with the relationship updates
         if let cacheEntry = audiobook.cacheEntry {
             // Delete file at the stored path
             let storedFileURL = URL(fileURLWithPath: cacheEntry.filePath)
-            print("🗑️ [WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
+            AppLogger.cache.info(
+                "[WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
             do {
                 try FileManager.default.removeItem(at: storedFileURL)
-                print("✅ [WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
+                AppLogger.cache.info(
+                    "[WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
             } catch {
-                print("⚠️ [WatchLibraryView] File deletion failed at stored path: \(error)")
+                AppLogger.cache.warning(
+                    "[WatchLibraryView] File deletion failed at stored path: \(error)")
             }
 
             // ALSO delete file at expected cache path if different
             if let expectedPath = audiobook.expectedCachePath {
                 let expectedFileURL = URL(fileURLWithPath: expectedPath)
                 if expectedFileURL.path != storedFileURL.path {
-                    print("🗑️ [WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)")
+                    AppLogger.cache.info(
+                        "[WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)"
+                    )
                     do {
                         try FileManager.default.removeItem(at: expectedFileURL)
-                        print("✅ [WatchLibraryView] File deleted at expected path: \(expectedPath)")
+                        AppLogger.cache.info(
+                            "[WatchLibraryView] File deleted at expected path: \(expectedPath)")
                     } catch {
-                        print("⚠️ [WatchLibraryView] File deletion failed at expected path: \(error)")
+                        AppLogger.cache.warning(
+                            "[WatchLibraryView] File deletion failed at expected path: \(error)")
                     }
                 }
             }
@@ -260,23 +285,27 @@ struct WatchLibraryView: View {
             // IMPORTANT: Clear the relationship BEFORE deleting the entry
             // This ensures SwiftData processes the changes in the correct order
             audiobook.cacheEntry = nil
-            print("✅ [WatchLibraryView] Cache entry relationship cleared")
+            AppLogger.cache.info("[WatchLibraryView] Cache entry relationship cleared")
 
             // Remove cache entry
             modelContext.delete(cacheEntry)
-            print("✅ [WatchLibraryView] Cache entry deleted from context")
+            AppLogger.cache.info("[WatchLibraryView] Cache entry deleted from context")
         } else {
-            print("⚠️ [WatchLibraryView] No cache entry found, but checking for orphaned file...")
+            AppLogger.cache.warning(
+                "[WatchLibraryView] No cache entry found, but checking for orphaned file...")
             // No cache entry but file might exist at expected path
             if let expectedPath = audiobook.expectedCachePath {
                 let expectedFileURL = URL(fileURLWithPath: expectedPath)
                 if FileManager.default.fileExists(atPath: expectedFileURL.path) {
-                    print("🗑️ [WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)")
+                    AppLogger.cache.info(
+                        "[WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)"
+                    )
                     do {
                         try FileManager.default.removeItem(at: expectedFileURL)
-                        print("✅ [WatchLibraryView] Orphaned file deleted")
+                        AppLogger.cache.info("[WatchLibraryView] Orphaned file deleted")
                     } catch {
-                        print("⚠️ [WatchLibraryView] Orphaned file deletion failed: \(error)")
+                        AppLogger.cache.warning(
+                            "[WatchLibraryView] Orphaned file deletion failed: \(error)")
                     }
                 }
             }
@@ -288,10 +317,13 @@ struct WatchLibraryView: View {
         withTransaction(transaction) {
             do {
                 try modelContext.save()
-                print("✅ [WatchLibraryView] Context saved successfully")
-                print("📊 [WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")")
+                AppLogger.cache.info("[WatchLibraryView] Context saved successfully")
+                AppLogger.cache.info(
+                    "[WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")"
+                )
             } catch {
-                print("❌ [WatchLibraryView] Failed to save after cache deletion: \(error)")
+                AppLogger.cache.error(
+                    "[WatchLibraryView] Failed to save after cache deletion: \(error)")
             }
         }
 
@@ -325,11 +357,11 @@ struct AudiobookRowWithActions: View {
         self.modelContext = modelContext
         self.audiobookId = audiobook.id
     }
-    
+
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
     }
-        
+
     var body: some View {
         AudiobookRow(audiobook: audiobook)
             .onTapGesture {
@@ -378,58 +410,68 @@ struct AudiobookRowWithActions: View {
                 }
             }
     }
-    
+
     /// Clean up CacheEntry if file doesn't exist
     private func cleanupStaleCacheEntry() {
         guard let cacheEntry = audiobook.cacheEntry else { return }
-        
+
         // Verify file really doesn't exist
         let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
         guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        
-        print("⚠️ [WatchLibraryView] Cleaning up stale CacheEntry for: \(audiobook.title)")
-        
+
+        AppLogger.cache.warning(
+            "[WatchLibraryView] Cleaning up stale CacheEntry for: \(audiobook.title)")
+
         // Remove stale cache entry
         audiobook.cacheEntry = nil
         modelContext.delete(cacheEntry)
-        
+
         do {
             try modelContext.save()
-            print("✅ [WatchLibraryView] Stale cache entry removed")
+            AppLogger.cache.info("[WatchLibraryView] Stale cache entry removed")
         } catch {
-            print("❌ [WatchLibraryView] Failed to remove stale cache entry: \(error)")
+            AppLogger.cache.error("[WatchLibraryView] Failed to remove stale cache entry: \(error)")
         }
     }
-    
+
     private func removeDownload(for audiobook: Audiobook) {
-        print("🗑️ [WatchLibraryView] Removing cache for: \(audiobook.title)")
-        print("📂 [WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
-        print("📂 [WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
-        print("📂 [WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
+        AppLogger.cache.info("[WatchLibraryView] Removing cache for: \(audiobook.title)")
+        AppLogger.cache.info(
+            "[WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
+        AppLogger.cache.info(
+            "[WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
+        AppLogger.cache.info("[WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
 
         // Remove the cache entry and file WITHOUT animation
         // Animation can cause SwiftData to have issues with the relationship updates
         if let cacheEntry = audiobook.cacheEntry {
             // Delete file at the stored path
             let storedFileURL = URL(fileURLWithPath: cacheEntry.filePath)
-            print("🗑️ [WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
+            AppLogger.cache.info(
+                "[WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
             do {
                 try FileManager.default.removeItem(at: storedFileURL)
-                print("✅ [WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
+                AppLogger.cache.info(
+                    "[WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
             } catch {
-                print("⚠️ [WatchLibraryView] File deletion failed at stored path: \(error)")
+                AppLogger.cache.warning(
+                    "[WatchLibraryView] File deletion failed at stored path: \(error)")
             }
 
             // ALSO delete file at expected cache path if different
             if let expectedPath = audiobook.expectedCachePath {
                 let expectedFileURL = URL(fileURLWithPath: expectedPath)
                 if expectedFileURL.path != storedFileURL.path {
-                    print("🗑️ [WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)")
+                    AppLogger.cache.info(
+                        "[WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)"
+                    )
                     do {
                         try FileManager.default.removeItem(at: expectedFileURL)
-                        print("✅ [WatchLibraryView] File deleted at expected path: \(expectedPath)")
+                        AppLogger.cache.info(
+                            "[WatchLibraryView] File deleted at expected path: \(expectedPath)")
                     } catch {
-                        print("⚠️ [WatchLibraryView] File deletion failed at expected path: \(error)")
+                        AppLogger.cache.warning(
+                            "[WatchLibraryView] File deletion failed at expected path: \(error)")
                     }
                 }
             }
@@ -437,23 +479,27 @@ struct AudiobookRowWithActions: View {
             // IMPORTANT: Clear the relationship BEFORE deleting the entry
             // This ensures SwiftData processes the changes in the correct order
             audiobook.cacheEntry = nil
-            print("✅ [WatchLibraryView] Cache entry relationship cleared")
+            AppLogger.cache.info("[WatchLibraryView] Cache entry relationship cleared")
 
             // Remove cache entry
             modelContext.delete(cacheEntry)
-            print("✅ [WatchLibraryView] Cache entry deleted from context")
+            AppLogger.cache.info("[WatchLibraryView] Cache entry deleted from context")
         } else {
-            print("⚠️ [WatchLibraryView] No cache entry found, but checking for orphaned file...")
+            AppLogger.cache.warning(
+                "[WatchLibraryView] No cache entry found, but checking for orphaned file...")
             // No cache entry but file might exist at expected path
             if let expectedPath = audiobook.expectedCachePath {
                 let expectedFileURL = URL(fileURLWithPath: expectedPath)
                 if FileManager.default.fileExists(atPath: expectedFileURL.path) {
-                    print("🗑️ [WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)")
+                    AppLogger.cache.info(
+                        "[WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)"
+                    )
                     do {
                         try FileManager.default.removeItem(at: expectedFileURL)
-                        print("✅ [WatchLibraryView] Orphaned file deleted")
+                        AppLogger.cache.info("[WatchLibraryView] Orphaned file deleted")
                     } catch {
-                        print("⚠️ [WatchLibraryView] Orphaned file deletion failed: \(error)")
+                        AppLogger.cache.warning(
+                            "[WatchLibraryView] Orphaned file deletion failed: \(error)")
                     }
                 }
             }
@@ -465,10 +511,13 @@ struct AudiobookRowWithActions: View {
         withTransaction(transaction) {
             do {
                 try modelContext.save()
-                print("✅ [WatchLibraryView] Context saved successfully")
-                print("📊 [WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")")
+                AppLogger.cache.info("[WatchLibraryView] Context saved successfully")
+                AppLogger.cache.info(
+                    "[WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")"
+                )
             } catch {
-                print("❌ [WatchLibraryView] Failed to save after cache deletion: \(error)")
+                AppLogger.cache.error(
+                    "[WatchLibraryView] Failed to save after cache deletion: \(error)")
             }
         }
 
@@ -482,20 +531,21 @@ struct AudiobookRowWithActions: View {
 struct AudiobookRow: View {
     let audiobook: Audiobook
     @Environment(WatchConnectivityManager.self) private var connectivity
-    
+
     @State private var showingTransferSheet = false
-    
+
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
     }
-        
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 // Artwork thumbnail
                 ZStack(alignment: .bottomTrailing) {
                     if let artworkData = audiobook.artworkData,
-                       let uiImage = UIImage(data: artworkData) {
+                        let uiImage = UIImage(data: artworkData)
+                    {
                         Image(uiImage: uiImage)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -511,17 +561,17 @@ struct AudiobookRow: View {
                             }
                     }
                 }
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(audiobook.title)
                         .font(.headline)
                         .lineLimit(2, reservesSpace: true)
-                    
+
                     Text(audiobook.author)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    
+
                 }
             }
             // Status indicator
@@ -553,7 +603,7 @@ struct AudiobookRow: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var cacheStatusBadge: some View {
         HStack(spacing: 4) {

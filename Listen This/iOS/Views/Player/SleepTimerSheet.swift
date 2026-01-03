@@ -149,7 +149,7 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
                 if player.sleepAtEndOfChapter {
                     Image(systemName: "text.bookmark")
                         .font(.system(size: 60))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(.primary)
                     Text("End of Chapter")
                         .font(.title2)
                         .fontWeight(.semibold)
@@ -157,7 +157,7 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
                     Text(formattedRemaining)
                         .font(.system(size: 72, weight: .thin, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(.primary)
                     Text("remaining")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
