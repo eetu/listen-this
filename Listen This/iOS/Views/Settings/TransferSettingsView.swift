@@ -45,33 +45,47 @@ struct TransferSettingsView: View {
                 )
             }
 
-            // Quick toggle for simple users
+            // Automatic mode explanation
             if selectedMethod == .automatic {
                 Section {
-                    Toggle(
-                        isOn: Binding(
-                            get: { false },  // Just for display, automatic handles this
-                            set: { _ in }
-                        )
-                    ) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Prefer CloudKit")
-                                .font(.subheadline)
-                            Text("Always use CloudKit when WiFi is available")
+                    Text(
+                        "Automatic mode intelligently selects the transfer method based on file size and network conditions:"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.blue)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Large files (>50MB)")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Text("Uses CloudKit when WiFi is available")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Small files (<50MB)")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Text("Uses WatchConnectivity when Watch is nearby")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .disabled(true)
-
-                    Text(
-                        "In automatic mode, CloudKit is preferred for files over 50MB when WiFi is available"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.blue)
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Automatic Preferences")
+                    Text("How Automatic Works")
                 }
             }
 
