@@ -5,8 +5,8 @@
 //  Main settings navigation hub
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -54,7 +54,7 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
-                        TransferMethodSettingsView(modelContext: modelContext)
+                        TransferSettingsView(modelContext: modelContext)
                     } label: {
                         Label("Watch Transfer", systemImage: "applewatch")
                     }

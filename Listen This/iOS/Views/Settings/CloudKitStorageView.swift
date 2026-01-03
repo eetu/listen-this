@@ -38,18 +38,11 @@ struct CloudKitStorageView: View {
                         .foregroundStyle(.secondary)
                     }
                 }
-
-                HStack {
-                    Text("Free Tier")
-                    Spacer()
-                    Text("1 GB")
-                        .foregroundStyle(.secondary)
-                }
             } header: {
                 Text("CloudKit Storage")
             } footer: {
                 Text(
-                    "CloudKit provides 1GB free storage per user. Additional storage available with iCloud+ subscription."
+                    "How much space is taken by the uploaded audiobooks."
                 )
             }
 
