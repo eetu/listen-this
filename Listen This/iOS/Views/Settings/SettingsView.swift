@@ -67,12 +67,22 @@ struct SettingsView: View {
                 // MARK: - Sources
                 Section {
                     NavigationLink {
-                        Text("Content Sources - Coming Soon")
+                        AudiobookshelfSettingsView()
                     } label: {
-                        Label("Content Sources", systemImage: "folder")
+                        HStack {
+                            Label("Audiobookshelf", systemImage: "server.rack")
+                            Spacer()
+                            if SettingsManager.shared.audiobookshelfEnabled {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                    .font(.caption)
+                            }
+                        }
                     }
                 } header: {
                     Text("Sources")
+                } footer: {
+                    Text("Connect to Audiobookshelf server to stream or download audiobooks")
                 }
 
                 // MARK: - App

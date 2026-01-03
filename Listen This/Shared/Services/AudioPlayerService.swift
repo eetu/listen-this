@@ -230,16 +230,50 @@ final class AudioPlayerService: AudioPlayer {
 
     private func resolveFileURL(for audiobook: Audiobook) async throws -> URL {
         logger.debug("Resolving file URL for: \(audiobook.title)")
+        logger.debug("- sourceType: \(audiobook.sourceType)")
         logger.debug("- filename: \(audiobook.filename ?? "nil")")
         logger.debug("- iCloudRelativePath: \(audiobook.iCloudRelativePath ?? "nil")")
         logger.debug("- isFileCached: \(audiobook.isFileCached)")
         logger.debug("- expectedCachePath: \(audiobook.expectedCachePath ?? "nil")")
 
+        // 1. Try cached file first (for all source types)
         if audiobook.isFileCached, let cached = audiobook.cacheFileURL {
             logger.info("Using cached file: \(cached.path)")
             return cached
         }
 
+        // 2. Handle Audiobookshelf streaming
+        if audiobook.isAudiobookshelfBook {
+            logger.info("Audiobook is from Audiobookshelf")
+
+            // Check if user prefers offline playback
+            let preferOffline = SettingsManager.shared.audiobookshelfPreferOffline
+
+            if preferOffline {
+                // Try to download first
+                logger.info("User prefers offline playback, attempting download...")
+                do {
+                    let cachedURL = try await downloadAudiobookshelfBook(audiobook)
+                    logger.info("Download successful, using cached file")
+                    return cachedURL
+                } catch {
+                    logger.warning(
+                        "Download failed, falling back to streaming: \(error.localizedDescription)")
+                }
+            }
+
+            // Stream from Audiobookshelf
+            guard let identifier = audiobook.sourceIdentifier else {
+                throw AudiobookError.fileNotFound
+            }
+
+            let provider = try await getAuthenticatedAudiobookshelfProvider()
+            let streamURL = try await provider.getStreamURL(identifier: identifier)
+            logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+            return streamURL
+        }
+
+        // 3. Handle iCloud Drive - download and cache locally
         if let cloudURL = audiobook.iCloudFileURL {
             logger.debug("Trying iCloud URL: \(cloudURL.path)")
 
@@ -261,6 +295,35 @@ final class AudioPlayerService: AudioPlayer {
                 logger.error("File still not found after download attempt")
                 throw AudiobookError.fileNotFound
             }
+
+            // Cache the iCloud file locally for offline access
+            // This ensures the file persists even if iOS evicts iCloud downloads
+            if let expectedCachePath = audiobook.expectedCachePath {
+                let cacheURL = URL(fileURLWithPath: expectedCachePath)
+
+                // Only copy if not already cached
+                if !FileManager.default.fileExists(atPath: cacheURL.path) {
+                    logger.info("Caching iCloud file to local storage: \(cacheURL.path)")
+
+                    // Create cache directory if needed
+                    let cacheDir = cacheURL.deletingLastPathComponent()
+                    try? FileManager.default.createDirectory(
+                        at: cacheDir,
+                        withIntermediateDirectories: true
+                    )
+
+                    // Copy file to cache
+                    do {
+                        try FileManager.default.copyItem(at: cloudURL, to: cacheURL)
+                        logger.info("Successfully cached iCloud file")
+                        return cacheURL
+                    } catch {
+                        logger.warning("Failed to cache iCloud file: \(error.localizedDescription)")
+                        // Fall back to using iCloud URL directly
+                    }
+                }
+            }
+
             return cloudURL
         }
 
@@ -288,6 +351,85 @@ final class AudioPlayerService: AudioPlayer {
         }
 
         throw AudiobookError.downloadFailed
+    }
+
+    // MARK: - Audiobookshelf Helpers
+
+    private func getAuthenticatedAudiobookshelfProvider() async throws -> AudiobookshelfProvider {
+        let provider = AudiobookshelfProvider()
+
+        let settings = SettingsManager.shared
+        guard let serverURL = URL(string: settings.audiobookshelfServerURL) else {
+            throw AudiobookshelfError.invalidServerURL
+        }
+
+        // Load API key from keychain
+        guard let apiKey = loadAPIKeyFromKeychain() else {
+            throw AudiobookshelfError.authenticationFailed
+        }
+
+        try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: apiKey)
+        return provider
+    }
+
+    private func downloadAudiobookshelfBook(_ audiobook: Audiobook) async throws -> URL {
+        guard let identifier = audiobook.sourceIdentifier else {
+            throw AudiobookError.fileNotFound
+        }
+
+        guard let cachePath = audiobook.expectedCachePath else {
+            throw AudiobookError.fileNotFound
+        }
+
+        let provider = try await getAuthenticatedAudiobookshelfProvider()
+        let downloadURL = try await provider.getDownloadURL(identifier: identifier)
+
+        logger.info("Downloading Audiobookshelf book to: \(cachePath)")
+
+        // Create cache directory if needed
+        let cacheDir = (cachePath as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(
+            atPath: cacheDir,
+            withIntermediateDirectories: true
+        )
+
+        // Download file
+        let (tempURL, _) = try await URLSession.shared.download(from: downloadURL)
+
+        // Move to cache location
+        let destinationURL = URL(fileURLWithPath: cachePath)
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
+
+        logger.info("Download complete: \(cachePath)")
+        return destinationURL
+    }
+
+    private func loadAPIKeyFromKeychain() -> String? {
+        let service = "com.anarkisti.Listen-This.audiobookshelf"
+        let account = "api-key"
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+            let data = result as? Data,
+            let apiKey = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return apiKey
     }
 
     // MARK: - Playback Controls

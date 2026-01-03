@@ -160,6 +160,7 @@ final class SettingsManager {
     // MARK: - State
 
     private(set) var settings: UserSettings?
+    private(set) var audiobookshelfSettings: AudiobookshelfSettings?
     private var modelContext: ModelContext?
 
     // MARK: - Playback Settings
@@ -221,12 +222,80 @@ final class SettingsManager {
         }
     }
 
+    // MARK: - Audiobookshelf Settings
+
+    /// Audiobookshelf server URL
+    var audiobookshelfServerURL: String {
+        get { audiobookshelfSettings?.serverURL ?? "" }
+        set {
+            audiobookshelfSettings?.serverURL = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Whether Audiobookshelf integration is enabled
+    var audiobookshelfEnabled: Bool {
+        get { audiobookshelfSettings?.isEnabled ?? false }
+        set {
+            audiobookshelfSettings?.isEnabled = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Prefer offline playback for Audiobookshelf books
+    var audiobookshelfPreferOffline: Bool {
+        get { audiobookshelfSettings?.preferOfflinePlayback ?? true }
+        set {
+            audiobookshelfSettings?.preferOfflinePlayback = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Auto-download on WiFi
+    var audiobookshelfAutoDownload: Bool {
+        get { audiobookshelfSettings?.autoDownloadOnWiFi ?? false }
+        set {
+            audiobookshelfSettings?.autoDownloadOnWiFi = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Last connection test date
+    var audiobookshelfLastConnectionTest: Date? {
+        get { audiobookshelfSettings?.lastConnectionTest }
+        set {
+            audiobookshelfSettings?.lastConnectionTest = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Last connection success status
+    var audiobookshelfLastConnectionSuccess: Bool {
+        get { audiobookshelfSettings?.lastConnectionSuccess ?? false }
+        set {
+            audiobookshelfSettings?.lastConnectionSuccess = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Check if Audiobookshelf is configured
+    var audiobookshelfIsConfigured: Bool {
+        audiobookshelfSettings?.isConfigured ?? false
+    }
+
     // MARK: - Configuration
 
     /// Configure the manager with a model context (call from app startup)
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
         loadOrCreateSettings()
+        loadOrCreateAudiobookshelfSettings()
     }
 
     // MARK: - Private
@@ -255,6 +324,32 @@ final class SettingsManager {
             AppLogger.settings.error("Failed to load settings: \(error.localizedDescription)")
             // Create in-memory settings as fallback
             settings = UserSettings()
+        }
+    }
+
+    func loadOrCreateAudiobookshelfSettings() {
+        guard let context = modelContext else { return }
+
+        let descriptor = FetchDescriptor<AudiobookshelfSettings>(
+            predicate: #Predicate { $0.id == "audiobookshelf_settings" }
+        )
+
+        do {
+            let existing = try context.fetch(descriptor)
+            if let first = existing.first {
+                audiobookshelfSettings = first
+            } else {
+                // Create default Audiobookshelf settings
+                let newSettings = AudiobookshelfSettings()
+                context.insert(newSettings)
+                try context.save()
+                audiobookshelfSettings = newSettings
+            }
+        } catch {
+            AppLogger.settings.error(
+                "Failed to load Audiobookshelf settings: \(error.localizedDescription)")
+            // Create in-memory settings as fallback
+            audiobookshelfSettings = AudiobookshelfSettings()
         }
     }
 
