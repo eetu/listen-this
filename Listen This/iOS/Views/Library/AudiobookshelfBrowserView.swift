@@ -91,12 +91,7 @@ struct AudiobookshelfBrowserView: View {
                     throw AudiobookshelfError.invalidServerURL
                 }
 
-                // Load API key from keychain
-                guard let apiKey = loadAPIKeyFromKeychain() else {
-                    throw AudiobookshelfError.authenticationFailed
-                }
-
-                try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: apiKey)
+                try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: settings.audiobookshelfAPIKey)
 
                 // Fetch library
                 let items = try await provider.fetchLibrary()
@@ -220,31 +215,6 @@ struct AudiobookshelfBrowserView: View {
         } catch {
             AppLogger.import.error("Failed to fetch chapters: \(error.localizedDescription)")
         }
-    }
-
-    private func loadAPIKeyFromKeychain() -> String? {
-        let service = "com.anarkisti.Listen-This.audiobookshelf"
-        let account = "api-key"
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-            let data = result as? Data,
-            let apiKey = String(data: data, encoding: .utf8)
-        else {
-            return nil
-        }
-
-        return apiKey
     }
 }
 
