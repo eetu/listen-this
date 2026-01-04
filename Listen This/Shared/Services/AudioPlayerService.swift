@@ -259,7 +259,7 @@ final class AudioPlayerService: AudioPlayer {
 
                 let provider = try await getAuthenticatedAudiobookshelfProvider()
                 let streamURL = try await provider.getStreamURL(identifier: identifier)
-                logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                logger.info("Streaming from Audiobookshelf")
                 return streamURL
 
             case .manualDownload:
@@ -271,7 +271,7 @@ final class AudioPlayerService: AudioPlayer {
 
                 let provider = try await getAuthenticatedAudiobookshelfProvider()
                 let streamURL = try await provider.getStreamURL(identifier: identifier)
-                logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                logger.info("Streaming from Audiobookshelf")
                 return streamURL
 
             case .autoDownload:
@@ -292,7 +292,7 @@ final class AudioPlayerService: AudioPlayer {
 
                     let provider = try await getAuthenticatedAudiobookshelfProvider()
                     let streamURL = try await provider.getStreamURL(identifier: identifier)
-                    logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                    logger.info("Streaming from Audiobookshelf")
                     return streamURL
                 }
             }
