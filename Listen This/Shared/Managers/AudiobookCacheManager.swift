@@ -83,17 +83,22 @@ final class AudiobookCacheManager: CacheManager {
 
         // Extract and update metadata from the cached M4B file
         Task {
-            await extractAndUpdateMetadata(for: audiobook, from: cacheURL)
+            await extractAndUpdateMetadata(for: audiobook)
         }
 
         return cacheURL
     }
 
     /// Extract metadata from cached M4B file and update audiobook
-    private func extractAndUpdateMetadata(for audiobook: Audiobook, from fileURL: URL) async {
+    private func extractAndUpdateMetadata(for audiobook: Audiobook) async {
         do {
             logger.info("Extracting metadata from cached file for '\(audiobook.title)'")
 
+            guard let fileURL = audiobook.cacheFileURL else {
+                logger.info("Unable to extract metadata from cached file: no file URL provided")
+                return
+            }
+            
             let metadata = try await MetadataExtractor.extractMetadata(from: fileURL)
 
             // Update audiobook with extracted metadata
@@ -131,15 +136,10 @@ final class AudiobookCacheManager: CacheManager {
                 let artworkSize = artworkData.count
                 let currentArtworkSize = audiobook.artworkData?.count ?? 0
 
-                // Only update if new artwork is larger (better quality)
-                if artworkSize > currentArtworkSize {
-                    audiobook.artworkData = artworkData
-                    logger.info(
-                        "Updated artwork (\(ByteCountFormatter.string(fromByteCount: Int64(artworkSize), countStyle: .file)) vs previous \(ByteCountFormatter.string(fromByteCount: Int64(currentArtworkSize), countStyle: .file)))"
-                    )
-                } else {
-                    logger.info("Keeping existing artwork (larger than embedded)")
-                }
+                audiobook.artworkData = artworkData
+                logger.info(
+                    "Updated artwork (\(ByteCountFormatter.string(fromByteCount: Int64(artworkSize), countStyle: .file)) vs previous \(ByteCountFormatter.string(fromByteCount: Int64(currentArtworkSize), countStyle: .file)))"
+                )
             }
 
             // Save changes
