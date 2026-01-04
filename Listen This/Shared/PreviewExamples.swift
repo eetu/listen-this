@@ -7,276 +7,275 @@
 
 #if DEBUG
 
-import SwiftUI
-import SwiftData
+    import SwiftUI
+    import SwiftData
 
-// MARK: - CloudKit Transfer View Previews
+    // MARK: - CloudKit Transfer View Previews
 
-#Preview("CloudKit Transfer - Idle") {
-    let container = try! createPreviewContainer()
-    let audiobook = Audiobook.preview()
+    #Preview("CloudKit Transfer - Idle") {
+        let container = try! createPreviewContainer()
+        let audiobook = Audiobook.preview()
 
-    return CloudKitTransferView(audiobook: audiobook)
-        .modelContainer(container)
-        .environment(MockCloudKitTransferManager())
-}
-
-#Preview("CloudKit Transfer - Uploading") {
-    let container = try! createPreviewContainer()
-    let context = ModelContext(container)
-    let audiobook = Audiobook.preview()
-    context.insert(audiobook)
-
-    let manager = MockCloudKitTransferManager()
-    manager.simulateActiveUpload(audiobookId: audiobook.id, progress: 0.65)
-
-    return CloudKitTransferView(audiobook: audiobook)
-        .modelContainer(container)
-        .environment(manager)
-}
-
-#Preview("CloudKit Transfer - Downloading") {
-    let container = try! createPreviewContainer()
-    let context = ModelContext(container)
-    let audiobook = Audiobook.preview()
-    context.insert(audiobook)
-
-    let manager = MockCloudKitTransferManager()
-    manager.simulateActiveDownload(audiobookId: audiobook.id, progress: 0.35)
-
-    return CloudKitTransferView(audiobook: audiobook)
-        .modelContainer(container)
-        .environment(manager)
-}
-
-#Preview("CloudKit Transfer - Multiple Transfers") {
-    let container = try! createPreviewContainer()
-    let context = ModelContext(container)
-
-    let audiobook1 = Audiobook.preview(title: "Book 1")
-    let audiobook2 = Audiobook.preview(title: "Book 2")
-    let audiobook3 = Audiobook.preview(title: "Book 3")
-
-    context.insert(audiobook1)
-    context.insert(audiobook2)
-    context.insert(audiobook3)
-
-    let manager = MockCloudKitTransferManager()
-    manager.simulateActiveUpload(audiobookId: audiobook1.id, progress: 0.25)
-    manager.simulateActiveDownload(audiobookId: audiobook2.id, progress: 0.75)
-    manager.simulateActiveUpload(audiobookId: audiobook3.id, progress: 0.50)
-
-    return CloudKitTransferView(audiobook: audiobook1)
-        .modelContainer(container)
-        .environment(manager)
-}
-
-#Preview("CloudKit Transfer - Error State") {
-    let container = try! createPreviewContainer()
-    let audiobook = Audiobook.preview()
-
-    let manager = MockCloudKitTransferManager()
-    manager.shouldFailUpload = true
-
-    return CloudKitTransferView(audiobook: audiobook)
-        .modelContainer(container)
-        .environment(manager)
-}
-
-// MARK: - Progress View Previews
-
-#Preview("Transfer Progress - 0%") {
-    let progress = ChunkTransferProgress(
-        audiobookId: UUID(),
-        totalBytes: 100_000_000,
-        totalChunks: 10,
-        completedChunks: 0,
-        bytesTransferred: 0,
-        isUploading: true
-    )
-    
-    VStack {
-        Text(progress.statusText)
-        ProgressView(value: progress.progress)
-        Text("\(progress.progressPercentage)%")
+        return CloudKitTransferView(audiobook: audiobook)
+            .modelContainer(container)
+            .environment(MockCloudKitTransferManager())
     }
-    .padding()
-}
 
-#Preview("Transfer Progress - 50%") {
-    let progress = ChunkTransferProgress(
-        audiobookId: UUID(),
-        totalBytes: 100_000_000,
-        totalChunks: 10,
-        completedChunks: 5,
-        bytesTransferred: 50_000_000,
-        isUploading: true
-    )
-    
-    VStack {
-        Text(progress.statusText)
-        ProgressView(value: progress.progress)
-        Text("\(progress.progressPercentage)%")
-        Text(progress.progressText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    #Preview("CloudKit Transfer - Uploading") {
+        let container = try! createPreviewContainer()
+        let context = ModelContext(container)
+        let audiobook = Audiobook.preview()
+        context.insert(audiobook)
+
+        let manager = MockCloudKitTransferManager()
+        manager.simulateActiveUpload(audiobookId: audiobook.id, progress: 0.65)
+
+        return CloudKitTransferView(audiobook: audiobook)
+            .modelContainer(container)
+            .environment(manager)
     }
-    .padding()
-}
 
-#Preview("Transfer Progress - Complete") {
-    let progress = ChunkTransferProgress(
-        audiobookId: UUID(),
-        totalBytes: 100_000_000,
-        totalChunks: 10,
-        completedChunks: 10,
-        bytesTransferred: 100_000_000,
-        isUploading: false
-    )
-    
-    VStack {
-        Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-            .font(.largeTitle)
-        Text("Download Complete")
-        Text(progress.progressText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    #Preview("CloudKit Transfer - Downloading") {
+        let container = try! createPreviewContainer()
+        let context = ModelContext(container)
+        let audiobook = Audiobook.preview()
+        context.insert(audiobook)
+
+        let manager = MockCloudKitTransferManager()
+        manager.simulateActiveDownload(audiobookId: audiobook.id, progress: 0.35)
+
+        return CloudKitTransferView(audiobook: audiobook)
+            .modelContainer(container)
+            .environment(manager)
     }
-    .padding()
-}
 
-// MARK: - Watch Transfer Previews
+    #Preview("CloudKit Transfer - Multiple Transfers") {
+        let container = try! createPreviewContainer()
+        let context = ModelContext(container)
 
-#Preview("Watch Transfer - Uploading") {
-    let progress = WatchTransferProgress(
-        audiobookId: "test",
-        audiobookTitle: "The Hobbit",
-        totalBytes: 450_000_000,
-        bytesTransferred: 225_000_000,
-        isActive: true
-    )
-    
-    return VStack(spacing: 16) {
-        HStack {
-            Image(systemName: "applewatch")
-            Text("Transferring to Apple Watch")
-        }
-        .font(.headline)
-        
-        VStack(alignment: .leading) {
-            Text(progress.audiobookTitle)
-                .font(.subheadline)
-            
+        let audiobook1 = Audiobook.preview(title: "Book 1")
+        let audiobook2 = Audiobook.preview(title: "Book 2")
+        let audiobook3 = Audiobook.preview(title: "Book 3")
+
+        context.insert(audiobook1)
+        context.insert(audiobook2)
+        context.insert(audiobook3)
+
+        let manager = MockCloudKitTransferManager()
+        manager.simulateActiveUpload(audiobookId: audiobook1.id, progress: 0.25)
+        manager.simulateActiveDownload(audiobookId: audiobook2.id, progress: 0.75)
+        manager.simulateActiveUpload(audiobookId: audiobook3.id, progress: 0.50)
+
+        return CloudKitTransferView(audiobook: audiobook1)
+            .modelContainer(container)
+            .environment(manager)
+    }
+
+    #Preview("CloudKit Transfer - Error State") {
+        let container = try! createPreviewContainer()
+        let audiobook = Audiobook.preview()
+
+        let manager = MockCloudKitTransferManager()
+        manager.shouldFailUpload = true
+
+        return CloudKitTransferView(audiobook: audiobook)
+            .modelContainer(container)
+            .environment(manager)
+    }
+
+    // MARK: - Progress View Previews
+
+    #Preview("Transfer Progress - 0%") {
+        let progress = ChunkTransferProgress(
+            audiobookId: UUID(),
+            totalBytes: 100_000_000,
+            totalChunks: 10,
+            completedChunks: 0,
+            bytesTransferred: 0,
+            isUploading: true
+        )
+
+        VStack {
+            Text(progress.statusText)
             ProgressView(value: progress.progress)
-            
-            HStack {
-                Text(progress.progressText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Spacer()
-                
-                Text("\(progress.progressPercentage)%")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("\(progress.progressPercentage)%")
         }
+        .padding()
     }
-    .padding()
-}
 
-// MARK: - Audiobook Card Previews
+    #Preview("Transfer Progress - 50%") {
+        let progress = ChunkTransferProgress(
+            audiobookId: UUID(),
+            totalBytes: 100_000_000,
+            totalChunks: 10,
+            completedChunks: 5,
+            bytesTransferred: 50_000_000,
+            isUploading: true
+        )
 
-#Preview("Audiobook Card - Single") {
-    let audiobook = Audiobook.preview()
-    
-    return List {
-        HStack {
-            Image(systemName: "book.fill")
+        VStack {
+            Text(progress.statusText)
+            ProgressView(value: progress.progress)
+            Text("\(progress.progressPercentage)%")
+            Text(progress.progressText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    #Preview("Transfer Progress - Complete") {
+        let progress = ChunkTransferProgress(
+            audiobookId: UUID(),
+            totalBytes: 100_000_000,
+            totalChunks: 10,
+            completedChunks: 10,
+            bytesTransferred: 100_000_000,
+            isUploading: false
+        )
+
+        VStack {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
                 .font(.largeTitle)
-                .frame(width: 60, height: 60)
-                .background(.blue.gradient)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            
+            Text("Download Complete")
+            Text(progress.progressText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    // MARK: - Watch Transfer Previews
+
+    #Preview("Watch Transfer - Uploading") {
+        let progress = WatchTransferProgress(
+            audiobookId: "test",
+            audiobookTitle: "The Hobbit",
+            totalBytes: 450_000_000,
+            bytesTransferred: 225_000_000,
+            isActive: true
+        )
+
+        VStack(spacing: 16) {
+            HStack {
+                Image(systemName: "applewatch")
+                Text("Transferring to Apple Watch")
+            }
+            .font(.headline)
+
             VStack(alignment: .leading) {
-                Text(audiobook.title)
-                    .font(.headline)
-                Text(audiobook.author)
+                Text(progress.audiobookTitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if let narrator = audiobook.narrator {
-                    Text("Narrated by \(narrator)")
+
+                ProgressView(value: progress.progress)
+
+                HStack {
+                    Text(progress.progressText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Text("\(progress.progressPercentage)%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         }
+        .padding()
     }
-}
 
-#Preview("Audiobook Card - List") {
-    let audiobooks = Audiobook.previewLibrary()
-    
-    return List(audiobooks) { audiobook in
-        HStack {
-            Image(systemName: "book.fill")
-                .font(.largeTitle)
-                .frame(width: 60, height: 60)
-                .background(.blue.gradient)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            
-            VStack(alignment: .leading) {
-                Text(audiobook.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(audiobook.author)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                
-                HStack {
-                    Image(systemName: "clock")
-                    Text(formatDuration(audiobook.duration))
-                    
-                    Spacer()
-                    
-                    Image(systemName: "doc")
-                    Text(formatFileSize(audiobook.fileSize))
+    // MARK: - Audiobook Card Previews
+
+    #Preview("Audiobook Card - Single") {
+        let audiobook = Audiobook.preview()
+
+        return List {
+            HStack {
+                Image(systemName: "book.fill")
+                    .font(.largeTitle)
+                    .frame(width: 60, height: 60)
+                    .background(.blue.gradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading) {
+                    Text(audiobook.title)
+                        .font(.headline)
+                    Text(audiobook.author)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let narrator = audiobook.narrator {
+                        Text("Narrated by \(narrator)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .font(.caption)
-                .foregroundStyle(.tertiary)
             }
         }
     }
-}
 
-// MARK: - Helper Functions
+    #Preview("Audiobook Card - List") {
+        let audiobooks = Audiobook.previewLibrary()
 
-private func formatDuration(_ seconds: Double) -> String {
-    let hours = Int(seconds) / 3600
-    let minutes = (Int(seconds) % 3600) / 60
-    return "\(hours)h \(minutes)m"
-}
+        return List(audiobooks) { audiobook in
+            HStack {
+                Image(systemName: "book.fill")
+                    .font(.largeTitle)
+                    .frame(width: 60, height: 60)
+                    .background(.blue.gradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
-private func formatFileSize(_ bytes: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-}
+                VStack(alignment: .leading) {
+                    Text(audiobook.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(audiobook.author)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
 
-// MARK: - Mock Scenario Previews
+                    HStack {
+                        Image(systemName: "clock")
+                        Text(formatDuration(audiobook.duration))
 
+                        Spacer()
 
-#Preview("Scenario - Network Error") {
-    let container = try! createPreviewContainer()
+                        Image(systemName: "doc")
+                        Text(formatFileSize(audiobook.fileSize))
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
 
-    let manager = MockCloudKitTransferManager()
-    manager.shouldFailUpload = true
-    manager.errorToThrow = .networkError
+    // MARK: - Helper Functions
 
-    let audiobook = Audiobook.preview()
-    return CloudKitTransferView(audiobook: audiobook)
-        .modelContainer(container)
-        .environment(manager)
-}
+    private func formatDuration(_ seconds: Double) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = (Int(seconds) % 3600) / 60
+        return "\(hours)h \(minutes)m"
+    }
+
+    private func formatFileSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    // MARK: - Mock Scenario Previews
+
+    #Preview("Scenario - Network Error") {
+        let container = try! createPreviewContainer()
+
+        let manager = MockCloudKitTransferManager()
+        manager.shouldFailUpload = true
+        manager.errorToThrow = .networkError
+
+        let audiobook = Audiobook.preview()
+        return CloudKitTransferView(audiobook: audiobook)
+            .modelContainer(container)
+            .environment(manager)
+    }
 
 #endif

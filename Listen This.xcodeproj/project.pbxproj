@@ -106,14 +106,18 @@
 				Shared/Models/Chapter.swift,
 				Shared/Models/PlaybackSession.swift,
 				Shared/Models/UserSettings.swift,
+				Shared/Preview/PreviewData.swift,
 				Shared/Protocols/AudioPlayer.swift,
 				Shared/Protocols/CacheManager.swift,
 				Shared/Protocols/CloudKitTransferManager.swift,
 				Shared/Providers/AudiobookshelfProvider.swift,
+				Shared/Providers/ContentSource.swift,
+				Shared/Providers/iCloudDriveProvider.swift,
+				Shared/Services/AudiobookLibraryService.swift,
+				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
 				Shared/Utilities/AppLogger.swift,
 				"Shared/Utilities/UIImage+DominantColor.swift",
-				Shared/Views/WatchProgressBar.swift,
 			);
 			target = C270F74E2EFC53AF008500DF /* Listen This AppTests */;
 		};
