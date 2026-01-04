@@ -5,7 +5,7 @@
 //  Settings for Audiobookshelf server integration
 //
 
-import Security
+import OSLog
 import SwiftUI
 
 struct AudiobookshelfSettingsView: View {
@@ -16,8 +16,7 @@ struct AudiobookshelfSettingsView: View {
     @State private var serverURL: String = ""
     @State private var apiKey: String = ""
     @State private var isEnabled: Bool = false
-    @State private var preferOffline: Bool = true
-    @State private var autoDownload: Bool = false
+    @State private var playbackMode: AudiobookshelfPlaybackMode = .manualDownload
 
     // Connection test state
     @State private var isTestingConnection: Bool = false
@@ -51,6 +50,9 @@ struct AudiobookshelfSettingsView: View {
                     .textContentType(.password)
                     .autocapitalization(.none)
                     .disabled(isEnabled)
+                    .onChange(of: apiKey) { _, newValue in
+                        settingsManager.audiobookshelfAPIKey = newValue
+                    }
 
                 if !isEnabled {
                     Button {
@@ -78,15 +80,8 @@ struct AudiobookshelfSettingsView: View {
             // MARK: - Status
             Section {
                 Toggle("Enable Audiobookshelf", isOn: $isEnabled)
-                    .disabled(!canEnable)
+                    .disabled(isEnabled ? false : !canEnable)  // Always allow disabling, only validate when enabling
                     .onChange(of: isEnabled) { oldValue, newValue in
-                        if newValue && !oldValue {
-                            // Enabling - save API key to keychain
-                            saveAPIKey()
-                        } else if !newValue && oldValue {
-                            // Disabling - remove API key from keychain
-                            deleteAPIKey()
-                        }
                         settingsManager.audiobookshelfEnabled = newValue
                     }
 
@@ -135,25 +130,29 @@ struct AudiobookshelfSettingsView: View {
             // MARK: - Playback Options
             if isEnabled {
                 Section {
-                    Toggle("Prefer Offline Playback", isOn: $preferOffline)
-                        .onChange(of: preferOffline) { _, newValue in
-                            settingsManager.audiobookshelfPreferOffline = newValue
-                        }
-
-                    Toggle("Auto-Download on WiFi", isOn: $autoDownload)
-                        .onChange(of: autoDownload) { _, newValue in
-                            settingsManager.audiobookshelfAutoDownload = newValue
-                        }
+                    Picker("Playback Mode", selection: $playbackMode) {
+                        Text("Stream Always").tag(AudiobookshelfPlaybackMode.streamAlways)
+                        Text("Download Manually").tag(AudiobookshelfPlaybackMode.manualDownload)
+                        Text("Auto-Download on WiFi").tag(AudiobookshelfPlaybackMode.autoDownload)
+                    }
+                    .onChange(of: playbackMode) { _, newValue in
+                        settingsManager.audiobookshelfPlaybackMode = newValue
+                    }
                 } header: {
                     Text("Playback")
                 } footer: {
-                    if preferOffline {
+                    switch playbackMode {
+                    case .streamAlways:
                         Text(
-                            "Books will be downloaded before playback. Streaming is used as fallback if download fails."
+                            "Always stream from server. Books are never cached locally. Best for saving storage space."
                         )
-                    } else {
+                    case .manualDownload:
                         Text(
-                            "Books will stream from the server. You can manually download books for offline playback."
+                            "Stream by default. You can manually download specific books for offline playback."
+                        )
+                    case .autoDownload:
+                        Text(
+                            "Automatically download books on WiFi for offline playback. Streaming is used as fallback if download fails."
                         )
                     }
                 }
@@ -202,14 +201,12 @@ struct AudiobookshelfSettingsView: View {
 
     private func loadSettings() {
         serverURL = settingsManager.audiobookshelfServerURL
+        apiKey = settingsManager.audiobookshelfAPIKey
         isEnabled = settingsManager.audiobookshelfEnabled
-        preferOffline = settingsManager.audiobookshelfPreferOffline
-        autoDownload = settingsManager.audiobookshelfAutoDownload
+        playbackMode = settingsManager.audiobookshelfPlaybackMode
 
-        // Load API key from keychain if enabled
-        if isEnabled {
-            apiKey = loadAPIKeyFromKeychain() ?? ""
-        }
+        AppLogger.settings.info(
+            "Loaded settings - API key: \(apiKey.isEmpty ? "empty" : "\(apiKey.count) chars")")
     }
 
     private func testConnection() {
@@ -273,76 +270,9 @@ struct AudiobookshelfSettingsView: View {
 
         settingsManager.audiobookshelfEnabled = false
         settingsManager.audiobookshelfServerURL = ""
+        settingsManager.audiobookshelfAPIKey = ""
         settingsManager.audiobookshelfLastConnectionTest = nil
         settingsManager.audiobookshelfLastConnectionSuccess = false
-
-        deleteAPIKey()
-    }
-
-    // MARK: - Keychain Management
-
-    private func saveAPIKey() {
-        let service = "com.anarkisti.Listen-This.audiobookshelf"
-        let account = "api-key"
-
-        guard let apiKeyData = apiKey.data(using: .utf8) else { return }
-
-        // Delete existing item
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        // Add new item
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: apiKeyData,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-
-        SecItemAdd(addQuery as CFDictionary, nil)
-    }
-
-    private func loadAPIKeyFromKeychain() -> String? {
-        let service = "com.anarkisti.Listen-This.audiobookshelf"
-        let account = "api-key"
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-            let data = result as? Data,
-            let apiKey = String(data: data, encoding: .utf8)
-        else {
-            return nil
-        }
-
-        return apiKey
-    }
-
-    private func deleteAPIKey() {
-        let service = "com.anarkisti.Listen-This.audiobookshelf"
-        let account = "api-key"
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-
-        SecItemDelete(query as CFDictionary)
     }
 }
 

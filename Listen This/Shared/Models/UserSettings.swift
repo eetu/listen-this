@@ -226,9 +226,27 @@ final class SettingsManager {
 
     /// Audiobookshelf server URL
     var audiobookshelfServerURL: String {
-        get { audiobookshelfSettings?.serverURL ?? "" }
+        get {
+            let url = audiobookshelfSettings?.serverURL ?? ""
+            if audiobookshelfSettings == nil {
+                AppLogger.settings.warning("audiobookshelfSettings is nil, returning empty string")
+            } else if url.isEmpty {
+                AppLogger.settings.warning("audiobookshelfSettings.serverURL is empty")
+            }
+            return url
+        }
         set {
             audiobookshelfSettings?.serverURL = newValue
+            audiobookshelfSettings?.touch()
+            save()
+        }
+    }
+
+    /// Audiobookshelf API key
+    var audiobookshelfAPIKey: String {
+        get { audiobookshelfSettings?.apiKey ?? "" }
+        set {
+            audiobookshelfSettings?.apiKey = newValue
             audiobookshelfSettings?.touch()
             save()
         }
@@ -244,21 +262,11 @@ final class SettingsManager {
         }
     }
 
-    /// Prefer offline playback for Audiobookshelf books
-    var audiobookshelfPreferOffline: Bool {
-        get { audiobookshelfSettings?.preferOfflinePlayback ?? true }
+    /// Playback mode for Audiobookshelf
+    var audiobookshelfPlaybackMode: AudiobookshelfPlaybackMode {
+        get { audiobookshelfSettings?.playbackMode ?? .manualDownload }
         set {
-            audiobookshelfSettings?.preferOfflinePlayback = newValue
-            audiobookshelfSettings?.touch()
-            save()
-        }
-    }
-
-    /// Auto-download on WiFi
-    var audiobookshelfAutoDownload: Bool {
-        get { audiobookshelfSettings?.autoDownloadOnWiFi ?? false }
-        set {
-            audiobookshelfSettings?.autoDownloadOnWiFi = newValue
+            audiobookshelfSettings?.playbackMode = newValue
             audiobookshelfSettings?.touch()
             save()
         }
@@ -328,7 +336,37 @@ final class SettingsManager {
     }
 
     func loadOrCreateAudiobookshelfSettings() {
-        guard let context = modelContext else { return }
+        guard let context = modelContext else {
+            AppLogger.settings.error("No model context available for Audiobookshelf settings")
+            return
+        }
+
+        // Debug: Check all records
+        let allDescriptor = FetchDescriptor<AudiobookshelfSettings>()
+        do {
+            let allSettings = try context.fetch(allDescriptor)
+            #if os(iOS)
+                AppLogger.settings.info(
+                    "[iOS] Found \(allSettings.count) AudiobookshelfSettings record(s) in total")
+            #else
+                AppLogger.settings.info(
+                    "[Watch] Found \(allSettings.count) AudiobookshelfSettings record(s) in total")
+            #endif
+            for (index, setting) in allSettings.enumerated() {
+                #if os(iOS)
+                    AppLogger.settings.info(
+                        "[iOS] Record \(index): id='\(setting.id)', serverURL='\(setting.serverURL)', enabled=\(setting.isEnabled)"
+                    )
+                #else
+                    AppLogger.settings.info(
+                        "[Watch] Record \(index): id='\(setting.id)', serverURL='\(setting.serverURL)', enabled=\(setting.isEnabled)"
+                    )
+                #endif
+            }
+        } catch {
+            AppLogger.settings.error(
+                "Failed to fetch all settings: \(error.localizedDescription)")
+        }
 
         let descriptor = FetchDescriptor<AudiobookshelfSettings>(
             predicate: #Predicate { $0.id == "audiobookshelf_settings" }
@@ -337,26 +375,60 @@ final class SettingsManager {
         do {
             let existing = try context.fetch(descriptor)
             if let first = existing.first {
+                #if os(iOS)
+                    AppLogger.settings.info(
+                        "[iOS] Loaded existing Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
+                    )
+                #else
+                    AppLogger.settings.info(
+                        "[Watch] Loaded synced Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
+                    )
+                #endif
                 audiobookshelfSettings = first
             } else {
-                // Create default Audiobookshelf settings
-                let newSettings = AudiobookshelfSettings()
-                context.insert(newSettings)
-                try context.save()
-                audiobookshelfSettings = newSettings
+                #if os(iOS)
+                    // iOS: Create default Audiobookshelf settings if none exist
+                    AppLogger.settings.info(
+                        "[iOS] Creating new Audiobookshelf settings with default values")
+                    let newSettings = AudiobookshelfSettings()
+                    context.insert(newSettings)
+                    try context.save()
+                    audiobookshelfSettings = newSettings
+                #else
+                    // Watch: Don't create settings, wait for sync from iPhone
+                    AppLogger.settings.info(
+                        "[Watch] No settings found - waiting for sync from iPhone")
+                    audiobookshelfSettings = nil
+                #endif
             }
         } catch {
-            AppLogger.settings.error(
-                "Failed to load Audiobookshelf settings: \(error.localizedDescription)")
-            // Create in-memory settings as fallback
-            audiobookshelfSettings = AudiobookshelfSettings()
+            #if os(iOS)
+                AppLogger.settings.error(
+                    "[iOS] Failed to load Audiobookshelf settings: \(error.localizedDescription)")
+                // Create in-memory settings as fallback on iOS only
+                audiobookshelfSettings = AudiobookshelfSettings()
+            #else
+                AppLogger.settings.error(
+                    "[Watch] Failed to load Audiobookshelf settings: \(error.localizedDescription)")
+                // Watch: Don't create fallback, wait for sync
+                audiobookshelfSettings = nil
+            #endif
         }
     }
 
     private func save() {
-        guard let context = modelContext else { return }
+        guard let context = modelContext else {
+            AppLogger.settings.error("Cannot save settings: no model context")
+            return
+        }
         do {
+            if let abs = audiobookshelfSettings {
+                AppLogger.settings.info(
+                    "Saving Audiobookshelf settings - serverURL: '\(abs.serverURL)', enabled: \(abs.isEnabled)"
+                )
+            }
             try context.save()
+            AppLogger.settings.info("Settings saved successfully to SwiftData/CloudKit")
         } catch {
             AppLogger.settings.error("Failed to save settings: \(error.localizedDescription)")
         }

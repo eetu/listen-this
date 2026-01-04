@@ -35,6 +35,7 @@ struct Listen_ThisWatchApp: App {
                 PlaybackSession.self,
                 CacheEntry.self,
                 UserSettings.self,
+                AudiobookshelfSettings.self,
             ])
 
             let modelConfiguration = ModelConfiguration(

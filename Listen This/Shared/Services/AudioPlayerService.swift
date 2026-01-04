@@ -242,16 +242,41 @@ final class AudioPlayerService: AudioPlayer {
             return cached
         }
 
-        // 2. Handle Audiobookshelf streaming
+        // 2. Handle Audiobookshelf streaming/downloading
         if audiobook.isAudiobookshelfBook {
             logger.info("Audiobook is from Audiobookshelf")
 
-            // Check if user prefers offline playback
-            let preferOffline = SettingsManager.shared.audiobookshelfPreferOffline
+            // Get playback mode from settings
+            let playbackMode = SettingsManager.shared.audiobookshelfPlaybackMode
 
-            if preferOffline {
-                // Try to download first
-                logger.info("User prefers offline playback, attempting download...")
+            switch playbackMode {
+            case .streamAlways:
+                // Always stream, never download
+                logger.info("Playback mode: stream always")
+                guard let identifier = audiobook.sourceIdentifier else {
+                    throw AudiobookError.fileNotFound
+                }
+
+                let provider = try await getAuthenticatedAudiobookshelfProvider()
+                let streamURL = try await provider.getStreamURL(identifier: identifier)
+                logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                return streamURL
+
+            case .manualDownload:
+                // User manually downloads - if not cached, stream
+                logger.info("Playback mode: manual download, not cached - streaming")
+                guard let identifier = audiobook.sourceIdentifier else {
+                    throw AudiobookError.fileNotFound
+                }
+
+                let provider = try await getAuthenticatedAudiobookshelfProvider()
+                let streamURL = try await provider.getStreamURL(identifier: identifier)
+                logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                return streamURL
+
+            case .autoDownload:
+                // Auto-download mode - try to download first
+                logger.info("Playback mode: auto-download, attempting download...")
                 do {
                     let cachedURL = try await downloadAudiobookshelfBook(audiobook)
                     logger.info("Download successful, using cached file")
@@ -259,18 +284,18 @@ final class AudioPlayerService: AudioPlayer {
                 } catch {
                     logger.warning(
                         "Download failed, falling back to streaming: \(error.localizedDescription)")
+
+                    // Fallback to streaming
+                    guard let identifier = audiobook.sourceIdentifier else {
+                        throw AudiobookError.fileNotFound
+                    }
+
+                    let provider = try await getAuthenticatedAudiobookshelfProvider()
+                    let streamURL = try await provider.getStreamURL(identifier: identifier)
+                    logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
+                    return streamURL
                 }
             }
-
-            // Stream from Audiobookshelf
-            guard let identifier = audiobook.sourceIdentifier else {
-                throw AudiobookError.fileNotFound
-            }
-
-            let provider = try await getAuthenticatedAudiobookshelfProvider()
-            let streamURL = try await provider.getStreamURL(identifier: identifier)
-            logger.info("Streaming from Audiobookshelf: \(streamURL.absoluteString)")
-            return streamURL
         }
 
         // 3. Handle iCloud Drive - download and cache locally
@@ -359,12 +384,18 @@ final class AudioPlayerService: AudioPlayer {
         let provider = AudiobookshelfProvider()
 
         let settings = SettingsManager.shared
-        guard let serverURL = URL(string: settings.audiobookshelfServerURL) else {
+        let serverURLString = settings.audiobookshelfServerURL
+        logger.debug("Attempting to create URL from server URL: '\(serverURLString)'")
+
+        guard let serverURL = URL(string: serverURLString) else {
+            logger.error("Invalid server URL: '\(serverURLString)'")
             throw AudiobookshelfError.invalidServerURL
         }
 
-        // Load API key from keychain
-        guard let apiKey = loadAPIKeyFromKeychain() else {
+        // Load API key from settings (synced via CloudKit)
+        let apiKey = SettingsManager.shared.audiobookshelfAPIKey
+        guard !apiKey.isEmpty else {
+            logger.error("API key is empty")
             throw AudiobookshelfError.authenticationFailed
         }
 
@@ -405,31 +436,6 @@ final class AudioPlayerService: AudioPlayer {
 
         logger.info("Download complete: \(cachePath)")
         return destinationURL
-    }
-
-    private func loadAPIKeyFromKeychain() -> String? {
-        let service = "com.anarkisti.Listen-This.audiobookshelf"
-        let account = "api-key"
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-            let data = result as? Data,
-            let apiKey = String(data: data, encoding: .utf8)
-        else {
-            return nil
-        }
-
-        return apiKey
     }
 
     // MARK: - Playback Controls
