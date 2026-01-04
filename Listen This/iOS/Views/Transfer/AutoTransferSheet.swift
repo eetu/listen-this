@@ -5,8 +5,8 @@
 //  Sheet for automatically selecting and initiating audiobook transfer to Watch
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct AutoTransferSheet: View {
     let audiobook: Audiobook
@@ -44,25 +44,44 @@ struct AutoTransferSheet: View {
                 if isTransferring {
                     transferProgressView
                 } else {
-                    Button {
-                        Task {
-                            await performTransfer()
+                    // Show appropriate buttons based on method
+                    if case .alreadyUploaded = selectedMethod {
+                        Button("OK") {
+                            dismiss()
                         }
-                    } label: {
-                        Text("Start Transfer")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(methodColor(selectedMethod))
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .padding(.horizontal)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+                    } else if case .error = selectedMethod {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .foregroundStyle(.secondary)
+                    } else {
+                        Button {
+                            Task {
+                                await performTransfer()
+                            }
+                        } label: {
+                            Text("Start Transfer")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(methodColor(selectedMethod))
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.horizontal)
 
-                    Button("Cancel") {
-                        dismiss()
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .foregroundStyle(.secondary)
                     }
-                    .foregroundStyle(.secondary)
                 }
             } else {
                 ProgressView("Selecting best method...")
@@ -83,7 +102,7 @@ struct AutoTransferSheet: View {
             if selector == nil {
                 let newSelector = TransferMethodSelector(modelContext: modelContext)
                 selector = newSelector
-                selectedMethod = newSelector.selectMethod(for: audiobook)
+                selectedMethod = await newSelector.selectMethod(for: audiobook)
 
                 // Initialize CloudKit manager for progress tracking
                 cloudKitManager = CloudKitChunkedTransferManager(modelContext: modelContext)
@@ -101,32 +120,36 @@ struct AutoTransferSheet: View {
             switch selectedMethod {
             case .cloudKit:
                 #if os(iOS)
-                // iPhone: Upload to CloudKit with progress tracking
-                try await manager.uploadAudiobook(audiobook)
+                    // iPhone: Upload to CloudKit with progress tracking
+                    try await manager.uploadAudiobook(audiobook)
                 #else
-                // Watch: Download from CloudKit with progress tracking
-                _ = try await manager.downloadAudiobook(audiobook)
+                    // Watch: Download from CloudKit with progress tracking
+                    _ = try await manager.downloadAudiobook(audiobook)
                 #endif
 
             case .watchConnectivity:
                 #if os(iOS)
-                // Direct transfer via WatchConnectivity
-                // Ensure file is cached first
-                if !audiobook.isFileCached {
-                    let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-                    _ = try await audiobook.downloadAndCache(using: cacheManager)
-                }
+                    // Direct transfer via WatchConnectivity
+                    // Ensure file is cached first
+                    if !audiobook.isFileCached {
+                        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+                        _ = try await audiobook.downloadAndCache(using: cacheManager)
+                    }
 
-                let watchConnectivityManager = iOSWatchConnectivityManager.shared
-                try await watchConnectivityManager.transferAudiobook(audiobook)
+                    let watchConnectivityManager = iOSWatchConnectivityManager.shared
+                    try await watchConnectivityManager.transferAudiobook(audiobook)
                 #else
-                throw TransferError.methodUnavailable
+                    throw TransferError.methodUnavailable
                 #endif
 
             case .iCloudDirect:
                 // Direct iCloud download
                 let cacheManager = AudiobookCacheManager(modelContext: modelContext)
                 _ = try await audiobook.downloadAndCache(using: cacheManager)
+
+            case .alreadyUploaded:
+                // Nothing to do - already uploaded
+                break
 
             case .error(let reason):
                 throw TransferError.noMethodAvailable(reason)
@@ -152,6 +175,8 @@ struct AutoTransferSheet: View {
             return "applewatch"
         case .iCloudDirect:
             return "icloud.and.arrow.down"
+        case .alreadyUploaded:
+            return "checkmark.icloud"
         case .error:
             return "exclamationmark.triangle"
         }
@@ -165,6 +190,8 @@ struct AutoTransferSheet: View {
             return .purple
         case .iCloudDirect:
             return .green
+        case .alreadyUploaded:
+            return .blue
         case .error:
             return .red
         }
@@ -178,6 +205,8 @@ struct AutoTransferSheet: View {
             return "Direct Transfer"
         case .iCloudDirect:
             return "iCloud Download"
+        case .alreadyUploaded:
+            return "Already Uploaded"
         case .error:
             return "Transfer Error"
         }
@@ -191,6 +220,8 @@ struct AutoTransferSheet: View {
             return reason
         case .iCloudDirect(let reason):
             return reason
+        case .alreadyUploaded(let reason):
+            return reason
         case .error(let reason):
             return reason
         }
@@ -201,7 +232,8 @@ struct AutoTransferSheet: View {
         VStack(spacing: 16) {
             // Check for CloudKit upload progress
             if let manager = cloudKitManager,
-               let progress = manager.activeUploads[audiobook.id] {
+                let progress = manager.activeUploads[audiobook.id]
+            {
                 VStack(spacing: 12) {
                     // Progress bar
                     ProgressView(value: progress.progress) {
@@ -223,7 +255,8 @@ struct AutoTransferSheet: View {
                 }
                 .padding(.horizontal)
             } else if let manager = cloudKitManager,
-                      let progress = manager.activeDownloads[audiobook.id] {
+                let progress = manager.activeDownloads[audiobook.id]
+            {
                 // Download progress (for Watch)
                 VStack(spacing: 12) {
                     ProgressView(value: progress.progress) {

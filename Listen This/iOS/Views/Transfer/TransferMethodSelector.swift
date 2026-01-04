@@ -142,7 +142,7 @@ final class TransferMethodSelector {
 
     /// Execute transfer using selected method
     func transfer(_ audiobook: Audiobook) async throws {
-        let method = selectMethod(for: audiobook)
+        let method = await selectMethod(for: audiobook)
 
         AppLogger.general.info("Using \(method.description) for \(audiobook.title)")
 
@@ -162,6 +162,11 @@ final class TransferMethodSelector {
         case .iCloudDirect(let reason):
             AppLogger.general.debug("Reason: \(reason)")
             try await downloadFromiCloud(audiobook)
+
+        case .alreadyUploaded(let reason):
+            AppLogger.general.debug("Already uploaded: \(reason)")
+            // Nothing to do - book is already in CloudKit
+            return
 
         case .error(let reason):
             throw TransferError.noMethodAvailable(reason)
@@ -273,6 +278,7 @@ enum SelectedMethod: CustomStringConvertible {
     case cloudKit(reason: String)
     case watchConnectivity(reason: String)
     case iCloudDirect(reason: String)
+    case alreadyUploaded(reason: String)
     case error(reason: String)
 
     var description: String {
@@ -283,6 +289,8 @@ enum SelectedMethod: CustomStringConvertible {
             return "WatchConnectivity (\(reason))"
         case .iCloudDirect(let reason):
             return "iCloud Direct (\(reason))"
+        case .alreadyUploaded(let reason):
+            return "Already Uploaded (\(reason))"
         case .error(let reason):
             return "Error: \(reason)"
         }
