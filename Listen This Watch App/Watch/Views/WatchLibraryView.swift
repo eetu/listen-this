@@ -17,6 +17,7 @@ struct WatchLibraryView: View {
 
     @State private var selectedAudiobook: Audiobook?
     @State private var showingPlayer = false
+    @State private var showingSettings = false
 
     // Sheet state - storing IDs instead of model objects to avoid SwiftData issues
     @State private var downloadOptionsAudiobookId: UUID?
@@ -33,10 +34,22 @@ struct WatchLibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gear")
+                    }
+                }
+            }
             .navigationDestination(isPresented: $showingPlayer) {
                 if let audiobook = selectedAudiobook {
                     WatchPlayerView(audiobook: audiobook)
                 }
+            }
+            .navigationDestination(isPresented: $showingSettings) {
+                AudiobookshelfWatchSettingsView()
             }
         }
         .onAppear {
