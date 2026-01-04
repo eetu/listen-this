@@ -53,6 +53,34 @@ final class AudiobookCacheManager: CacheManager {
         // Copy to cache
         try FileManager.default.copyItem(at: sourceURL, to: cacheURL)
 
+        // Get file size
+        let fileSize =
+            (try? FileManager.default.attributesOfItem(atPath: cacheURL.path)[.size] as? Int64) ?? 0
+
+        // Create or update cache entry
+        if let existingEntry = audiobook.cacheEntry {
+            // Update existing entry
+            existingEntry.filePath = cacheURL.path
+            existingEntry.fileSize = fileSize
+            existingEntry.lastAccessedDate = Date()
+            logger.debug("Updated existing cache entry for '\(audiobook.title)'")
+        } else {
+            // Create new cache entry
+            let cacheEntry = CacheEntry(
+                filePath: cacheURL.path,
+                fileSize: fileSize,
+                downloadedDate: Date(),
+                lastAccessedDate: Date()
+            )
+            cacheEntry.audiobook = audiobook
+            audiobook.cacheEntry = cacheEntry
+            modelContext.insert(cacheEntry)
+            logger.debug("Created new cache entry for '\(audiobook.title)'")
+        }
+
+        // Save the cache entry
+        try modelContext.save()
+
         // Extract and update metadata from the cached M4B file
         Task {
             await extractAndUpdateMetadata(for: audiobook, from: cacheURL)
@@ -139,13 +167,29 @@ final class AudiobookCacheManager: CacheManager {
                 "\(audiobook.id.uuidString).m4b")
             if FileManager.default.fileExists(atPath: uuidBasedPath.path) {
                 try FileManager.default.removeItem(at: uuidBasedPath)
-                return
+            }
+
+            // Clean up cache entry even if file doesn't exist
+            if let cacheEntry = audiobook.cacheEntry {
+                audiobook.cacheEntry = nil
+                modelContext.delete(cacheEntry)
+                try modelContext.save()
+                logger.debug("Cleaned up stale cache entry for '\(audiobook.title)'")
             }
 
             return
         }
 
+        // Delete the file
         try FileManager.default.removeItem(at: cacheURL)
+
+        // Clean up cache entry
+        if let cacheEntry = audiobook.cacheEntry {
+            audiobook.cacheEntry = nil
+            modelContext.delete(cacheEntry)
+            try modelContext.save()
+            logger.debug("Deleted cache entry for '\(audiobook.title)'")
+        }
     }
 
     /// Get all cached audiobook files

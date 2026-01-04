@@ -69,7 +69,15 @@ final class TransferMethodSelector {
     // MARK: - Transfer Method Selection
 
     /// Determine the best transfer method for an audiobook
-    func selectMethod(for audiobook: Audiobook) -> SelectedMethod {
+    func selectMethod(for audiobook: Audiobook) async -> SelectedMethod {
+        // Check if already uploaded to CloudKit
+        let cloudKitStatus = await cloudKitManager.checkCloudKitChunks(for: audiobook)
+
+        if cloudKitStatus == .fullyUploaded {
+            return .alreadyUploaded(
+                reason: "Book is already uploaded to CloudKit. Watch can download it directly.")
+        }
+
         switch preferredMethod {
         case .automatic:
             return automaticSelection(for: audiobook)

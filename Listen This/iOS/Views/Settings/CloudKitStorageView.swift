@@ -132,7 +132,9 @@ struct CloudKitStorageView: View {
                 switch result {
                 case .success(let record):
                     // Extract values - query already filtered for isComplete == 1
-                    if let audiobookId = record["audiobookId"] as? UUID,
+                    // Note: audiobookId is stored as String in CloudKit, convert to UUID
+                    if let audiobookIdString = record["audiobookId"] as? String,
+                        let audiobookId = UUID(uuidString: audiobookIdString),
                         let title = record["title"] as? String,
                         let fileSize = record["fileSize"] as? Int64,
                         let uploadDate = record["uploadDate"] as? Date
@@ -147,6 +149,10 @@ struct CloudKitStorageView: View {
                             ))
 
                         totalSize += fileSize
+                    } else {
+                        AppLogger.cloudKit.warning(
+                            "Failed to parse record fields - audiobookId: \(record["audiobookId"] as? String ?? "nil"), title: \(record["title"] as? String ?? "nil")"
+                        )
                     }
                 case .failure(let error):
                     AppLogger.cloudKit.error("Failed to load record: \(error.localizedDescription)")
