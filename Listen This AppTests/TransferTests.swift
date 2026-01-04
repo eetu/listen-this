@@ -432,9 +432,9 @@ struct TransferIntegrationTests {
         let audiobook2 = createTestAudiobook(title: "Book 2")
         let audiobook3 = createTestAudiobook(title: "Book 3")
 
-        async let upload1 = manager.uploadAudiobook(audiobook1)
-        async let upload2 = manager.uploadAudiobook(audiobook2)
-        async let upload3 = manager.uploadAudiobook(audiobook3)
+        async let upload1: () = manager.uploadAudiobook(audiobook1)
+        async let upload2: () = manager.uploadAudiobook(audiobook2)
+        async let upload3: () = manager.uploadAudiobook(audiobook3)
 
         try await upload1
         try await upload2

@@ -5,9 +5,10 @@
 //  Tests for concurrency, thread safety, error recovery, and performance
 //
 
-import Testing
 import Foundation
 import SwiftData
+import Testing
+
 @testable import Listen_This
 
 // MARK: - Concurrency & Thread Safety Tests
@@ -137,22 +138,29 @@ struct ErrorRecoveryTests {
     func handleNetworkInterruption() async throws {
         let manager = MockCloudKitTransferManager()
         manager.simulateNetworkDelay = true
-        manager.networkDelayNanoseconds = 100_000_000 // Slow enough to cancel
+        manager.networkDelayNanoseconds = 500_000_000  // 500ms - enough time to guarantee upload starts
 
-        let audiobook = createTestAudiobook(fileSize: 500_000_000) // Large file = more chunks
+        let audiobook = createTestAudiobook(fileSize: 500_000_000)  // Large file = more chunks
 
         Task {
             try? await manager.uploadAudiobook(audiobook)
         }
 
-        // Wait for upload to start
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Wait for upload to definitely start (poll until we see it)
+        for _ in 0..<20 {
+            if manager.activeUploads[audiobook.id] != nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)  // 10ms
+        }
+
+        // Verify upload actually started
+        #expect(manager.activeUploads[audiobook.id] != nil)
 
         // Cancel transfer
         manager.cancelTransfer(audiobookId: audiobook.id)
 
-        // Verify cancelled
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Verify cancelled immediately
         #expect(manager.activeUploads[audiobook.id] == nil)
     }
 

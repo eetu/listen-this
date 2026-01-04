@@ -89,6 +89,36 @@ Tests for cross-device synchronization:
 
 ## Running Tests
 
+### Simulator Optimization
+
+**To speed up test runs, keep a simulator running between test sessions:**
+
+```bash
+# Launch and boot the simulator once
+xcrun simctl boot "iPhone 17" && open -a Simulator
+
+# Or just open Simulator app (it will use the default device)
+open -a Simulator
+```
+
+Once the simulator is running, subsequent `xcodebuild test` commands will reuse it instead of launching a new instance, saving 10-30 seconds per run.
+
+**Useful simulator commands:**
+
+```bash
+# List available simulators
+xcrun simctl list devices
+
+# Boot a specific device
+xcrun simctl boot "iPhone 17"
+
+# Shutdown when done (optional - can leave running)
+xcrun simctl shutdown "iPhone 17"
+
+# Shutdown all simulators
+xcrun simctl shutdown all
+```
+
 ### Command Line
 
 ```bash
