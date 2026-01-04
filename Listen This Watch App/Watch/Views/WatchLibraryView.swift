@@ -365,11 +365,11 @@ struct AudiobookRowWithActions: View {
     var body: some View {
         AudiobookRow(audiobook: audiobook)
             .onTapGesture {
-                // Prevent opening player if file is not actually cached
-                if audiobook.isFileCached {
+                // Check playability state
+                if audiobook.playabilityState.isPlayable {
                     onTap()
                 } else {
-                    // File doesn't exist - show download options
+                    // Not playable - show download options
                     cleanupStaleCacheEntry()
                     onShowDownloadOptions(audiobook)
                 }
@@ -385,7 +385,7 @@ struct AudiobookRowWithActions: View {
                     .tint(.orange)
                 }
                 // State 2: Cached - show remove from watch
-                else if audiobook.isFileCached {
+                else if audiobook.playabilityState == .cached {
                     Button(role: .destructive) {
                         removeDownload(for: audiobook)
                     } label: {
@@ -393,7 +393,16 @@ struct AudiobookRowWithActions: View {
                     }
                     .tint(.red)
                 }
-                // State 3: Not cached - show download option
+                // State 3: Streamable - optionally allow download for offline
+                else if audiobook.playabilityState == .streamable {
+                    Button {
+                        onShowDownloadOptions(audiobook)
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
+                }
+                // State 4: Requires download - show download option
                 else {
                     Button {
                         onShowDownloadOptions(audiobook)
@@ -539,67 +548,64 @@ struct AudiobookRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
-                // Artwork thumbnail
-                ZStack(alignment: .bottomTrailing) {
-                    if let artworkData = audiobook.artworkData,
-                        let uiImage = UIImage(data: artworkData)
-                    {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 50, height: 50)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    } else {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 50, height: 50)
-                            .overlay {
-                                Image(systemName: "book.fill")
-                                    .foregroundStyle(.secondary)
-                            }
+        HStack(alignment: .top, spacing: 12) {
+            // Artwork thumbnail
+            if let artworkData = audiobook.artworkData,
+                let uiImage = UIImage(data: artworkData)
+            {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 50, height: 50)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 50, height: 50)
+                    .overlay {
+                        Image(systemName: "book.fill")
+                            .foregroundStyle(.secondary)
                     }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(audiobook.title)
-                        .font(.headline)
-                        .lineLimit(2, reservesSpace: true)
-
-                    Text(audiobook.author)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                }
-            }
-            // Status indicator
-            if hasActiveTransfer {
-                HStack(spacing: 4) {
-                    Image(systemName: "icloud.and.arrow.down")
-                        .font(.system(size: 10))
-                    Text("Downloading")
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
-                        .lineLimit(1)
-                }
-            } else if !audiobook.isFileCached {
-                HStack(spacing: 4) {
-                    Image(systemName: "icloud.slash")
-                        .font(.system(size: 10))
-                    Text("Not Downloaded")
-                        .font(.caption2)
-                        .lineLimit(1)
-                }
-                .foregroundStyle(.orange)
             }
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text(audiobook.title)
+                    .font(.headline)
+                    .lineLimit(2, reservesSpace: true)
+
+                Text(audiobook.author)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Status icon in top-right corner (iOS style)
+            VStack {
+                statusIcon
+                Spacer()
+            }
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingTransferSheet) {
             NavigationStack {
                 WatchTransferStatusView(audiobook: audiobook)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if hasActiveTransfer {
+            ProgressView()
+                .controlSize(.mini)
+        } else {
+            let state = audiobook.playabilityState
+            if state != .cached {
+                Image(systemName: state.iconName)
+                    .font(.body)
+                    .foregroundStyle(state.color)
             }
         }
     }

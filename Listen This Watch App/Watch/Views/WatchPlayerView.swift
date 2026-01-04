@@ -40,7 +40,7 @@ struct WatchPlayerView: View {
             backgroundArtworkView
 
             VStack(spacing: 0) {
-                if audiobook.isFileCached {
+                if audiobook.playabilityState.isPlayable {
                     if let playerService {
                         PlayerControlsView(
                             player: playerService,
@@ -65,7 +65,7 @@ struct WatchPlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if audiobook.isFileCached {
+                if audiobook.playabilityState.isPlayable {
                     Button {
                         showingContextMenu = true
                     } label: {
@@ -320,7 +320,7 @@ struct WatchPlayerView: View {
     // MARK: - Helpers
 
     private func loadPlayerIfNeeded() async {
-        guard playerService == nil, audiobook.isFileCached else { return }
+        guard playerService == nil, audiobook.playabilityState.isPlayable else { return }
         let service = AudioPlayerService(modelContext: modelContext)
         playerService = service
         await service.load(audiobook: audiobook)

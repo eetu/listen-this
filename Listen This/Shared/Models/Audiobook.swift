@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 @Model
 final class Audiobook {
@@ -171,5 +172,88 @@ final class Audiobook {
     /// Check if this book can be played offline
     var canPlayOffline: Bool {
         isFileCached || (isICloudBook && iCloudFileURL != nil)
+    }
+
+    // MARK: - Playability State
+
+    /// The current playability state of this audiobook
+    var playabilityState: AudiobookPlayabilityState {
+        // Cached locally - always playable offline
+        if isFileCached {
+            return .cached
+        }
+
+        // iCloud Drive books - need to be downloaded first
+        if isICloudBook {
+            return .requiresDownload
+        }
+
+        // Audiobookshelf/Jellyfin - can stream
+        if isAudiobookshelfBook || isJellyfinBook {
+            return .streamable
+        }
+
+        // Unknown source - requires download
+        return .requiresDownload
+    }
+}
+
+// MARK: - Playability State Enum
+
+/// Represents the playability state of an audiobook
+enum AudiobookPlayabilityState {
+    /// File is cached locally and ready to play offline
+    case cached
+
+    /// Can be streamed over network (Audiobookshelf, Jellyfin)
+    case streamable
+
+    /// Requires download before playback (iCloud Drive, not yet cached)
+    case requiresDownload
+
+    /// Whether the audiobook can be played (either cached or streamable)
+    var isPlayable: Bool {
+        switch self {
+        case .cached, .streamable:
+            return true
+        case .requiresDownload:
+            return false
+        }
+    }
+
+    /// Icon name for UI display
+    var iconName: String {
+        switch self {
+        case .cached:
+            return "checkmark.circle.fill"
+        case .streamable:
+            return "wifi"
+        case .requiresDownload:
+            return "icloud.slash"
+        }
+    }
+
+    /// Status text for UI display
+    var statusText: String {
+        switch self {
+        case .cached:
+            return "Downloaded"
+        case .streamable:
+            return "Stream"
+        case .requiresDownload:
+            return "Not Downloaded"
+        }
+    }
+
+    /// SwiftUI Color for UI display
+    var color: Color {
+        switch self {
+        case .cached:
+            return .green
+        case .streamable:
+            return .blue
+        case .requiresDownload:
+            return .orange
+        }
     }
 }
