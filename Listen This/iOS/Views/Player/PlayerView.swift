@@ -20,7 +20,10 @@ struct PlayerView: View {
             }
         }
         .toolbar {
-            AirPlayButton()
+            ToolbarItem(placement: .topBarTrailing) {
+                AirPlayButton()
+                    .frame(width: 44, height: 44)
+            }
         }
         .task(id: audiobook.id) {
             isLoading = true
@@ -327,15 +330,18 @@ private struct AirPlayButton: UIViewRepresentable {
         routePickerView.activeTintColor = UIColor(Color.primary)
         routePickerView.prioritizesVideoDevices = false
 
-        // Constrain the size to match other toolbar icons
-        routePickerView.setContentHuggingPriority(.required, for: .horizontal)
-        routePickerView.setContentCompressionResistancePriority(.required, for: .horizontal)
-
         return routePickerView
     }
 
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
         // No updates needed
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: AVRoutePickerView, context: Context)
+        -> CGSize
+    {
+        // Provide explicit size to avoid Auto Layout conflicts
+        return CGSize(width: 44, height: 44)
     }
 }
 

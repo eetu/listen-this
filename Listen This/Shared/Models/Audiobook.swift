@@ -21,10 +21,21 @@ final class Audiobook {
     @Attribute(.externalStorage) var artworkData: Data?
 
     var duration: Double = 0  // Total duration in seconds
-    var fileSize: Int64 = 0   // File size in bytes
+    var fileSize: Int64 = 0  // File size in bytes
 
     // Storage - Simple iCloud Drive path reference (syncs via CloudKit)
     var iCloudRelativePath: String?  // e.g. "Documents/Audiobooks/book.m4b"
+
+    // MARK: - Content Source
+
+    /// Source type: "icloud", "audiobookshelf", "jellyfin"
+    var sourceType: String = "icloud"
+
+    /// Source-specific identifier (e.g., Audiobookshelf library item ID)
+    var sourceIdentifier: String?
+
+    /// Source URL for streaming/downloading (e.g., Audiobookshelf server + path)
+    var sourceURL: String?
 
     // Metadata
     var lastAccessedDate: Date = Date()
@@ -64,29 +75,43 @@ final class Audiobook {
         self.isArchived = isArchived
         self.chapters = chapters
     }
-    
+
     // MARK: - Computed Properties (Not Stored, Not Synced)
 
-    /// Get the filename for this audiobook (derived from iCloud path)
+    /// Get the filename for this audiobook (provider-agnostic)
+    /// - iCloud books: Use the filename from iCloudRelativePath
+    /// - Remote sources: Use sourceIdentifier for stable caching across re-adds
     var filename: String? {
-        guard let iCloudPath = iCloudRelativePath else { return nil }
-        return URL(fileURLWithPath: iCloudPath).lastPathComponent
+        // For iCloud books, use the original filename
+        if let iCloudPath = iCloudRelativePath {
+            return URL(fileURLWithPath: iCloudPath).lastPathComponent
+        }
+
+        // For remote sources, use sourceIdentifier to maintain cache across re-adds
+        // This prevents re-downloading if user removes and re-adds the same book
+        if let sourceId = sourceIdentifier {
+            // Sanitize the identifier to make it filesystem-safe
+            let sanitized = sourceId.replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+            return "\(sanitized).m4b"
+        }
+
+        // Fallback to UUID if no source identifier
+        return "\(id).m4b"
     }
-    
+
     /// Get the expected local cache path for this device
     var expectedCachePath: String? {
-        // On iOS/macOS, use Caches directory as it's more appropriate
-        // for downloaded content that can be re-downloaded
         guard let filename = filename else { return nil }
-        
+
         let storageDir = FileManager.default.urls(
             for: .cachesDirectory,
             in: .userDomainMask
         )[0].appendingPathComponent("Audiobooks")
-        
+
         return storageDir.appendingPathComponent(filename).path
     }
-    
+
     /// Check if file is cached locally (computed on-demand)
     var isFileCached: Bool {
         guard let cachePath = expectedCachePath else { return false }
@@ -94,28 +119,57 @@ final class Audiobook {
         guard let fileSize = attributes?[.size] as? Int64 else { return false }
         return fileSize > 0
     }
-    
+
     /// Get the cache file URL if it exists
     var cacheFileURL: URL? {
         guard let cachePath = expectedCachePath else { return nil }
         let url = URL(fileURLWithPath: cachePath)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
-    
+
     /// Get valid cache file URL for transfers (returns URL even if file doesn't exist yet)
     /// This is useful for checking if we have the path available, then verifying existence separately
     var validCacheFileURL: URL? {
         guard let cachePath = expectedCachePath else { return nil }
         return URL(fileURLWithPath: cachePath)
     }
-    
+
     /// Get the iCloud file URL (full path)
     var iCloudFileURL: URL? {
         guard let relativePath = iCloudRelativePath else { return nil }
-        guard let ubiquityURL = FileManager.default.url(
-            forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This"
-        ) else { return nil }
-        
+        guard
+            let ubiquityURL = FileManager.default.url(
+                forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This"
+            )
+        else { return nil }
+
         return ubiquityURL.appendingPathComponent(relativePath)
+    }
+
+    // MARK: - Availability States
+
+    /// Check if this is an iCloud Drive audiobook
+    var isICloudBook: Bool {
+        sourceType == "icloud"
+    }
+
+    /// Check if this is an Audiobookshelf audiobook
+    var isAudiobookshelfBook: Bool {
+        sourceType == "audiobookshelf"
+    }
+
+    /// Check if this is a Jellyfin audiobook
+    var isJellyfinBook: Bool {
+        sourceType == "jellyfin"
+    }
+
+    /// Check if this book requires network streaming (not cached and from remote source)
+    var requiresStreaming: Bool {
+        !isFileCached && !isICloudBook
+    }
+
+    /// Check if this book can be played offline
+    var canPlayOffline: Bool {
+        isFileCached || (isICloudBook && iCloudFileURL != nil)
     }
 }

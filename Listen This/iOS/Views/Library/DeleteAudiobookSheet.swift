@@ -68,23 +68,30 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                         .disabled(isDeleting)
                     }
 
-                    // Always show "Delete Everywhere" if book exists in iCloud
-                    if audiobook.iCloudRelativePath != nil {
-                        Button(role: .destructive) {
-                            Task {
-                                await deleteAudiobook(deleteFromiCloud: true)
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "icloud.slash")
-                                    .font(.title2)
-                                    .foregroundStyle(.red)
-                                    .frame(width: 32)
+                    // Show "Delete Everywhere" for iCloud books, or "Delete from Library" for other sources
+                    Button(role: .destructive) {
+                        Task {
+                            await deleteAudiobook(
+                                deleteFromiCloud: audiobook.iCloudRelativePath != nil)
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(
+                                systemName: audiobook.iCloudRelativePath != nil
+                                    ? "icloud.slash" : "trash"
+                            )
+                            .font(.title2)
+                            .foregroundStyle(.red)
+                            .frame(width: 32)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Delete Everywhere")
-                                        .font(.headline)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(
+                                    audiobook.iCloudRelativePath != nil
+                                        ? "Delete Everywhere" : "Delete from Library"
+                                )
+                                .font(.headline)
 
+                                if audiobook.iCloudRelativePath != nil {
                                     if isOnWatch {
                                         Text("Removes from iCloud, iPhone, and Apple Watch")
                                             .font(.caption)
@@ -94,12 +101,23 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
+                                } else if audiobook.sourceIdentifier != nil {
+                                    // Remote source (Audiobookshelf, Jellyfin, etc.)
+                                    Text(
+                                        "Removes from library. Book remains on the server and can be re-added later."
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Removes from library and all synced devices")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(isDeleting)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isDeleting)
                 } header: {
                     Text("Delete \"\(audiobook.title)\"?")
                 } footer: {

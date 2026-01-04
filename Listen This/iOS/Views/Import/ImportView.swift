@@ -19,6 +19,7 @@ struct ImportView: View {
     @State private var importError: AudiobookError?
     @State private var showingFilePicker = false
     @State private var showingRefreshSheet = false
+    @State private var showingAudiobookshelf = false
 
     var body: some View {
         NavigationStack {
@@ -30,10 +31,32 @@ struct ImportView: View {
                         Label("Import M4B File", systemImage: "doc.badge.plus")
                     }
                     .disabled(isImporting)
+
+                    if SettingsManager.shared.audiobookshelfEnabled {
+                        Button {
+                            showingAudiobookshelf = true
+                        } label: {
+                            Label("Browse Audiobookshelf", systemImage: "server.rack")
+                        }
+                    } else {
+                        Button {
+                            // Navigate to settings
+                            dismiss()
+                        } label: {
+                            Label("Setup Audiobookshelf", systemImage: "server.rack")
+                        }
+                        .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("Import Sources")
                 } footer: {
-                    Text("Import M4B audiobook files from iCloud.")
+                    if SettingsManager.shared.audiobookshelfEnabled {
+                        Text("Import M4B files from iCloud or browse your Audiobookshelf library.")
+                    } else {
+                        Text(
+                            "Import M4B files from iCloud. Enable Audiobookshelf in Settings to access your server library."
+                        )
+                    }
                 }
 
                 if let error = importError {
@@ -83,6 +106,9 @@ struct ImportView: View {
                 Task {
                     await handleFileImport(result)
                 }
+            }
+            .sheet(isPresented: $showingAudiobookshelf) {
+                AudiobookshelfBrowserView()
             }
             .overlay {
                 if isImporting {
