@@ -83,6 +83,7 @@
 				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
 				Shared/Utilities/AppLogger.swift,
+				Shared/Utilities/MetadataExtractor.swift,
 				"Shared/Utilities/UIImage+DominantColor.swift",
 				Shared/Views/ChapterTitleView.swift,
 				Shared/Views/CloudKitTransferView.swift,
@@ -117,6 +118,7 @@
 				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
 				Shared/Utilities/AppLogger.swift,
+				Shared/Utilities/MetadataExtractor.swift,
 				"Shared/Utilities/UIImage+DominantColor.swift",
 			);
 			target = C270F74E2EFC53AF008500DF /* Listen This AppTests */;

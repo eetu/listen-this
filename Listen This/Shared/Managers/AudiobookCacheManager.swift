@@ -53,7 +53,76 @@ final class AudiobookCacheManager: CacheManager {
         // Copy to cache
         try FileManager.default.copyItem(at: sourceURL, to: cacheURL)
 
+        // Extract and update metadata from the cached M4B file
+        Task {
+            await extractAndUpdateMetadata(for: audiobook, from: cacheURL)
+        }
+
         return cacheURL
+    }
+
+    /// Extract metadata from cached M4B file and update audiobook
+    private func extractAndUpdateMetadata(for audiobook: Audiobook, from fileURL: URL) async {
+        do {
+            logger.info("Extracting metadata from cached file for '\(audiobook.title)'")
+
+            let metadata = try await MetadataExtractor.extractMetadata(from: fileURL)
+
+            // Update audiobook with extracted metadata
+            // Only update fields if they have values and are better than current data
+
+            if let title = metadata.title, !title.isEmpty {
+                audiobook.title = title
+                logger.info("Updated title to: '\(title)'")
+            }
+
+            if let author = metadata.author, !author.isEmpty {
+                audiobook.author = author
+                logger.info("Updated author to: '\(author)'")
+            }
+
+            if let narrator = metadata.narrator, !narrator.isEmpty {
+                audiobook.narrator = narrator
+                logger.info("Updated narrator to: '\(narrator)'")
+            }
+
+            // Always update duration and chapter count from M4B file (more accurate)
+            if metadata.duration > 0 {
+                audiobook.duration = metadata.duration
+                logger.info("Updated duration to: \(metadata.duration)s")
+            }
+
+            if metadata.chapterCount > 0 {
+                audiobook.chapterCount = metadata.chapterCount
+                logger.info("Updated chapter count to: \(metadata.chapterCount)")
+            }
+
+            // Update artwork if embedded artwork exists
+            // This replaces the downscaled Audiobookshelf artwork with full quality
+            if let artworkData = metadata.artworkData {
+                let artworkSize = artworkData.count
+                let currentArtworkSize = audiobook.artworkData?.count ?? 0
+
+                // Only update if new artwork is larger (better quality)
+                if artworkSize > currentArtworkSize {
+                    audiobook.artworkData = artworkData
+                    logger.info(
+                        "Updated artwork (\(ByteCountFormatter.string(fromByteCount: Int64(artworkSize), countStyle: .file)) vs previous \(ByteCountFormatter.string(fromByteCount: Int64(currentArtworkSize), countStyle: .file)))"
+                    )
+                } else {
+                    logger.info("Keeping existing artwork (larger than embedded)")
+                }
+            }
+
+            // Save changes
+            try modelContext.save()
+            logger.info("Successfully updated metadata for '\(audiobook.title)'")
+
+        } catch {
+            logger.error(
+                "Failed to extract metadata for '\(audiobook.title)': \(error.localizedDescription)"
+            )
+        }
     }
 
     /// Delete cached file for an audiobook

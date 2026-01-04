@@ -181,11 +181,8 @@ final class iCloudDriveProvider: ContentSource {
 
     /// Extract metadata from an M4B file using AVAsset
     private func extractMetadata(from url: URL) async throws -> AudiobookMetadata {
-        let asset = AVURLAsset(url: url)
-
-        // Get duration
-        let duration = try await asset.load(.duration)
-        let durationSeconds = CMTimeGetSeconds(duration)
+        // Use shared MetadataExtractor
+        let extractedMetadata = try await MetadataExtractor.extractMetadata(from: url)
 
         // Get file size
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -194,54 +191,16 @@ final class iCloudDriveProvider: ContentSource {
         // Get creation date
         let creationDate = fileAttributes[.creationDate] as? Date ?? Date()
 
-        // Extract metadata items
-        let metadata = try await asset.load(.metadata)
-
-        var title = url.deletingPathExtension().lastPathComponent
-        var author = "Unknown Author"
-        var narrator: String? = nil
-
-        for item in metadata {
-            guard let commonKey = item.commonKey,
-                let value = try? await item.load(.value)
-            else {
-                continue
-            }
-
-            switch commonKey {
-            case .commonKeyTitle:
-                if let titleString = value as? String {
-                    title = titleString
-                }
-
-            case .commonKeyArtist:
-                if let authorString = value as? String {
-                    author = authorString
-                }
-
-            case .commonKeyCreator:
-                if let narratorString = value as? String {
-                    narrator = narratorString
-                }
-
-            default:
-                break
-            }
-        }
-
-        // Count chapters
-        let chapterCount = try await countChapters(in: asset)
-
         return AudiobookMetadata(
             identifier: url.absoluteString,
-            title: title,
-            author: author,
-            narrator: narrator,
-            duration: durationSeconds,
+            title: extractedMetadata.title ?? url.deletingPathExtension().lastPathComponent,
+            author: extractedMetadata.author ?? "Unknown Author",
+            narrator: extractedMetadata.narrator,
+            duration: extractedMetadata.duration,
             fileSize: fileSize,
             sourceType: "icloud",
             sourceURL: url.absoluteString,
-            chapterCount: chapterCount,
+            chapterCount: extractedMetadata.chapterCount,
             addedDate: creationDate,
             artworkURL: nil
         )
@@ -249,66 +208,29 @@ final class iCloudDriveProvider: ContentSource {
 
     /// Extract artwork data from an M4B file
     private func extractArtwork(from url: URL) async throws -> Data {
-        let asset = AVURLAsset(url: url)
-        let metadata = try await asset.load(.metadata)
-
-        for item in metadata {
-            guard let commonKey = item.commonKey else { continue }
-
-            if commonKey == .commonKeyArtwork {
-                if let artworkData = try? await item.load(.dataValue) {
-                    return artworkData
-                }
-            }
+        // Use shared MetadataExtractor
+        guard let artworkData = try await MetadataExtractor.extractArtwork(from: url) else {
+            throw AudiobookError.fileNotFound
         }
-
-        // No artwork found
-        throw AudiobookError.fileNotFound
-    }
-
-    /// Count the number of chapters in an asset
-    private func countChapters(in asset: AVAsset) async throws -> Int {
-        let chapterGroups = try await loadChapterGroups(from: asset)
-        return chapterGroups.count
+        return artworkData
     }
 
     // MARK: - Chapter Extraction
 
     /// Extract chapter information from an M4B file
     func extractChapters(from url: URL) async throws -> [ChapterInfo] {
-        let asset = AVURLAsset(url: url)
-        let chapterGroups = try await loadChapterGroups(from: asset)
+        // Use shared MetadataExtractor
+        let extractedChapters = try await MetadataExtractor.extractChapters(from: url)
 
-        var chapters: [ChapterInfo] = []
-
-        for (index, chapterGroup) in chapterGroups.enumerated() {
-            let timeRange = chapterGroup.timeRange
-            let startTime = CMTimeGetSeconds(timeRange.start)
-            let duration = CMTimeGetSeconds(timeRange.duration)
-
-            // Extract chapter title
-            var chapterTitle = "Chapter \(index + 1)"
-
-            for item in chapterGroup.items {
-                if let commonKey = item.commonKey,
-                    commonKey == .commonKeyTitle,
-                    let title = try? await item.load(.stringValue)
-                {
-                    chapterTitle = title
-                    break
-                }
-            }
-
-            chapters.append(
-                ChapterInfo(
-                    index: index,
-                    title: chapterTitle,
-                    startTime: startTime,
-                    duration: duration
-                ))
+        // Convert ExtractedChapter to ChapterInfo
+        return extractedChapters.map { chapter in
+            ChapterInfo(
+                index: chapter.index,
+                title: chapter.title,
+                startTime: chapter.startTime,
+                duration: chapter.duration
+            )
         }
-
-        return chapters
     }
 
     // MARK: - File Import
@@ -377,20 +299,6 @@ final class iCloudDriveProvider: ContentSource {
         }
 
         return url
-    }
-
-    /// Extracts chapter metadata groups with the best matching language
-    private func loadChapterGroups(from asset: AVAsset) async throws -> [AVTimedMetadataGroup] {
-        let languages = try await asset.load(.availableChapterLocales)
-
-        guard let primaryLanguage = languages.first else {
-            return []
-        }
-
-        let languageIdentifier = primaryLanguage.language.languageCode?.identifier ?? "en"
-        return try await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: [
-            languageIdentifier
-        ])
     }
 }
 
