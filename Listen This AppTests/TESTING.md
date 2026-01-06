@@ -31,22 +31,14 @@ Available in both tests (via `@testable import`) and SwiftUI previews. Wrapped i
 
 We use **Swift Testing** (the modern Swift testing framework with macros) instead of XCTest.
 
-### Key Syntax
+### Key Features
 
-```swift
-import Testing
-
-@Suite("Feature Name Tests")
-@MainActor
-struct FeatureTests {
-
-    @Test("Descriptive test name")
-    func testSomething() async throws {
-        #expect(value == expected)
-        #require(optionalValue != nil)
-    }
-}
-```
+- `@Suite` for grouping related tests
+- `@Test` for individual test cases
+- `#expect()` for assertions
+- `#require()` for optional unwrapping
+- `@MainActor` for main thread tests
+- Async/await support built-in
 
 ## Test Categories
 
@@ -57,6 +49,9 @@ Tests for file transfers between devices and CloudKit:
 - Cancel operations
 - Error handling
 - Integration workflows
+- Background URLSession delegate callbacks
+- Long-lived CloudKit operations
+- Resume capability for interrupted uploads
 
 ### Cache Tests
 Tests for local file caching:
@@ -152,136 +147,45 @@ xcodebuild test -scheme "Listen This" \
 
 ### Creating Test Containers
 
-```swift
-// Standard container
-let container = try createTestContainer()
-let context = ModelContext(container)
-
-// Container with PlaybackSession support
-let container = try createTestContainerWithPlayback()
-```
+Use `createTestContainer()` for standard in-memory SwiftData container, or `createTestContainerWithPlayback()` for containers that include PlaybackSession support.
 
 ### Creating Test Data
 
-```swift
-// Default audiobook
-let audiobook = createTestAudiobook()
+Helper functions in `TestHelpers.swift` provide factory methods for:
+- Test audiobooks with default or custom properties
+- Temporary test files with specified sizes
+- Test chapters and playback sessions
 
-// Custom properties
-let audiobook = createTestAudiobook(
-    title: "The Hobbit",
-    fileSize: 250_000_000
-)
-
-// Temporary test file
-let fileURL = try createTestFile(size: 1_000_000)
-defer { try? FileManager.default.removeItem(at: fileURL) }
-```
+All test data uses in-memory storage and doesn't persist between test runs.
 
 ## Mock Configuration
 
 ### MockCloudKitTransferManager
 
-```swift
-let manager = MockCloudKitTransferManager()
+Mock implementation supports:
+- Configurable upload/download failures
+- Network delay simulation
+- Partial upload simulation for resume testing
+- Reset between tests for isolation
 
-// Configure behavior
-manager.shouldFailUpload = true
-manager.simulateNetworkDelay = false
-manager.networkDelayNanoseconds = 50_000_000
-
-// Simulate partial upload
-manager.simulatePartialUpload(audiobook, uploadedChunks: Set([0, 1, 2]))
-
-// Reset between tests
-manager.reset()
-```
+See `Shared/Mocks.swift` for full API.
 
 ## iPad-Specific Testing
 
 ### UI Adaptation Tests
 
 Tests for iPad-specific layouts and features:
-
-```swift
-@Suite("iPad Layout Tests")
-@MainActor
-struct iPadLayoutTests {
-    
-    @Test("Library shows 4 columns on iPad")
-    func iPadLibraryColumns() async throws {
-        // Test that iPad uses 4-column grid
-        let container = try createTestContainer()
-        let context = ModelContext(container)
-        
-        // Create test audiobooks
-        for i in 0..<8 {
-            let book = createTestAudiobook(title: "Book \(i)")
-            context.insert(book)
-        }
-        
-        // Verify grid column count based on size class
-        // Note: Size class testing requires UI testing framework
-    }
-    
-    @Test("Split view layout on iPad")
-    func iPadSplitView() async throws {
-        // Verify NavigationSplitView is used on iPad
-        // Test sidebar and detail pane behavior
-    }
-    
-    @Test("Multitasking support")
-    func multitaskingLayout() async throws {
-        // Test that app adapts to Split View sizes
-        // Verify readable content at various widths
-    }
-}
-```
-
-### Size Class Testing
-
-```swift
-@Suite("Size Class Adaptation")
-@MainActor
-struct SizeClassTests {
-    
-    @Test("Regular horizontal size class uses iPad layout")
-    func regularSizeClassLayout() async throws {
-        // Test layout switches based on horizontalSizeClass
-    }
-    
-    @Test("Compact size class uses iPhone layout")
-    func compactSizeClassLayout() async throws {
-        // Test iPhone layout on iPad in Split View
-    }
-}
-```
+- Library grid column count (4 columns on iPad)
+- NavigationSplitView behavior
+- Multitasking and Split View adaptation
+- Size class switching between regular and compact layouts
 
 ### Input Method Tests
 
-```swift
-@Suite("iPad Input Methods")
-@MainActor
-struct InputMethodTests {
-    
-    @Test("Keyboard shortcuts work")
-    func keyboardShortcuts() async throws {
-        // Test spacebar for play/pause
-        // Test arrow keys for navigation
-        // Test Cmd+N for add book
-    }
-    
-    @Test("Drag and drop audiobook import")
-    func dragDropImport() async throws {
-        // Test dropping M4B file into app
-    }
-    
-    @Test("External pointer hover effects")
-    func pointerHoverEffects() async throws {
-        // Test hover effects on buttons
-    }
-}
-```
+Tests for iPad input methods:
+- Keyboard shortcuts (spacebar, arrow keys, Cmd+N)
+- Drag and drop audiobook import
+- External pointer hover effects
 
 ### Running iPad Tests
 
@@ -323,41 +227,18 @@ xcodebuild test -scheme "Listen This" \
 ## Common Patterns
 
 ### Testing Async Functions
-
-```swift
-@Test("Async operation completes")
-func asyncTest() async throws {
-    try await someAsyncFunction()
-    #expect(result == expected)
-}
-```
+- Use `async throws` for test functions
+- Use `try await` for async operations
+- Use `#expect()` for assertions
 
 ### Testing Errors
-
-```swift
-@Test("Function throws error")
-func errorTest() async throws {
-    await #expect(throws: SomeError.self) {
-        try await functionThatThrows()
-    }
-}
-```
+- Use `#expect(throws:)` for expected errors
+- Specify error type for type-safe error checking
 
 ### Testing Concurrent Operations
-
-```swift
-@Test("Concurrent operations complete")
-func concurrencyTest() async throws {
-    await withTaskGroup(of: Void.self) { group in
-        for item in items {
-            group.addTask {
-                try? await processItem(item)
-            }
-        }
-    }
-    #expect(allCompleted)
-}
-```
+- Use `withTaskGroup` for parallel operations
+- Test atomicity and thread safety
+- Verify progress updates under concurrency
 
 ## Resources
 
@@ -365,6 +246,32 @@ func concurrencyTest() async throws {
 - [SwiftData Testing Guide](https://developer.apple.com/documentation/swiftdata/testing)
 - [Concurrency Testing](https://developer.apple.com/documentation/swift/concurrency)
 
+## Background Transfer Testing
+
+### Background URLSession Testing
+
+Tests for background download/upload functionality:
+- Background URLSession continues after app termination
+- URLSession delegate receives completion callbacks
+- Cellular data setting is respected (WiFi-only vs cellular)
+- Background session configuration is correct
+
+### Long-Lived Operation Testing
+
+Tests for CloudKit background operations:
+- CKModifyRecordsOperation configured with long-lived flag
+- Operations continue after app backgrounding
+- Upload resumes after interruption (only missing chunks uploaded)
+- Progress tracking during resume operations
+
+### watchOS Background Task Testing
+
+Tests for watchOS background tasks:
+- WKURLSessionRefreshBackgroundTask handling
+- URLSession reconnection with matching identifier
+- Background downloads continue when app is suspended
+- Delegate callbacks on task completion
+
 ---
 
-*Last Updated: December 27, 2025*
+*Last Updated: January 5, 2026*

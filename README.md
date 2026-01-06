@@ -11,6 +11,8 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
 - Display chapter information and artwork
 - Support for multiple content sources (iCloud Drive, with Jellyfin and AudiobookShelf planned)
 - WatchConnectivity integration for direct file transfers between iPhone and Watch
+- Background CloudKit transfers with WiFi/cellular configuration
+- True background downloads and uploads that continue when app is terminated
 
 ## Project Status
 
@@ -132,9 +134,35 @@ A cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized
    - Update CacheEntry models
    - Download method selection UI
 
+### Step 6: Background Transfer Support (COMPLETED)
+
+**Completed Components:**
+
+1. **iOS Background URLSession**
+   - WiFi/cellular-configurable background URLSession for CloudKit chunk downloads
+   - URLSession continues even when app is terminated
+   - Proper delegate integration with `urlSessionDidFinishEvents(forBackgroundURLSession:)`
+   - AppDelegate handles background session completion events
+
+2. **Long-Lived CloudKit Operations**
+   - All `CKModifyRecordsOperation` instances configured for background execution
+   - Uses modern `CKOperation.Configuration` API
+   - Chunk uploads continue in background
+   - Batch delete operations support background execution
+
+3. **watchOS Background Download Support**
+   - `WKURLSessionRefreshBackgroundTask` handling in WatchExtensionDelegate
+   - System-scheduled background downloads
+   - Automatic URLSession reconnection for background events
+
+4. **User Settings**
+   - Cellular data toggle for CloudKit transfers (default: WiFi-only)
+   - Settings sync via CloudKit across all devices
+   - Clear UI with warnings about data charges
+   - Dynamic URLSession configuration based on user preference
+
 ### Next Steps
 
-6. **watchOS App** - Build Apple Watch companion with playback
 7. **Enhanced Features** - Bookmarks, CarPlay integration
 8. **Additional Sources** - Jellyfin, AudiobookShelf providers
 
@@ -371,8 +399,8 @@ Private project - All rights reserved
 
 ---
 
-**Last Updated**: December 27, 2025
-**Status**: Phase 1 MVP Complete, Phase 3 Apple Watch Complete
-**Recent**: Cross-device playback sync with conflict resolution
-**CloudKit**: Configured and Active
-**WatchConnectivity**: Bluetooth and CloudKit WiFi transfers implemented
+**Last Updated**: January 5, 2026
+**Status**: Phase 1 MVP Complete, Phase 3 Apple Watch Complete, Background Transfers Implemented
+**Recent**: Background CloudKit transfers with cellular/WiFi configuration
+**CloudKit**: Configured and Active with long-lived operations
+**WatchConnectivity**: Bluetooth and CloudKit WiFi transfers with background support
