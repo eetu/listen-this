@@ -14,6 +14,9 @@ struct TransferSettingsView: View {
     @State private var selectedMethod: TransferMethod
     @State private var showAdvancedOptions = false
 
+    // Access SettingsManager for cellular data setting
+    private let settingsManager = SettingsManager.shared
+
     init(modelContext: ModelContext) {
         let selector = TransferMethodSelector(modelContext: modelContext)
         _selector = State(initialValue: selector)
@@ -42,6 +45,27 @@ struct TransferSettingsView: View {
             } footer: {
                 Text(
                     "Choose how audiobooks are transferred from your iPhone to Apple Watch. Automatic mode selects the best method based on file size and network conditions."
+                )
+            }
+
+            // Cellular data setting for CloudKit transfers
+            Section {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsManager.allowCellularForCloudKitTransfers },
+                        set: { settingsManager.allowCellularForCloudKitTransfers = $0 }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Allow Cellular Data")
+                        Text("For CloudKit transfers")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text(
+                    "When enabled, CloudKit transfers can use cellular data. This may incur data charges for large audiobook files. WiFi is always preferred when available."
                 )
             }
 

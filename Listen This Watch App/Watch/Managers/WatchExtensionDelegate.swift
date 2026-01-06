@@ -65,6 +65,17 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
                 // The task will be completed when hasContentPending becomes false
                 wcBackgroundTasks.append(wcTask)
 
+            case let urlSessionTask as WKURLSessionRefreshBackgroundTask:
+                // Handle background URLSession refresh for CloudKit chunk downloads
+                AppLogger.general.info(
+                    "[ExtensionDelegate] Handling URLSession background task for session: \(urlSessionTask.sessionIdentifier)"
+                )
+
+                // The URLSession with matching identifier will automatically reconnect
+                // and deliver events to its delegate (CloudKitChunkedTransferManager)
+                // We complete the task immediately as the URLSession handles the actual work
+                urlSessionTask.setTaskCompletedWithSnapshot(false)
+
             case let snapshotTask as WKSnapshotRefreshBackgroundTask:
                 // Handle snapshot refresh - complete immediately
                 AppLogger.general.info("[ExtensionDelegate] Handling snapshot refresh task")

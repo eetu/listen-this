@@ -20,6 +20,9 @@ struct Listen_ThisApp: App {
     #if os(iOS)
         // Watch Connectivity Manager
         @State private var watchConnectivity = iOSWatchConnectivityManager.shared
+
+        // App Delegate for background URLSession handling
+        @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
 
     @Environment(\.scenePhase) private var scenePhase

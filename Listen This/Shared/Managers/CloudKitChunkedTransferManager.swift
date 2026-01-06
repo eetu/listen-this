@@ -22,7 +22,9 @@ import SwiftData
 
 @MainActor
 @Observable
-final class CloudKitChunkedTransferManager: CloudKitTransferManager {
+final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, URLSessionDelegate,
+    URLSessionDownloadDelegate
+{
 
     // MARK: - Configuration
 
@@ -34,6 +36,15 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
     private let database: CKDatabase
     private let modelContext: ModelContext
     private let logger = AppLogger.cloudKit
+
+    // MARK: - Background URLSession
+
+    private var backgroundSession: URLSession!
+
+    // Track ongoing download tasks to update progress
+    private var downloadTasks: [URLSessionDownloadTask: (audiobookId: UUID, chunkIndex: Int)] = [:]
+    private var downloadedChunkData: [String: Data] = [:]  // Key: "audiobookId-chunkIndex"
+    private var downloadContinuations: [String: CheckedContinuation<Data, Error>] = [:]
 
     // MARK: - Background Execution
 
@@ -54,6 +65,29 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         self.modelContext = modelContext
         self.container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
         self.database = container.privateCloudDatabase
+
+        super.init()
+
+        // Configure background URLSession for chunk downloads
+        let config = URLSessionConfiguration.background(
+            withIdentifier: "com.anarkisti.ListenThis.cloudkit.chunks"
+        )
+
+        // Check user setting for cellular data usage (default: WiFi-only)
+        let allowCellular = SettingsManager.shared.allowCellularForCloudKitTransfers
+        config.allowsCellularAccess = allowCellular
+
+        config.waitsForConnectivity = true  // Wait for connectivity if not available
+        config.isDiscretionary = false  // Don't wait for optimal conditions
+        config.sessionSendsLaunchEvents = true
+
+        backgroundSession = URLSession(
+            configuration: config,
+            delegate: self,
+            delegateQueue: nil
+        )
+
+        logger.info("CloudKit background session configured with cellular access: \(allowCellular)")
     }
 
     // MARK: - Upload
@@ -234,6 +268,11 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
                     recordIDsToDelete: batch
                 )
 
+                // Mark as long-lived for background execution
+                let config = CKOperation.Configuration()
+                config.isLongLived = true
+                operation.configuration = config
+
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
                     case .success:
@@ -273,6 +312,11 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
                     recordsToSave: nil,
                     recordIDsToDelete: batch
                 )
+
+                // Mark as long-lived for background execution
+                let config = CKOperation.Configuration()
+                config.isLongLived = true
+                operation.configuration = config
 
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
@@ -442,8 +486,36 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
         try chunkData.write(to: tmp)
         record["data"] = CKAsset(fileURL: tmp)
 
-        _ = try await database.save(record)
-        try? FileManager.default.removeItem(at: tmp)
+        // Use long-lived operation for background execution
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            let operation = CKModifyRecordsOperation(
+                recordsToSave: [record],
+                recordIDsToDelete: nil
+            )
+
+            // CRITICAL: Configure for long-lived background execution
+            let config = CKOperation.Configuration()
+            config.isLongLived = true
+            operation.configuration = config
+            operation.savePolicy = .changedKeys
+
+            operation.modifyRecordsResultBlock = { result in
+                Task { @MainActor in
+                    // Clean up temp file
+                    try? FileManager.default.removeItem(at: tmp)
+
+                    switch result {
+                    case .success:
+                        continuation.resume()
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+
+            database.add(operation)
+        }
     }
 
     private func downloadChunk(
@@ -464,7 +536,23 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
             throw ChunkTransferError.readFailed
         }
 
-        return try Data(contentsOf: url)
+        // Use background URLSession for chunk download
+        let key = "\(audiobookId.uuidString)-\(chunkIndex)"
+
+        return try await withCheckedThrowingContinuation { continuation in
+            Task { @MainActor in
+                // Store continuation for when download completes
+                self.downloadContinuations[key] = continuation
+
+                // Create background download task
+                let downloadTask = self.backgroundSession.downloadTask(with: url)
+                self.downloadTasks[downloadTask] = (audiobookId, chunkIndex)
+                downloadTask.resume()
+
+                self.logger.debug(
+                    "Started background download for chunk \(chunkIndex) of \(audiobookId)")
+            }
+        }
     }
 
     private func fetchExistingChunkIndexes(audiobookId: UUID, expectedChunkCount: Int) async throws
@@ -535,6 +623,88 @@ final class CloudKitChunkedTransferManager: CloudKitTransferManager {
 
         } catch {
             return .notUploaded
+        }
+    }
+
+    // MARK: - URLSessionDownloadDelegate
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        Task { @MainActor in
+            guard let taskInfo = downloadTasks[downloadTask] else {
+                logger.error("Received download completion for unknown task")
+                return
+            }
+
+            let key = "\(taskInfo.audiobookId.uuidString)-\(taskInfo.chunkIndex)"
+
+            do {
+                // Read the downloaded chunk data
+                let data = try Data(contentsOf: location)
+
+                // Resume the continuation with the data
+                if let continuation = downloadContinuations.removeValue(forKey: key) {
+                    continuation.resume(returning: data)
+                } else {
+                    logger.warning("No continuation found for chunk \(taskInfo.chunkIndex)")
+                }
+
+                downloadTasks.removeValue(forKey: downloadTask)
+                logger.debug("Completed background download for chunk \(taskInfo.chunkIndex)")
+
+            } catch {
+                logger.error("Failed to read downloaded chunk: \(error.localizedDescription)")
+                if let continuation = downloadContinuations.removeValue(forKey: key) {
+                    continuation.resume(throwing: error)
+                }
+                downloadTasks.removeValue(forKey: downloadTask)
+            }
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        Task { @MainActor in
+            guard let error = error else { return }
+
+            if let downloadTask = task as? URLSessionDownloadTask,
+                let taskInfo = downloadTasks[downloadTask]
+            {
+                let key = "\(taskInfo.audiobookId.uuidString)-\(taskInfo.chunkIndex)"
+
+                logger.error(
+                    "Download task failed for chunk \(taskInfo.chunkIndex): \(error.localizedDescription)"
+                )
+
+                if let continuation = downloadContinuations.removeValue(forKey: key) {
+                    continuation.resume(throwing: error)
+                }
+                downloadTasks.removeValue(forKey: downloadTask)
+            }
+        }
+    }
+
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        Task { @MainActor in
+            logger.info("Background URLSession finished all events")
+
+            #if os(iOS)
+                // Call the completion handler stored in AppDelegate to let iOS know we're done
+                // This is critical for iOS to properly handle background URL session events
+                if let handler = AppDelegate.backgroundSessionCompletionHandler {
+                    DispatchQueue.main.async {
+                        handler()
+                    }
+                    AppDelegate.backgroundSessionCompletionHandler = nil
+                    logger.info("Called background session completion handler")
+                }
+            #endif
         }
     }
 }

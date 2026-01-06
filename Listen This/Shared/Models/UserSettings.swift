@@ -129,6 +129,12 @@ final class UserSettings {
     /// Whether to sync playback progress across devices
     var syncPlaybackProgress: Bool = true
 
+    // MARK: - Transfer Settings
+
+    /// Whether to allow cellular data for CloudKit chunk transfers
+    /// Default is false (WiFi-only) to preserve battery and avoid data charges
+    var allowCellularForCloudKitTransfers: Bool = false
+
     // MARK: - Timestamps
 
     /// Last modification date for conflict resolution
@@ -217,6 +223,17 @@ final class SettingsManager {
         get { settings?.syncPlaybackProgress ?? true }
         set {
             settings?.syncPlaybackProgress = newValue
+            settings?.touch()
+            save()
+        }
+    }
+
+    // MARK: - Transfer Settings
+
+    var allowCellularForCloudKitTransfers: Bool {
+        get { settings?.allowCellularForCloudKitTransfers ?? false }
+        set {
+            settings?.allowCellularForCloudKitTransfers = newValue
             settings?.touch()
             save()
         }
