@@ -5,9 +5,10 @@
 //  Tests for TransferMethodSelector logic
 //
 
-import Testing
 import Foundation
 import SwiftData
+import Testing
+
 @testable import Listen_This
 
 @Suite("Transfer Method Selector Tests")
@@ -17,14 +18,16 @@ struct TransferMethodSelectorTests {
 
     @Test("CloudKit threshold is 50MB")
     func testCloudKitThreshold() {
-        #expect(TransferMethodSelector.cloudKitThreshold == 50 * 1024 * 1024,
-               "CloudKit threshold should be 50MB")
+        #expect(
+            TransferMethodSelector.cloudKitThreshold == 50 * 1024 * 1024,
+            "CloudKit threshold should be 50MB")
     }
 
     @Test("WatchConnectivity limit is 300MB")
     func testWatchConnectivityLimit() {
-        #expect(TransferMethodSelector.watchConnectivityLimit == 300 * 1024 * 1024,
-               "WatchConnectivity limit should be 300MB")
+        #expect(
+            TransferMethodSelector.watchConnectivityLimit == 300 * 1024 * 1024,
+            "WatchConnectivity limit should be 300MB")
     }
 
     // MARK: - TransferMethod Enum Tests
@@ -34,10 +37,12 @@ struct TransferMethodSelectorTests {
         let methods: [TransferMethod] = [.automatic, .cloudKit, .watchConnectivity, .iCloudDirect]
 
         for method in methods {
-            #expect(!method.displayName.isEmpty,
-                   "\(method) should have display name")
-            #expect(!method.description.isEmpty,
-                   "\(method) should have description")
+            #expect(
+                !method.displayName.isEmpty,
+                "\(method) should have display name")
+            #expect(
+                !method.description.isEmpty,
+                "\(method) should have description")
         }
     }
 
@@ -58,16 +63,18 @@ struct TransferMethodSelectorTests {
             let rawValue = method.rawValue
             let reconstructed = TransferMethod(rawValue: rawValue)
 
-            #expect(reconstructed == method,
-                   "TransferMethod should round-trip through rawValue")
+            #expect(
+                reconstructed == method,
+                "TransferMethod should round-trip through rawValue")
         }
     }
 
     @Test("TransferMethod is Identifiable")
     func testTransferMethodIdentifiable() {
         for method in TransferMethod.allCases {
-            #expect(method.id == method.rawValue,
-                   "ID should equal rawValue")
+            #expect(
+                method.id == method.rawValue,
+                "ID should equal rawValue")
         }
     }
 
@@ -79,15 +86,17 @@ struct TransferMethodSelectorTests {
             (.cloudKit(reason: "Test reason"), "CloudKit"),
             (.watchConnectivity(reason: "Test reason"), "WatchConnectivity"),
             (.iCloudDirect(reason: "Test reason"), "iCloud Direct"),
-            (.error(reason: "Test error"), "Error")
+            (.error(reason: "Test error"), "Error"),
         ]
 
         for (method, expectedPrefix) in testCases {
             let description = method.description
-            #expect(description.contains(expectedPrefix),
-                   "Description should contain '\(expectedPrefix)': \(description)")
-            #expect(description.contains("Test"),
-                   "Description should include reason")
+            #expect(
+                description.contains(expectedPrefix),
+                "Description should contain '\(expectedPrefix)': \(description)")
+            #expect(
+                description.contains("Test"),
+                "Description should include reason")
         }
     }
 
@@ -113,14 +122,17 @@ struct TransferMethodSelectorTests {
         let methodUnavailable = TransferError.methodUnavailable
         let noMethod = TransferError.noMethodAvailable("No network")
 
-        #expect(methodUnavailable.errorDescription != nil,
-               "methodUnavailable should have error description")
-        #expect(noMethod.errorDescription != nil,
-               "noMethodAvailable should have error description")
+        #expect(
+            methodUnavailable.errorDescription != nil,
+            "methodUnavailable should have error description")
+        #expect(
+            noMethod.errorDescription != nil,
+            "noMethodAvailable should have error description")
 
         if let desc = noMethod.errorDescription {
-            #expect(desc.contains("No network"),
-                   "Error description should include provided reason")
+            #expect(
+                desc.contains("No network"),
+                "Error description should include provided reason")
         }
     }
 
@@ -142,8 +154,9 @@ struct TransferMethodSelectorTests {
         // Create new instance - should load from UserDefaults
         let selector2 = TransferMethodSelector(modelContext: context)
 
-        #expect(selector2.preferredMethod == .cloudKit,
-               "Preference should persist in UserDefaults")
+        #expect(
+            selector2.preferredMethod == .cloudKit,
+            "Preference should persist in UserDefaults")
 
         // Cleanup
         selector2.preferredMethod = .automatic
@@ -160,8 +173,9 @@ struct TransferMethodSelectorTests {
 
         let selector = TransferMethodSelector(modelContext: context)
 
-        #expect(selector.preferredMethod == .automatic,
-               "Default preference should be automatic")
+        #expect(
+            selector.preferredMethod == .automatic,
+            "Default preference should be automatic")
     }
 
     @Test("Can set all preference types")
@@ -175,8 +189,9 @@ struct TransferMethodSelectorTests {
         // Test setting each preference
         for method in TransferMethod.allCases {
             selector.preferredMethod = method
-            #expect(selector.preferredMethod == method,
-                   "Should be able to set preference to \(method)")
+            #expect(
+                selector.preferredMethod == method,
+                "Should be able to set preference to \(method)")
         }
 
         // Cleanup
@@ -191,12 +206,13 @@ struct TransferMethodSelectorTests {
             .automatic: "Automatic",
             .cloudKit: "CloudKit Chunks",
             .watchConnectivity: "WatchConnectivity",
-            .iCloudDirect: "iCloud Direct"
+            .iCloudDirect: "iCloud Direct",
         ]
 
         for (method, expectedName) in expectations {
-            #expect(method.displayName == expectedName,
-                   "\(method) should have display name '\(expectedName)', got '\(method.displayName)'")
+            #expect(
+                method.displayName == expectedName,
+                "\(method) should have display name '\(expectedName)', got '\(method.displayName)'")
         }
     }
 
@@ -204,8 +220,9 @@ struct TransferMethodSelectorTests {
     func testDescriptionsAreInformative() {
         for method in TransferMethod.allCases {
             let description = method.description
-            #expect(description.count > 10,
-                   "\(method) description should be informative: '\(description)'")
+            #expect(
+                description.count > 10,
+                "\(method) description should be informative: '\(description)'")
         }
     }
 }
@@ -223,8 +240,9 @@ struct TransferMethodSelectorIntegrationTests {
 
         let selector = TransferMethodSelector(modelContext: context)
 
-        #expect(selector.preferredMethod != nil,
-               "Selector should have a preferred method after initialization")
+        #expect(
+            selector.preferredMethod != nil,
+            "Selector should have a preferred method after initialization")
     }
 
     @Test("Multiple selector instances share preferences via UserDefaults")
@@ -240,8 +258,9 @@ struct TransferMethodSelectorIntegrationTests {
 
         let selector2 = TransferMethodSelector(modelContext: context)
 
-        #expect(selector2.preferredMethod == .cloudKit,
-               "Multiple instances should share the same UserDefaults preference")
+        #expect(
+            selector2.preferredMethod == .cloudKit,
+            "Multiple instances should share the same UserDefaults preference")
 
         // Cleanup
         selector1.preferredMethod = .automatic

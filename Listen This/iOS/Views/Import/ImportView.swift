@@ -2,8 +2,6 @@
 //  ImportView.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import OSLog
 import SwiftData

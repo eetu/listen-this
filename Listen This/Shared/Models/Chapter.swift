@@ -2,8 +2,6 @@
 //  Chapter.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import Foundation
 import SwiftData
@@ -14,10 +12,10 @@ final class Chapter {
     var index: Int = 0
     var title: String = ""
     var startTime: Double = 0  // Start time in seconds
-    var duration: Double = 0   // Chapter duration in seconds
-    
+    var duration: Double = 0  // Chapter duration in seconds
+
     @Relationship var audiobook: Audiobook?
-    
+
     init(
         id: UUID = UUID(),
         index: Int = 0,

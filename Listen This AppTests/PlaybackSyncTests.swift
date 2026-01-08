@@ -5,9 +5,10 @@
 //  Tests for playback state synchronization between devices
 //
 
-import Testing
 import Foundation
 import SwiftData
+import Testing
+
 @testable import Listen_This
 
 // MARK: - Playback State Sync Tests
@@ -26,7 +27,7 @@ struct PlaybackStateSyncTests {
 
         // Create playback session
         let session = PlaybackSession(
-            currentPosition: 1200, // 20 minutes
+            currentPosition: 1200,  // 20 minutes
             currentChapter: 2,
             playbackRate: 1.5,
             lastPlayed: Date()
@@ -50,12 +51,12 @@ struct PlaybackStateSyncTests {
         let audiobook = createTestAudiobook()
         context.insert(audiobook)
 
-        let oldTimestamp = Date().addingTimeInterval(-3600) // 1 hour ago
-        let newTimestamp = Date() // now
+        let oldTimestamp = Date().addingTimeInterval(-3600)  // 1 hour ago
+        let newTimestamp = Date()  // now
 
         // Simulate: local state loaded with old timestamp
         let session = PlaybackSession(
-            currentPosition: 1200, // old position: 20 minutes
+            currentPosition: 1200,  // old position: 20 minutes
             currentChapter: 2,
             lastPlayed: oldTimestamp
         )
@@ -64,7 +65,7 @@ struct PlaybackStateSyncTests {
         try context.save()
 
         // Simulate: CloudKit syncs newer data (Watch progress)
-        session.currentPosition = 2400 // new position: 40 minutes
+        session.currentPosition = 2400  // new position: 40 minutes
         session.currentChapter = 4
         session.lastPlayed = newTimestamp
         try context.save()
@@ -77,7 +78,7 @@ struct PlaybackStateSyncTests {
 
     @Test("Timestamp comparison works correctly")
     func timestampComparison() async throws {
-        let oldTime = Date().addingTimeInterval(-3600) // 1 hour ago
+        let oldTime = Date().addingTimeInterval(-3600)  // 1 hour ago
         let newTime = Date()
 
         // Basic timestamp comparison
@@ -123,11 +124,11 @@ struct PlaybackStateSyncTests {
         let context = ModelContext(container)
 
         let audiobook = createTestAudiobook()
-        audiobook.duration = 3600 // 1 hour
+        audiobook.duration = 3600  // 1 hour
         context.insert(audiobook)
 
         let session = PlaybackSession(
-            currentPosition: 1800, // 30 minutes
+            currentPosition: 1800,  // 30 minutes
             progressPercentage: 50.0
         )
         audiobook.playbackSession = session
@@ -145,12 +146,12 @@ struct PlaybackStateSyncTests {
         let context = ModelContext(container)
 
         let audiobook = createTestAudiobook()
-        audiobook.duration = 3600 // 1 hour
+        audiobook.duration = 3600  // 1 hour
         context.insert(audiobook)
 
         // Position near end (within 30 seconds of end)
         let session = PlaybackSession(
-            currentPosition: 3580, // 10 seconds from end
+            currentPosition: 3580,  // 10 seconds from end
             isCompleted: true
         )
         audiobook.playbackSession = session
@@ -169,12 +170,12 @@ struct PlaybackStateSyncTests {
         context.insert(audiobook)
 
         // iPhone state: old progress from yesterday
-        let iphoneTimestamp = Date().addingTimeInterval(-86400) // 1 day ago
-        let iphonePosition: Double = 600 // 10 minutes
+        let iphoneTimestamp = Date().addingTimeInterval(-86400)  // 1 day ago
+        let iphonePosition: Double = 600  // 10 minutes
 
         // Watch state: recent progress from today
-        let watchTimestamp = Date().addingTimeInterval(-60) // 1 minute ago
-        let watchPosition: Double = 1800 // 30 minutes
+        let watchTimestamp = Date().addingTimeInterval(-60)  // 1 minute ago
+        let watchPosition: Double = 1800  // 30 minutes
 
         // Initial state (iPhone's old data)
         let session = PlaybackSession(
@@ -212,12 +213,12 @@ struct PlaybackStateSyncTests {
         context.insert(audiobook)
 
         // Watch state: old progress from yesterday
-        let watchTimestamp = Date().addingTimeInterval(-86400) // 1 day ago
-        let watchPosition: Double = 600 // 10 minutes
+        let watchTimestamp = Date().addingTimeInterval(-86400)  // 1 day ago
+        let watchPosition: Double = 600  // 10 minutes
 
         // iPhone state: recent progress
-        let iphoneTimestamp = Date().addingTimeInterval(-60) // 1 minute ago
-        let iphonePosition: Double = 1800 // 30 minutes
+        let iphoneTimestamp = Date().addingTimeInterval(-60)  // 1 minute ago
+        let iphonePosition: Double = 1800  // 30 minutes
 
         // Current state is iPhone's (we're on iPhone)
         let session = PlaybackSession(

@@ -362,23 +362,13 @@ final class SettingsManager {
         let allDescriptor = FetchDescriptor<AudiobookshelfSettings>()
         do {
             let allSettings = try context.fetch(allDescriptor)
-            #if os(iOS)
-                AppLogger.settings.info(
-                    "[iOS] Found \(allSettings.count) AudiobookshelfSettings record(s) in total")
-            #else
-                AppLogger.settings.info(
-                    "[Watch] Found \(allSettings.count) AudiobookshelfSettings record(s) in total")
-            #endif
+            AppLogger.settings.info(
+                "[SettingsManager] Found \(allSettings.count) AudiobookshelfSettings record(s) in total"
+            )
             for (index, setting) in allSettings.enumerated() {
-                #if os(iOS)
-                    AppLogger.settings.info(
-                        "[iOS] Record \(index): id='\(setting.id)', serverURL='\(setting.serverURL)', enabled=\(setting.isEnabled)"
-                    )
-                #else
-                    AppLogger.settings.info(
-                        "[Watch] Record \(index): id='\(setting.id)', serverURL='\(setting.serverURL)', enabled=\(setting.isEnabled)"
-                    )
-                #endif
+                AppLogger.settings.info(
+                    "[SettingsManager] Record \(index): id='\(setting.id)', serverURL='\(setting.serverURL)', enabled=\(setting.isEnabled)"
+                )
             }
         } catch {
             AppLogger.settings.error(
@@ -392,21 +382,16 @@ final class SettingsManager {
         do {
             let existing = try context.fetch(descriptor)
             if let first = existing.first {
-                #if os(iOS)
-                    AppLogger.settings.info(
-                        "[iOS] Loaded existing Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
-                    )
-                #else
-                    AppLogger.settings.info(
-                        "[Watch] Loaded synced Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
-                    )
-                #endif
+                AppLogger.settings.info(
+                    "[SettingsManager] Loaded existing Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
+                )
                 audiobookshelfSettings = first
             } else {
                 #if os(iOS)
                     // iOS: Create default Audiobookshelf settings if none exist
                     AppLogger.settings.info(
-                        "[iOS] Creating new Audiobookshelf settings with default values")
+                        "[SettingsManager] Creating new Audiobookshelf settings with default values"
+                    )
                     let newSettings = AudiobookshelfSettings()
                     context.insert(newSettings)
                     try context.save()
@@ -414,19 +399,21 @@ final class SettingsManager {
                 #else
                     // Watch: Don't create settings, wait for sync from iPhone
                     AppLogger.settings.info(
-                        "[Watch] No settings found - waiting for sync from iPhone")
+                        "[SettingsManager] No settings found - waiting for sync from iPhone")
                     audiobookshelfSettings = nil
                 #endif
             }
         } catch {
             #if os(iOS)
                 AppLogger.settings.error(
-                    "[iOS] Failed to load Audiobookshelf settings: \(error.localizedDescription)")
+                    "[SettingsManager] Failed to load Audiobookshelf settings: \(error.localizedDescription)"
+                )
                 // Create in-memory settings as fallback on iOS only
                 audiobookshelfSettings = AudiobookshelfSettings()
             #else
                 AppLogger.settings.error(
-                    "[Watch] Failed to load Audiobookshelf settings: \(error.localizedDescription)")
+                    "[SettingsManager] Failed to load Audiobookshelf settings: \(error.localizedDescription)"
+                )
                 // Watch: Don't create fallback, wait for sync
                 audiobookshelfSettings = nil
             #endif

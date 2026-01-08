@@ -515,25 +515,25 @@ struct CloudKitUploadStateTests {
     @Test("Upload state persists across manager instances")
     func uploadStatePersistence() async throws {
         let audiobook = createTestAudiobook(title: "Persistence Test", fileSize: 50_000_000)
-
+    
         // Upload with first manager
         let manager1 = MockCloudKitTransferManager()
         manager1.simulateNetworkDelay = false
         try await manager1.uploadAudiobook(audiobook)
-
+    
         // Check with new manager instance - won't persist since mock uses in-memory storage
         // This test demonstrates the limitation - real CloudKit would persist
         let manager2 = MockCloudKitTransferManager()
         manager2.simulateNetworkDelay = false
-
+    
         // Preload the book to simulate CloudKit persistence
         manager2.preloadUploadedBooks([audiobook.id])
-
+    
         let status = await manager2.checkCloudKitChunks(for: audiobook)
         #expect(status == .fullyUploaded)
     }
     */
-    
+
     @Test("Delete upload clears CloudKit state")
     func deleteUploadClearsState() async throws {
         let manager = MockCloudKitTransferManager()

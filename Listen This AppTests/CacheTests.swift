@@ -316,29 +316,29 @@ struct CacheEntryTests {
         let container = try createTestContainer()
         let context = ModelContext(container)
         let manager = AudiobookCacheManager(modelContext: context)
-
+    
         let audiobook = createTestAudiobook(title: "Delete Entry Test")
         context.insert(audiobook)
-
+    
         let sourceURL = try createTestFile()
         defer {
             try? FileManager.default.removeItem(at: sourceURL)
         }
-
+    
         let cachedURL = try manager.cacheAudiobook(audiobook, from: sourceURL)
-
+    
         // Should have cache entry
         #expect(audiobook.cacheEntry != nil)
-
+    
         // Delete cached file
         try manager.deleteCachedFile(for: audiobook)
-
+    
         // Cache entry should be cleaned up
         #expect(audiobook.cacheEntry == nil)
         #expect(!FileManager.default.fileExists(atPath: cachedURL.path))
     }
     */
-    
+
     @Test("Stale CacheEntry is cleaned up even if file missing")
     func staleCacheEntryCleanup() async throws {
         let container = try createTestContainer()

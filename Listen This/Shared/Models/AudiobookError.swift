@@ -2,8 +2,6 @@
 //  AudiobookError.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import Foundation
 
@@ -13,7 +11,7 @@ enum AudiobookError: Error {
     case networkUnavailable
     case authenticationFailed
     case serverUnreachable
-    
+
     // MARK: - Storage Errors
     case insufficientSpace
     case downloadFailed
@@ -23,12 +21,12 @@ enum AudiobookError: Error {
     case unsupportedFormat
     case corruptedFile
     case playbackFailed
-    
+
     // MARK: - Sync Errors
     case syncConflict
     case cloudKitUnavailable
     case quotaExceeded
-    
+
     // MARK: - General Errors
     case unknown(Error)
 }
@@ -37,7 +35,7 @@ extension AudiobookError: LocalizedError {
     var errorDescription: String? {
         return userMessage
     }
-    
+
     /// User-friendly error message
     var userMessage: String {
         switch self {
@@ -62,14 +60,15 @@ extension AudiobookError: LocalizedError {
         case .syncConflict:
             return "Playback position updated on another device. Using latest position."
         case .cloudKitUnavailable:
-            return "iCloud Drive is not available. Please enable iCloud Documents in Xcode project settings and ensure you're signed into iCloud on this device."
+            return
+                "iCloud Drive is not available. Please enable iCloud Documents in Xcode project settings and ensure you're signed into iCloud on this device."
         case .quotaExceeded:
             return "iCloud storage quota exceeded."
         case .unknown(let error):
             return "An unexpected error occurred: \(error.localizedDescription)"
         }
     }
-    
+
     /// Whether the error can be recovered from with a retry
     var isRecoverable: Bool {
         switch self {

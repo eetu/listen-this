@@ -12,25 +12,25 @@ struct WatchTransferView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(iOSWatchConnectivityManager.self) private var connectivity
-    
+
     @Query private var audiobooks: [Audiobook]
-    
+
     @State private var cacheManager: AudiobookCacheManager?
     @State private var selectedAudiobook: Audiobook?
     @State private var showingError = false
     @State private var errorMessage = ""
-    
+
     var body: some View {
         NavigationStack {
             List {
                 // Watch Status Section
                 watchStatusSection
-                
+
                 // Active Transfers Section
                 if !connectivity.activeTransfers.isEmpty {
                     activeTransfersSection
                 }
-                
+
                 // Available Audiobooks Section
                 availableAudiobooksSection
             }
@@ -54,20 +54,20 @@ struct WatchTransferView: View {
             }
         }
     }
-    
+
     // MARK: - Watch Status
-    
+
     private var watchStatusSection: some View {
         Section {
             HStack {
                 Image(systemName: connectivity.isPaired ? "applewatch" : "applewatch.slash")
                     .foregroundStyle(connectivity.isPaired ? .green : .secondary)
                     .font(.title2)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Apple Watch")
                         .font(.headline)
-                    
+
                     if connectivity.isPaired {
                         if connectivity.isWatchAppInstalled {
                             if connectivity.isReachable {
@@ -90,7 +90,7 @@ struct WatchTransferView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Spacer()
             }
             .padding(.vertical, 8)
@@ -98,9 +98,9 @@ struct WatchTransferView: View {
             Text("Device Status")
         }
     }
-    
+
     // MARK: - Active Transfers
-    
+
     private var activeTransfersSection: some View {
         Section {
             ForEach(Array(connectivity.activeTransfers.values), id: \.audiobookId) { transfer in
@@ -114,18 +114,18 @@ struct WatchTransferView: View {
                             .foregroundStyle(.green)
                             .font(.title2)
                     }
-                    
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text(transfer.audiobookTitle)
                             .font(.headline)
-                        
+
                         Text(transfer.isActive ? "Transferring..." : "Complete")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    
+
                     Spacer()
-                    
+
                     // Cancel button (only when active)
                     if transfer.isActive {
                         Button {
@@ -144,9 +144,9 @@ struct WatchTransferView: View {
             Text("Active Transfers")
         }
     }
-    
+
     // MARK: - Available Audiobooks
-    
+
     private var availableAudiobooksSection: some View {
         Section {
             ForEach(audiobooks.filter { !$0.isArchived }) { audiobook in
@@ -167,21 +167,21 @@ struct WatchTransferView: View {
                 .font(.caption)
         }
     }
-    
+
     // MARK: - Transfer Action
-    
+
     private func transferAudiobook(_ audiobook: Audiobook) async {
         guard let cacheManager = cacheManager else { return }
-        
+
         do {
             // First, ensure the file is cached on iPhone
             if !audiobook.isFileCached {
                 _ = try await audiobook.downloadAndCache(using: cacheManager)
             }
-            
+
             // Then transfer to Watch
             try await connectivity.transferAudiobook(audiobook)
-            
+
         } catch let error as WatchTransferError {
             errorMessage = error.localizedDescription
             showingError = true
@@ -198,7 +198,7 @@ struct AudiobookTransferRow: View {
     let audiobook: Audiobook
     let isTransferring: Bool
     let onTransfer: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Artwork
@@ -218,17 +218,17 @@ struct AudiobookTransferRow: View {
                             .foregroundStyle(.secondary)
                     }
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(audiobook.title)
                     .font(.headline)
                     .lineLimit(1)
-                
+
                 Text(audiobook.author)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                
+
                 HStack(spacing: 8) {
                     // Cache status
                     if audiobook.isFileCached {
@@ -240,7 +240,7 @@ struct AudiobookTransferRow: View {
                             .font(.caption2)
                             .foregroundStyle(.blue)
                     }
-                    
+
                     // File size
                     if audiobook.fileSize > 0 {
                         Text(ByteCountFormatter.string(fromByteCount: audiobook.fileSize, countStyle: .file))
@@ -249,9 +249,9 @@ struct AudiobookTransferRow: View {
                     }
                 }
             }
-            
+
             Spacer()
-            
+
             // Transfer button
             if isTransferring {
                 ProgressView()

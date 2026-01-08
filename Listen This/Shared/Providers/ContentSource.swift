@@ -2,8 +2,6 @@
 //  ContentSource.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import Foundation
 
@@ -11,40 +9,40 @@ import Foundation
 @MainActor
 protocol ContentSource: AnyObject {
     // MARK: - Authentication
-    
+
     /// Authenticate with the content source using provided credentials
     func authenticate(credentials: Credentials) async throws
-    
+
     /// Validate current access to the content source
     func validateAccess() async throws -> Bool
-    
+
     // MARK: - Library Management
-    
+
     /// Fetch the complete library of audiobooks from this source
     func fetchLibrary() async throws -> [AudiobookMetadata]
-    
+
     /// Get detailed metadata for a specific audiobook
     func getAudiobookMetadata(identifier: String) async throws -> AudiobookMetadata
-    
+
     /// Search the library with a query string
     func searchLibrary(query: String) async throws -> [AudiobookMetadata]
-    
+
     // MARK: - Content Access
-    
+
     /// Get a streaming URL for the audiobook
     func getStreamURL(identifier: String) async throws -> URL
-    
+
     /// Get a download URL for the audiobook
     func getDownloadURL(identifier: String) async throws -> URL
-    
+
     /// Get artwork data for the audiobook
     func getArtwork(identifier: String) async throws -> Data
-    
+
     // MARK: - Optional: Server-side Progress Sync
-    
+
     /// Sync playback progress to the server (optional)
     func syncProgress(identifier: String, position: Double) async throws
-    
+
     /// Get playback progress from the server (optional)
     func getProgress(identifier: String) async throws -> Double?
 }
@@ -57,8 +55,11 @@ struct Credentials {
     let password: String?
     let apiKey: String?
     let serverURL: URL?
-    
-    init(username: String? = nil, password: String? = nil, apiKey: String? = nil, serverURL: URL? = nil) {
+
+    init(
+        username: String? = nil, password: String? = nil, apiKey: String? = nil,
+        serverURL: URL? = nil
+    ) {
         self.username = username
         self.password = password
         self.apiKey = apiKey
@@ -79,7 +80,7 @@ struct AudiobookMetadata {
     let chapterCount: Int
     let addedDate: Date
     var artworkURL: URL?
-    
+
     init(
         identifier: String,
         title: String,
@@ -112,7 +113,7 @@ struct AudiobookMetadata {
 final class MockContentSource: ContentSource {
     var isAuthenticated = false
     var mockLibrary: [AudiobookMetadata] = []
-    
+
     init() {
         // Create some mock audiobooks
         mockLibrary = [
@@ -151,60 +152,58 @@ final class MockContentSource: ContentSource {
                 sourceURL: "mock://book3.m4b",
                 chapterCount: 31,
                 addedDate: Date().addingTimeInterval(-172800)
-            )
+            ),
         ]
     }
-    
+
     func authenticate(credentials: Credentials) async throws {
         try await Task.sleep(nanoseconds: 500_000_000)
         isAuthenticated = true
     }
-    
+
     func validateAccess() async throws -> Bool {
         return isAuthenticated
     }
-    
+
     func fetchLibrary() async throws -> [AudiobookMetadata] {
         try await Task.sleep(nanoseconds: 300_000_000)
         return mockLibrary
     }
-    
+
     func getAudiobookMetadata(identifier: String) async throws -> AudiobookMetadata {
         guard let metadata = mockLibrary.first(where: { $0.identifier == identifier }) else {
             throw AudiobookError.fileNotFound
         }
         return metadata
     }
-    
+
     func searchLibrary(query: String) async throws -> [AudiobookMetadata] {
         let lowercaseQuery = query.lowercased()
         return mockLibrary.filter {
-            $0.title.lowercased().contains(lowercaseQuery) ||
-            $0.author.lowercased().contains(lowercaseQuery) ||
-            ($0.narrator?.lowercased().contains(lowercaseQuery) ?? false)
+            $0.title.lowercased().contains(lowercaseQuery)
+                || $0.author.lowercased().contains(lowercaseQuery)
+                || ($0.narrator?.lowercased().contains(lowercaseQuery) ?? false)
         }
     }
-    
+
     func getStreamURL(identifier: String) async throws -> URL {
         return URL(fileURLWithPath: "/mock/\(identifier).m4b")
     }
-    
+
     func getDownloadURL(identifier: String) async throws -> URL {
         return URL(fileURLWithPath: "/mock/\(identifier).m4b")
     }
-    
+
     func getArtwork(identifier: String) async throws -> Data {
         // Return empty data for mock
         return Data()
     }
-    
+
     func syncProgress(identifier: String, position: Double) async throws {
         // Mock: Progress synced
     }
-    
+
     func getProgress(identifier: String) async throws -> Double? {
         return nil
     }
 }
-
-

@@ -98,7 +98,7 @@ final class AudiobookCacheManager: CacheManager {
                 logger.info("Unable to extract metadata from cached file: no file URL provided")
                 return
             }
-            
+
             let metadata = try await MetadataExtractor.extractMetadata(from: fileURL)
 
             // Update audiobook with extracted metadata

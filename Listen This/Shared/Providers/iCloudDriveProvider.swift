@@ -2,8 +2,6 @@
 //  iCloudDriveProvider.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import AVFoundation
 import Foundation

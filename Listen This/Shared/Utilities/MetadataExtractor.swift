@@ -2,8 +2,6 @@
 //  MetadataExtractor.swift
 //  Listen This
 //
-//  Created on 4.1.2026.
-//
 
 import AVFoundation
 import Foundation

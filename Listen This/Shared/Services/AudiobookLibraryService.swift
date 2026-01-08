@@ -2,8 +2,6 @@
 //  AudiobookLibraryService.swift
 //  listen this
 //
-//  Created on 13.12.2025.
-//
 
 import Foundation
 import SwiftData
@@ -119,14 +117,17 @@ final class AudiobookLibraryService {
 
     /// Copy file to iCloud Drive and return the relative path
     private func copyToICloudDrive(from sourceURL: URL) async throws -> String {
-        guard let ubiquityURL = FileManager.default.url(
-            forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This"
-        ) else {
+        guard
+            let ubiquityURL = FileManager.default.url(
+                forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This"
+            )
+        else {
             throw AudiobookError.cloudKitUnavailable
         }
 
         let audiobooksDir = ubiquityURL.appendingPathComponent("Documents/Audiobooks")
-        try FileManager.default.createDirectory(at: audiobooksDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: audiobooksDir, withIntermediateDirectories: true)
 
         let fileName = sourceURL.lastPathComponent
         let destinationURL = audiobooksDir.appendingPathComponent(fileName)
@@ -210,9 +211,10 @@ final class AudiobookLibraryService {
             for metadata in metadataList {
                 // Convert absolute URL to relative path for comparison
                 guard let url = URL(string: metadata.identifier),
-                      let ubiquityURL = FileManager.default.url(
+                    let ubiquityURL = FileManager.default.url(
                         forUbiquityContainerIdentifier: "iCloud.com.anarkisti.Listen-This"
-                      ) else {
+                    )
+                else {
                     continue
                 }
 
@@ -245,8 +247,8 @@ final class AudiobookLibraryService {
     func searchAudiobooks(query: String) -> [Audiobook] {
         let descriptor = FetchDescriptor<Audiobook>(
             predicate: #Predicate { audiobook in
-                audiobook.title.localizedStandardContains(query) ||
-                audiobook.author.localizedStandardContains(query)
+                audiobook.title.localizedStandardContains(query)
+                    || audiobook.author.localizedStandardContains(query)
             }
         )
 
@@ -289,7 +291,9 @@ final class AudiobookLibraryService {
                 var coordinationError: NSError?
                 var deleteError: Error?
 
-                coordinator.coordinate(writingItemAt: iCloudFileURL, options: .forDeleting, error: &coordinationError) { url in
+                coordinator.coordinate(
+                    writingItemAt: iCloudFileURL, options: .forDeleting, error: &coordinationError
+                ) { url in
                     do {
                         // Check if file exists first
                         if FileManager.default.fileExists(atPath: url.path) {
