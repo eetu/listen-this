@@ -3,6 +3,7 @@
 //  Listen This Watch App
 //
 
+import Observation
 import SwiftData
 import SwiftUI
 import WatchConnectivity
@@ -71,78 +72,12 @@ struct WatchLibraryView: View {
     /// This handles cases where the audiobook was deleted from iPhone while Watch was offline
     @MainActor
     private func cleanupOrphanedCaches() async {
-        AppLogger.cache.info("[WatchLibraryView] Starting orphaned cache cleanup...")
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        let (removedCount, _) = await cacheManager.cleanupOrphanedCaches(audiobooks: audiobooks)
 
-        // Build a set of known filenames (for faster lookup)
-        var knownFilenames = Set<String>()
-        for audiobook in audiobooks {
-            if let filename = audiobook.filename {
-                knownFilenames.insert(filename)
-            }
-        }
-
-        // Get cache directory
-        let cacheDir = FileManager.default.urls(
-            for: .cachesDirectory,
-            in: .userDomainMask
-        )[0].appendingPathComponent("Audiobooks")
-
-        guard FileManager.default.fileExists(atPath: cacheDir.path) else {
-            AppLogger.cache.info("[WatchLibraryView] No cache directory found, nothing to clean")
-            return
-        }
-
-        // Get all cached files
-        guard
-            let cachedFiles = try? FileManager.default.contentsOfDirectory(
-                at: cacheDir,
-                includingPropertiesForKeys: [.fileSizeKey],
-                options: [.skipsHiddenFiles]
-            )
-        else {
-            AppLogger.cache.warning("[WatchLibraryView] Failed to read cache directory")
-            return
-        }
-
-        var removedCount = 0
-        var freedSpace: Int64 = 0
-
-        for fileURL in cachedFiles {
-            // Get the full filename (e.g., "MyBook.m4b")
-            let filename = fileURL.lastPathComponent
-
-            // Check if this filename belongs to any audiobook
-            if !knownFilenames.contains(filename) {
-                // Orphaned cache file - delete it
-                do {
-                    // Get file size before deleting
-                    if let fileSize = try? FileManager.default.attributesOfItem(
-                        atPath: fileURL.path)[.size] as? Int64
-                    {
-                        freedSpace += fileSize
-                    }
-
-                    try FileManager.default.removeItem(at: fileURL)
-                    removedCount += 1
-                    AppLogger.cache.info("[WatchLibraryView] Removed orphaned cache: \(filename)")
-                } catch {
-                    AppLogger.cache.warning(
-                        "[WatchLibraryView] Failed to remove orphaned cache \(filename): \(error)"
-                    )
-                }
-            }
-        }
-
+        // Update the cached book list sent to iPhone if anything was removed
         if removedCount > 0 {
-            let freedSpaceMB = Double(freedSpace) / 1_000_000.0
-            AppLogger.cache.info(
-                "[WatchLibraryView] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB"
-            )
-
-            // Update the cached book list sent to iPhone
             connectivity.sendCachedAudiobookList()
-        } else {
-            AppLogger.cache.info("[WatchLibraryView] No orphaned caches found")
         }
     }
 
@@ -254,94 +189,15 @@ struct WatchLibraryView: View {
     // MARK: - Actions
 
     private func removeDownload(for audiobook: Audiobook) {
-        AppLogger.cache.info("[WatchLibraryView] Removing cache for: \(audiobook.title)")
-        AppLogger.cache.info(
-            "[WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
-        AppLogger.cache.info(
-            "[WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
-        AppLogger.cache.info("[WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
 
-        // Remove the cache entry and file WITHOUT animation
-        // Animation can cause SwiftData to have issues with the relationship updates
-        if let cacheEntry = audiobook.cacheEntry {
-            // Delete file at the stored path
-            let storedFileURL = URL(fileURLWithPath: cacheEntry.filePath)
-            AppLogger.cache.info(
-                "[WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
-            do {
-                try FileManager.default.removeItem(at: storedFileURL)
-                AppLogger.cache.info(
-                    "[WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
-            } catch {
-                AppLogger.cache.warning(
-                    "[WatchLibraryView] File deletion failed at stored path: \(error)")
-            }
-
-            // ALSO delete file at expected cache path if different
-            if let expectedPath = audiobook.expectedCachePath {
-                let expectedFileURL = URL(fileURLWithPath: expectedPath)
-                if expectedFileURL.path != storedFileURL.path {
-                    AppLogger.cache.info(
-                        "[WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)"
-                    )
-                    do {
-                        try FileManager.default.removeItem(at: expectedFileURL)
-                        AppLogger.cache.info(
-                            "[WatchLibraryView] File deleted at expected path: \(expectedPath)")
-                    } catch {
-                        AppLogger.cache.warning(
-                            "[WatchLibraryView] File deletion failed at expected path: \(error)")
-                    }
-                }
-            }
-
-            // IMPORTANT: Clear the relationship BEFORE deleting the entry
-            // This ensures SwiftData processes the changes in the correct order
-            audiobook.cacheEntry = nil
-            AppLogger.cache.info("[WatchLibraryView] Cache entry relationship cleared")
-
-            // Remove cache entry
-            modelContext.delete(cacheEntry)
-            AppLogger.cache.info("[WatchLibraryView] Cache entry deleted from context")
-        } else {
-            AppLogger.cache.warning(
-                "[WatchLibraryView] No cache entry found, but checking for orphaned file...")
-            // No cache entry but file might exist at expected path
-            if let expectedPath = audiobook.expectedCachePath {
-                let expectedFileURL = URL(fileURLWithPath: expectedPath)
-                if FileManager.default.fileExists(atPath: expectedFileURL.path) {
-                    AppLogger.cache.info(
-                        "[WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)"
-                    )
-                    do {
-                        try FileManager.default.removeItem(at: expectedFileURL)
-                        AppLogger.cache.info("[WatchLibraryView] Orphaned file deleted")
-                    } catch {
-                        AppLogger.cache.warning(
-                            "[WatchLibraryView] Orphaned file deletion failed: \(error)")
-                    }
-                }
-            }
+        do {
+            try cacheManager.removeCache(for: audiobook)
+            // Update cached audiobook list sent to iPhone
+            connectivity.sendCachedAudiobookList()
+        } catch {
+            AppLogger.cache.error("[WatchLibraryView] Failed to remove cache: \(error)")
         }
-
-        // Save changes WITHOUT triggering List animations
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            do {
-                try modelContext.save()
-                AppLogger.cache.info("[WatchLibraryView] Context saved successfully")
-                AppLogger.cache.info(
-                    "[WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")"
-                )
-            } catch {
-                AppLogger.cache.error(
-                    "[WatchLibraryView] Failed to save after cache deletion: \(error)")
-            }
-        }
-
-        // Update cached audiobook list sent to iPhone
-        connectivity.sendCachedAudiobookList()
     }
 }
 
@@ -435,116 +291,20 @@ struct AudiobookRowWithActions: View {
 
     /// Clean up CacheEntry if file doesn't exist
     private func cleanupStaleCacheEntry() {
-        guard let cacheEntry = audiobook.cacheEntry else { return }
-
-        // Verify file really doesn't exist
-        let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
-        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
-
-        AppLogger.cache.warning(
-            "[WatchLibraryView] Cleaning up stale CacheEntry for: \(audiobook.title)")
-
-        // Remove stale cache entry
-        audiobook.cacheEntry = nil
-        modelContext.delete(cacheEntry)
-
-        do {
-            try modelContext.save()
-            AppLogger.cache.info("[WatchLibraryView] Stale cache entry removed")
-        } catch {
-            AppLogger.cache.error("[WatchLibraryView] Failed to remove stale cache entry: \(error)")
-        }
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        cacheManager.cleanupStaleCacheEntry(for: audiobook)
     }
 
     private func removeDownload(for audiobook: Audiobook) {
-        AppLogger.cache.info("[WatchLibraryView] Removing cache for: \(audiobook.title)")
-        AppLogger.cache.info(
-            "[WatchLibraryView] Expected cache path: \(audiobook.expectedCachePath ?? "nil")")
-        AppLogger.cache.info(
-            "[WatchLibraryView] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")")
-        AppLogger.cache.info("[WatchLibraryView] isFileCached before: \(audiobook.isFileCached)")
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
 
-        // Remove the cache entry and file WITHOUT animation
-        // Animation can cause SwiftData to have issues with the relationship updates
-        if let cacheEntry = audiobook.cacheEntry {
-            // Delete file at the stored path
-            let storedFileURL = URL(fileURLWithPath: cacheEntry.filePath)
-            AppLogger.cache.info(
-                "[WatchLibraryView] Attempting to delete file at: \(storedFileURL.path)")
-            do {
-                try FileManager.default.removeItem(at: storedFileURL)
-                AppLogger.cache.info(
-                    "[WatchLibraryView] File deleted at stored path: \(storedFileURL.path)")
-            } catch {
-                AppLogger.cache.warning(
-                    "[WatchLibraryView] File deletion failed at stored path: \(error)")
-            }
-
-            // ALSO delete file at expected cache path if different
-            if let expectedPath = audiobook.expectedCachePath {
-                let expectedFileURL = URL(fileURLWithPath: expectedPath)
-                if expectedFileURL.path != storedFileURL.path {
-                    AppLogger.cache.info(
-                        "[WatchLibraryView] Paths differ! Also deleting at expected path: \(expectedPath)"
-                    )
-                    do {
-                        try FileManager.default.removeItem(at: expectedFileURL)
-                        AppLogger.cache.info(
-                            "[WatchLibraryView] File deleted at expected path: \(expectedPath)")
-                    } catch {
-                        AppLogger.cache.warning(
-                            "[WatchLibraryView] File deletion failed at expected path: \(error)")
-                    }
-                }
-            }
-
-            // IMPORTANT: Clear the relationship BEFORE deleting the entry
-            // This ensures SwiftData processes the changes in the correct order
-            audiobook.cacheEntry = nil
-            AppLogger.cache.info("[WatchLibraryView] Cache entry relationship cleared")
-
-            // Remove cache entry
-            modelContext.delete(cacheEntry)
-            AppLogger.cache.info("[WatchLibraryView] Cache entry deleted from context")
-        } else {
-            AppLogger.cache.warning(
-                "[WatchLibraryView] No cache entry found, but checking for orphaned file...")
-            // No cache entry but file might exist at expected path
-            if let expectedPath = audiobook.expectedCachePath {
-                let expectedFileURL = URL(fileURLWithPath: expectedPath)
-                if FileManager.default.fileExists(atPath: expectedFileURL.path) {
-                    AppLogger.cache.info(
-                        "[WatchLibraryView] Found orphaned file at expected path, deleting: \(expectedPath)"
-                    )
-                    do {
-                        try FileManager.default.removeItem(at: expectedFileURL)
-                        AppLogger.cache.info("[WatchLibraryView] Orphaned file deleted")
-                    } catch {
-                        AppLogger.cache.warning(
-                            "[WatchLibraryView] Orphaned file deletion failed: \(error)")
-                    }
-                }
-            }
+        do {
+            try cacheManager.removeCache(for: audiobook)
+            // Update cached audiobook list sent to iPhone
+            connectivity.sendCachedAudiobookList()
+        } catch {
+            AppLogger.cache.error("[WatchLibraryView] Failed to remove cache: \(error)")
         }
-
-        // Save changes WITHOUT triggering List animations
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            do {
-                try modelContext.save()
-                AppLogger.cache.info("[WatchLibraryView] Context saved successfully")
-                AppLogger.cache.info(
-                    "[WatchLibraryView] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")"
-                )
-            } catch {
-                AppLogger.cache.error(
-                    "[WatchLibraryView] Failed to save after cache deletion: \(error)")
-            }
-        }
-
-        // Update cached audiobook list sent to iPhone
-        connectivity.sendCachedAudiobookList()
     }
 }
 
@@ -561,64 +321,14 @@ struct AudiobookRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Artwork thumbnail
-            if let artworkData = audiobook.artworkData,
-                let uiImage = UIImage(data: artworkData)
-            {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 50, height: 50)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 50, height: 50)
-                    .overlay {
-                        Image(systemName: "book.fill")
-                            .foregroundStyle(.secondary)
-                    }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(audiobook.title)
-                    .font(.headline)
-                    .lineLimit(2, reservesSpace: true)
-
-                Text(audiobook.author)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            // Status icon in top-right corner (iOS style)
-            VStack {
-                statusIcon
-                Spacer()
-            }
-        }
-        .padding(.vertical, 4)
+        AudiobookRowView(
+            audiobook: audiobook,
+            showProgress: false,
+            isTransferring: hasActiveTransfer
+        )
         .sheet(isPresented: $showingTransferSheet) {
             NavigationStack {
                 WatchTransferStatusView(audiobook: audiobook)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        if hasActiveTransfer {
-            ProgressView()
-                .controlSize(.mini)
-        } else {
-            let state = audiobook.playabilityState
-            if state != .cached {
-                Image(systemName: state.iconName)
-                    .font(.body)
-                    .foregroundStyle(state.color)
             }
         }
     }
@@ -776,8 +486,185 @@ struct DownloadOptionButton: View {
     }
 }
 
-#Preview {
-    WatchLibraryView()
-        .modelContainer(for: [Audiobook.self])
-        .environment(WatchConnectivityManager.shared)
-}
+#if DEBUG
+
+    #Preview("Not Synced Book") {
+        let container = try! ModelContainer(
+            for: Audiobook.self, CacheEntry.self, Chapter.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+
+        let context = ModelContext(container)
+
+        // Create an iCloud book that requires download (not cached)
+        let audiobook = Audiobook(
+            title: "The Hobbit",
+            author: "J.R.R. Tolkien",
+            narrator: "Andy Serkis",
+            duration: 11 * 3600,  // 11 hours
+            fileSize: 450_000_000,  // 450MB
+            iCloudRelativePath: "Documents/Audiobooks/The_Hobbit.m4b",
+            chapterCount: 19
+        )
+        context.insert(audiobook)
+        try! context.save()
+
+        let connectivity = WatchConnectivityManager.shared
+        connectivity.configure(modelContext: context)
+
+        return WatchLibraryView()
+            .modelContainer(container)
+            .environment(connectivity)
+    }
+
+    #Preview("Cached Book") {
+        let container = try! ModelContainer(
+            for: Audiobook.self, CacheEntry.self, Chapter.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+
+        let context = ModelContext(container)
+
+        // Create a cached audiobook
+        let audiobook = Audiobook(
+            title: "1984",
+            author: "George Orwell",
+            narrator: "Simon Prebble",
+            duration: 12 * 3600,  // 12 hours
+            fileSize: 480_000_000,  // 480MB
+            iCloudRelativePath: "Documents/Audiobooks/1984.m4b",
+            chapterCount: 24
+        )
+
+        // Create cache entry to simulate downloaded state
+        let cacheDir = FileManager.default.urls(
+            for: .cachesDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("Audiobooks")
+        let cacheURL = cacheDir.appendingPathComponent(audiobook.filename ?? "1984.m4b")
+
+        let cacheEntry = CacheEntry(
+            filePath: cacheURL.path,
+            fileSize: audiobook.fileSize,
+            downloadedDate: Date().addingTimeInterval(-86400)  // Downloaded 1 day ago
+        )
+        audiobook.cacheEntry = cacheEntry
+
+        context.insert(audiobook)
+        context.insert(cacheEntry)
+        try! context.save()
+
+        let connectivity = WatchConnectivityManager.shared
+        connectivity.configure(modelContext: context)
+
+        return WatchLibraryView()
+            .modelContainer(container)
+            .environment(connectivity)
+    }
+
+    #Preview("Streamable Book") {
+        let container = try! ModelContainer(
+            for: Audiobook.self, CacheEntry.self, Chapter.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+
+        let context = ModelContext(container)
+
+        // Create a remote streamable audiobook (Audiobookshelf)
+        let audiobook = Audiobook(
+            title: "The Great Gatsby",
+            author: "F. Scott Fitzgerald",
+            narrator: "Jake Gyllenhaal",
+            duration: 5 * 3600,  // 5 hours
+            fileSize: 200_000_000  // 200MB
+        )
+        audiobook.sourceType = "audiobookshelf"
+        audiobook.sourceIdentifier = "li_1234567890"
+        audiobook.sourceURL = "https://abs.example.com/api/items/li_1234567890/file"
+        audiobook.chapterCount = 9
+
+        context.insert(audiobook)
+        try! context.save()
+
+        let connectivity = WatchConnectivityManager.shared
+        connectivity.configure(modelContext: context)
+
+        return WatchLibraryView()
+            .modelContainer(container)
+            .environment(connectivity)
+    }
+
+    #Preview("Mixed Library") {
+        let container = try! ModelContainer(
+            for: Audiobook.self, CacheEntry.self, Chapter.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+
+        let context = ModelContext(container)
+
+        // 1. Not synced iCloud book
+        let hobbit = Audiobook(
+            title: "The Hobbit",
+            author: "J.R.R. Tolkien",
+            narrator: "Andy Serkis",
+            duration: 11 * 3600,
+            fileSize: 450_000_000,
+            iCloudRelativePath: "Documents/Audiobooks/The_Hobbit.m4b",
+            chapterCount: 19
+        )
+        hobbit.lastAccessedDate = Date().addingTimeInterval(-3600)  // 1 hour ago
+
+        // 2. Cached book
+        let orwell = Audiobook(
+            title: "1984",
+            author: "George Orwell",
+            narrator: "Simon Prebble",
+            duration: 12 * 3600,
+            fileSize: 480_000_000,
+            iCloudRelativePath: "Documents/Audiobooks/1984.m4b",
+            chapterCount: 24
+        )
+        orwell.lastAccessedDate = Date().addingTimeInterval(-7200)  // 2 hours ago
+
+        let cacheDir = FileManager.default.urls(
+            for: .cachesDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("Audiobooks")
+        let cacheURL = cacheDir.appendingPathComponent(orwell.filename ?? "1984.m4b")
+
+        let cacheEntry = CacheEntry(
+            filePath: cacheURL.path,
+            fileSize: orwell.fileSize,
+            downloadedDate: Date().addingTimeInterval(-86400)
+        )
+        orwell.cacheEntry = cacheEntry
+
+        // 3. Streamable book
+        let gatsby = Audiobook(
+            title: "The Great Gatsby",
+            author: "F. Scott Fitzgerald",
+            narrator: "Jake Gyllenhaal",
+            duration: 5 * 3600,
+            fileSize: 200_000_000
+        )
+        gatsby.sourceType = "audiobookshelf"
+        gatsby.sourceIdentifier = "li_1234567890"
+        gatsby.sourceURL = "https://abs.example.com/api/items/li_1234567890/file"
+        gatsby.chapterCount = 9
+        gatsby.lastAccessedDate = Date()  // Most recent
+
+        context.insert(hobbit)
+        context.insert(orwell)
+        context.insert(cacheEntry)
+        context.insert(gatsby)
+        try! context.save()
+
+        let connectivity = WatchConnectivityManager.shared
+        connectivity.configure(modelContext: context)
+
+        return WatchLibraryView()
+            .modelContainer(container)
+            .environment(connectivity)
+    }
+
+#endif

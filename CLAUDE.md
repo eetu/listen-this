@@ -17,6 +17,7 @@ Listen This is a cross-platform M4B audiobook player for iOS, iPadOS, and watchO
 - Limit emoji usage in documentation and debug output
 - Only update README and Architechture.md with relevant information
 - Never add actual code into architecture docs, only pseudo code if applicable
+- Try to share as much code between iOS and watchOS targets in Shared directory
 
 ## Project Structure
 

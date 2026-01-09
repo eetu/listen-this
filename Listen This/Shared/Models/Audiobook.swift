@@ -249,7 +249,7 @@ enum AudiobookPlayabilityState {
         case .cached:
             return .green
         case .streamable:
-            return .blue
+            return .orange
         case .requiresDownload:
             return .orange
         }

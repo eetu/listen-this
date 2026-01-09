@@ -8,6 +8,7 @@
 import Foundation
 import OSLog
 import SwiftData
+import SwiftUI
 
 // MARK: - Concrete Implementation
 
@@ -192,6 +193,129 @@ final class AudiobookCacheManager: CacheManager {
         }
     }
 
+    /// Removes cache for an audiobook with robust handling
+    /// - Deletes file at stored path
+    /// - Also deletes at expected cache path if different
+    /// - Clears relationship BEFORE deleting entry (prevents SwiftData crashes)
+    /// - Disables animations to prevent SwiftData issues
+    func removeCache(for audiobook: Audiobook) throws {
+        logger.info("[AudiobookCacheManager] Removing cache for: \(audiobook.title)")
+        logger.info(
+            "[AudiobookCacheManager] Expected cache path: \(audiobook.expectedCachePath ?? "nil")"
+        )
+        logger.info(
+            "[AudiobookCacheManager] Cache entry path: \(audiobook.cacheEntry?.filePath ?? "nil")"
+        )
+        logger.info("[AudiobookCacheManager] isFileCached before: \(audiobook.isFileCached)")
+
+        if let cacheEntry = audiobook.cacheEntry {
+            // Delete file at the stored path
+            let storedFileURL = URL(fileURLWithPath: cacheEntry.filePath)
+            logger.info(
+                "[AudiobookCacheManager] Attempting to delete file at: \(storedFileURL.path)"
+            )
+            do {
+                try FileManager.default.removeItem(at: storedFileURL)
+                logger.info(
+                    "[AudiobookCacheManager] File deleted at stored path: \(storedFileURL.path)"
+                )
+            } catch {
+                logger.warning(
+                    "[AudiobookCacheManager] File deletion failed at stored path: \(error)"
+                )
+            }
+
+            // ALSO delete file at expected cache path if different
+            if let expectedPath = audiobook.expectedCachePath {
+                let expectedFileURL = URL(fileURLWithPath: expectedPath)
+                if expectedFileURL.path != storedFileURL.path {
+                    logger.info(
+                        "[AudiobookCacheManager] Paths differ! Also deleting at expected path: \(expectedPath)"
+                    )
+                    do {
+                        try FileManager.default.removeItem(at: expectedFileURL)
+                        logger.info(
+                            "[AudiobookCacheManager] File deleted at expected path: \(expectedPath)"
+                        )
+                    } catch {
+                        logger.warning(
+                            "[AudiobookCacheManager] File deletion failed at expected path: \(error)"
+                        )
+                    }
+                }
+            }
+
+            // IMPORTANT: Clear the relationship BEFORE deleting the entry
+            // This ensures SwiftData processes the changes in the correct order
+            audiobook.cacheEntry = nil
+            logger.info("[AudiobookCacheManager] Cache entry relationship cleared")
+
+            // Remove cache entry
+            modelContext.delete(cacheEntry)
+            logger.info("[AudiobookCacheManager] Cache entry deleted from context")
+        } else {
+            logger.warning(
+                "[AudiobookCacheManager] No cache entry found, but checking for orphaned file..."
+            )
+            // No cache entry but file might exist at expected path
+            if let expectedPath = audiobook.expectedCachePath {
+                let expectedFileURL = URL(fileURLWithPath: expectedPath)
+                if FileManager.default.fileExists(atPath: expectedFileURL.path) {
+                    logger.info(
+                        "[AudiobookCacheManager] Found orphaned file at expected path, deleting: \(expectedPath)"
+                    )
+                    do {
+                        try FileManager.default.removeItem(at: expectedFileURL)
+                        logger.info("[AudiobookCacheManager] Orphaned file deleted")
+                    } catch {
+                        logger.warning(
+                            "[AudiobookCacheManager] Orphaned file deletion failed: \(error)"
+                        )
+                    }
+                }
+            }
+        }
+
+        // Save changes WITHOUT triggering List animations
+        // Animation can cause SwiftData to have issues with the relationship updates
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        try withTransaction(transaction) {
+            try modelContext.save()
+            logger.info("[AudiobookCacheManager] Context saved successfully")
+            logger.info(
+                "[AudiobookCacheManager] Audiobook still in DB: id=\(audiobook.id), title=\(audiobook.title), cacheEntry=\(audiobook.cacheEntry == nil ? "nil" : "exists")"
+            )
+        }
+    }
+
+    /// Clean up CacheEntry if file doesn't exist
+    /// This handles cases where the file was deleted externally but the database entry remains
+    func cleanupStaleCacheEntry(for audiobook: Audiobook) {
+        guard let cacheEntry = audiobook.cacheEntry else { return }
+
+        // Verify file really doesn't exist
+        let fileURL = URL(fileURLWithPath: cacheEntry.filePath)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+        logger.warning(
+            "[AudiobookCacheManager] Cleaning up stale CacheEntry for: \(audiobook.title)"
+        )
+
+        // Remove stale cache entry
+        audiobook.cacheEntry = nil
+        modelContext.delete(cacheEntry)
+
+        do {
+            try modelContext.save()
+            logger.info("[AudiobookCacheManager] Stale cache entry removed")
+        } catch {
+            logger.error(
+                "[AudiobookCacheManager] Failed to remove stale cache entry: \(error)"
+            )
+        }
+    }
+
     /// Get all cached audiobook files
     func getAllCachedFiles() -> [URL] {
         let cacheDir = Self.cacheDirectory
@@ -227,13 +351,19 @@ final class AudiobookCacheManager: CacheManager {
     // MARK: - Orphan Cleanup
 
     /// Find and remove orphaned cache files (files without corresponding audiobook in database)
+    /// This version fetches audiobooks from the database (protocol conformance)
     func cleanupOrphanedCaches() async throws {
-        // Get all cached files
-        let cachedFiles = getAllCachedFiles()
-
-        // Get all audiobook filenames from database
         let descriptor = FetchDescriptor<Audiobook>()
         let audiobooks = try modelContext.fetch(descriptor)
+        let _ = await cleanupOrphanedCaches(audiobooks: audiobooks)
+    }
+
+    /// Find and remove orphaned cache files (files without corresponding audiobook in database)
+    /// This version accepts audiobooks as parameter (for use when already fetched)
+    func cleanupOrphanedCaches(audiobooks: [Audiobook]) async -> (
+        removedCount: Int, freedSpace: Int64
+    ) {
+        logger.info("[AudiobookCacheManager] Starting orphaned cache cleanup...")
 
         // Build a set of known filenames (for faster lookup)
         var knownFilenames = Set<String>()
@@ -243,26 +373,65 @@ final class AudiobookCacheManager: CacheManager {
             }
         }
 
-        // Check each cached file
-        var orphanedCount = 0
+        // Get cache directory
+        let cacheDir = Self.cacheDirectory
+
+        guard FileManager.default.fileExists(atPath: cacheDir.path) else {
+            logger.info("[AudiobookCacheManager] No cache directory found, nothing to clean")
+            return (0, 0)
+        }
+
+        // Get all cached files
+        guard
+            let cachedFiles = try? FileManager.default.contentsOfDirectory(
+                at: cacheDir,
+                includingPropertiesForKeys: [.fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            logger.warning("[AudiobookCacheManager] Failed to read cache directory")
+            return (0, 0)
+        }
+
+        var removedCount = 0
         var freedSpace: Int64 = 0
 
         for fileURL in cachedFiles {
+            // Get the full filename (e.g., "MyBook.m4b")
             let filename = fileURL.lastPathComponent
 
             // Check if this filename belongs to any audiobook
             if !knownFilenames.contains(filename) {
                 // Orphaned cache file - delete it
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-                    let size = attrs[FileAttributeKey.size] as? Int64
-                {
-                    freedSpace += size
-                }
+                do {
+                    // Get file size before deleting
+                    if let fileSize = try? FileManager.default.attributesOfItem(
+                        atPath: fileURL.path
+                    )[.size] as? Int64 {
+                        freedSpace += fileSize
+                    }
 
-                try FileManager.default.removeItem(at: fileURL)
-                orphanedCount += 1
+                    try FileManager.default.removeItem(at: fileURL)
+                    removedCount += 1
+                    logger.info("[AudiobookCacheManager] Removed orphaned cache: \(filename)")
+                } catch {
+                    logger.warning(
+                        "[AudiobookCacheManager] Failed to remove orphaned cache \(filename): \(error)"
+                    )
+                }
             }
         }
+
+        if removedCount > 0 {
+            let freedSpaceMB = Double(freedSpace) / 1_000_000.0
+            logger.info(
+                "[AudiobookCacheManager] Cleanup complete: removed \(removedCount) orphaned cache(s), freed \(String(format: "%.1f", freedSpaceMB)) MB"
+            )
+        } else {
+            logger.info("[AudiobookCacheManager] No orphaned caches found")
+        }
+
+        return (removedCount, freedSpace)
     }
 
     /// Clean up old cached files to free space

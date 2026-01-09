@@ -52,11 +52,23 @@ struct LibraryView: View {
                 manager.configure(modelContext: modelContext)
                 connectivity = manager
             }
+
+            // Clean up orphaned caches on view appearance
+            await cleanupOrphanedCaches()
         }
     }
 
     @ViewBuilder
     private func sidebarContent(connectivity: iOSWatchConnectivityManager) -> some View {
+        if filteredAudiobooks.isEmpty {
+            emptyStateView
+        } else {
+            libraryList(connectivity: connectivity)
+        }
+    }
+
+    @ViewBuilder
+    private func libraryList(connectivity: iOSWatchConnectivityManager) -> some View {
         List(filteredAudiobooks, selection: $selectedAudiobook) { book in
             LibraryRow(
                 audiobook: book, connectivity: connectivity, downloadingBookIds: downloadingBookIds
@@ -240,9 +252,10 @@ struct LibraryView: View {
                 }
 
                 let settings = SettingsManager.shared
-                
+
                 let provider = AudiobookshelfProvider()
-                try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: settings.audiobookshelfAPIKey)
+                try await provider.authenticateWithAPIKey(
+                    serverURL: serverURL, apiKey: settings.audiobookshelfAPIKey)
                 downloadURL = try await provider.getStreamURL(identifier: identifier)
 
             case "jellyfin":
@@ -301,6 +314,38 @@ struct LibraryView: View {
                 "Failed to download remote book: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Cache Cleanup
+
+    /// Removes cache files for audiobooks that no longer exist in the database
+    /// This handles cases where audiobooks were deleted while offline or due to sync issues
+    private func cleanupOrphanedCaches() async {
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        let _ = await cacheManager.cleanupOrphanedCaches(audiobooks: audiobooks)
+    }
+
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        ContentUnavailableView {
+            Label("No Audiobooks", systemImage: "books.vertical")
+        } description: {
+            if searchText.isEmpty {
+                Text("Add audiobooks from iCloud Drive or connect to Audiobookshelf")
+            } else {
+                Text("No audiobooks match \"\(searchText)\"")
+            }
+        } actions: {
+            if searchText.isEmpty {
+                Button {
+                    showingAddBook = true
+                } label: {
+                    Label("Add Audiobook", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+    }
 }
 
 // MARK: - Library Row Component
@@ -311,77 +356,11 @@ struct LibraryRow: View {
     let downloadingBookIds: Set<UUID>
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Artwork thumbnail
-            if let artworkData = audiobook.artworkData,
-                let image = UIImage(data: artworkData)
-            {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 60, height: 60)
-                    .overlay {
-                        Image(systemName: "book.fill")
-                            .foregroundStyle(.secondary)
-                    }
-            }
-
-            // Book info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(audiobook.title)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                Text(audiobook.author)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                // Progress indicator
-                if let session = audiobook.playbackSession,
-                    session.currentPosition > 0
-                {
-                    ProgressView(value: session.currentPosition, total: audiobook.duration)
-                        .progressViewStyle(.linear)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            Spacer()
-
-            // Status icon in top-right corner
-            VStack {
-                statusIcon(for: audiobook)
-                    .font(.title3)
-                Spacer()
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private func statusIcon(for audiobook: Audiobook) -> some View {
-        // Show spinner if downloading
-        if downloadingBookIds.contains(audiobook.id) {
-            ProgressView()
-                .controlSize(.small)
-        } else if audiobook.isFileCached {
-            // If cached, no icon needed - it's available offline regardless of source
-            EmptyView()
-        } else if audiobook.requiresStreaming {
-            // Not cached and requires network (any remote source)
-            Image(systemName: "wifi")
-                .foregroundStyle(.orange)
-        } else if audiobook.iCloudRelativePath != nil {
-            // iCloud book not yet downloaded
-            Image(systemName: "icloud")
-                .foregroundStyle(.secondary)
-        }
+        AudiobookRowView(
+            audiobook: audiobook,
+            showProgress: true,
+            isTransferring: downloadingBookIds.contains(audiobook.id)
+        )
     }
 }
 
