@@ -134,10 +134,9 @@ struct Listen_ThisWatchApp: App {
             object: nil,
             queue: .main
         ) { _ in
-            AppLogger.general.info("[WatchApp] CloudKit remote change detected, reloading settings")
-            // Reload settings to pick up synced data
+            // Refresh settings from database - only logs if actual changes detected
             Task { @MainActor in
-                SettingsManager.shared.configure(modelContext: container.mainContext)
+                SettingsManager.shared.refreshSettings()
             }
         }
     }

@@ -323,6 +323,37 @@ final class SettingsManager {
         loadOrCreateAudiobookshelfSettings()
     }
 
+    /// Refresh settings from database without saving (used for CloudKit sync notifications)
+    func refreshSettings() {
+        guard let context = modelContext else { return }
+
+        // Reload UserSettings
+        let userDescriptor = FetchDescriptor<UserSettings>(
+            predicate: #Predicate { $0.id == "user_settings" }
+        )
+        if let userSettings = try? context.fetch(userDescriptor).first {
+            // Only log if settings changed
+            if settings?.lastModified != userSettings.lastModified {
+                AppLogger.settings.info("[SettingsManager] UserSettings changed via CloudKit sync")
+            }
+            settings = userSettings
+        }
+
+        // Reload AudiobookshelfSettings
+        let absDescriptor = FetchDescriptor<AudiobookshelfSettings>(
+            predicate: #Predicate { $0.id == "audiobookshelf_settings" }
+        )
+        if let absSettings = try? context.fetch(absDescriptor).first {
+            // Only log if settings changed
+            if audiobookshelfSettings?.lastModified != absSettings.lastModified {
+                AppLogger.settings.info(
+                    "[SettingsManager] AudiobookshelfSettings changed via CloudKit sync - serverURL: '\(absSettings.serverURL)'"
+                )
+            }
+            audiobookshelfSettings = absSettings
+        }
+    }
+
     // MARK: - Private
 
     private init() {}
@@ -386,6 +417,34 @@ final class SettingsManager {
                     "[SettingsManager] Loaded existing Audiobookshelf settings - serverURL: '\(first.serverURL)', enabled: \(first.isEnabled)"
                 )
                 audiobookshelfSettings = first
+
+                // Clean up any duplicate records (keep the one with most recent lastModified)
+                if existing.count > 1 {
+                    AppLogger.settings.warning(
+                        "[SettingsManager] Found \(existing.count) AudiobookshelfSettings records, cleaning up duplicates"
+                    )
+
+                    // Find the most recently modified record
+                    let mostRecent = existing.max(by: { $0.lastModified < $1.lastModified })
+
+                    // Delete all others
+                    for setting in existing where setting !== mostRecent {
+                        AppLogger.settings.info(
+                            "[SettingsManager] Deleting duplicate record - serverURL: '\(setting.serverURL)', lastModified: \(setting.lastModified)"
+                        )
+                        context.delete(setting)
+                    }
+
+                    // Use the most recent one
+                    if let mostRecent = mostRecent {
+                        audiobookshelfSettings = mostRecent
+                        AppLogger.settings.info(
+                            "[SettingsManager] Using most recent record - serverURL: '\(mostRecent.serverURL)', lastModified: \(mostRecent.lastModified)"
+                        )
+                    }
+
+                    try context.save()
+                }
             } else {
                 #if os(iOS)
                     // iOS: Create default Audiobookshelf settings if none exist
