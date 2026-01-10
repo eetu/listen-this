@@ -38,13 +38,11 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     private let logger = AppLogger.cloudKit
 
     // MARK: - Background URLSession
+    // Note: Background URLSession is configured but not currently used for chunk downloads
+    // CKAsset.fileURL provides local file:// URLs which we read directly
+    // Keeping the session for potential future use with remote CloudKit asset URLs
 
     private var backgroundSession: URLSession!
-
-    // Track ongoing download tasks to update progress
-    private var downloadTasks: [URLSessionDownloadTask: (audiobookId: UUID, chunkIndex: Int)] = [:]
-    private var downloadedChunkData: [String: Data] = [:]  // Key: "audiobookId-chunkIndex"
-    private var downloadContinuations: [String: CheckedContinuation<Data, Error>] = [:]
 
     // MARK: - Background Execution
 
@@ -536,22 +534,19 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             throw ChunkTransferError.readFailed
         }
 
-        // Use background URLSession for chunk download
-        let key = "\(audiobookId.uuidString)-\(chunkIndex)"
+        // CKAsset.fileURL is a local file:// URL pointing to CloudKit's cache
+        // We can read it directly - no need for URLSession download
+        logger.debug("Reading chunk \(chunkIndex) from CloudKit cache: \(url.path)")
 
-        return try await withCheckedThrowingContinuation { continuation in
-            Task { @MainActor in
-                // Store continuation for when download completes
-                self.downloadContinuations[key] = continuation
-
-                // Create background download task
-                let downloadTask = self.backgroundSession.downloadTask(with: url)
-                self.downloadTasks[downloadTask] = (audiobookId, chunkIndex)
-                downloadTask.resume()
-
-                self.logger.debug(
-                    "Started background download for chunk \(chunkIndex) of \(audiobookId)")
-            }
+        do {
+            let data = try Data(contentsOf: url)
+            logger.debug("Successfully read chunk \(chunkIndex) (\(data.count) bytes)")
+            return data
+        } catch {
+            logger.error(
+                "Failed to read chunk \(chunkIndex) from \(url.path): \(error.localizedDescription)"
+            )
+            throw ChunkTransferError.readFailed
         }
     }
 
@@ -627,42 +622,15 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     }
 
     // MARK: - URLSessionDownloadDelegate
+    // Note: These delegate methods are kept for potential future use
+    // Currently chunk downloads read directly from CKAsset.fileURL (local files)
 
     nonisolated func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
-        Task { @MainActor in
-            guard let taskInfo = downloadTasks[downloadTask] else {
-                logger.error("Received download completion for unknown task")
-                return
-            }
-
-            let key = "\(taskInfo.audiobookId.uuidString)-\(taskInfo.chunkIndex)"
-
-            do {
-                // Read the downloaded chunk data
-                let data = try Data(contentsOf: location)
-
-                // Resume the continuation with the data
-                if let continuation = downloadContinuations.removeValue(forKey: key) {
-                    continuation.resume(returning: data)
-                } else {
-                    logger.warning("No continuation found for chunk \(taskInfo.chunkIndex)")
-                }
-
-                downloadTasks.removeValue(forKey: downloadTask)
-                logger.debug("Completed background download for chunk \(taskInfo.chunkIndex)")
-
-            } catch {
-                logger.error("Failed to read downloaded chunk: \(error.localizedDescription)")
-                if let continuation = downloadContinuations.removeValue(forKey: key) {
-                    continuation.resume(throwing: error)
-                }
-                downloadTasks.removeValue(forKey: downloadTask)
-            }
-        }
+        // Currently unused - keeping for future compatibility
     }
 
     nonisolated func urlSession(
@@ -670,24 +638,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        Task { @MainActor in
-            guard let error = error else { return }
-
-            if let downloadTask = task as? URLSessionDownloadTask,
-                let taskInfo = downloadTasks[downloadTask]
-            {
-                let key = "\(taskInfo.audiobookId.uuidString)-\(taskInfo.chunkIndex)"
-
-                logger.error(
-                    "Download task failed for chunk \(taskInfo.chunkIndex): \(error.localizedDescription)"
-                )
-
-                if let continuation = downloadContinuations.removeValue(forKey: key) {
-                    continuation.resume(throwing: error)
-                }
-                downloadTasks.removeValue(forKey: downloadTask)
-            }
-        }
+        // Currently unused - keeping for future compatibility
     }
 
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {

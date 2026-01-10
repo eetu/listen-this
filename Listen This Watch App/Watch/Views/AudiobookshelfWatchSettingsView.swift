@@ -30,17 +30,6 @@ struct AudiobookshelfWatchSettingsView: View {
                                     .font(.footnote)
                                     .lineLimit(3)
                             }
-
-                            HStack {
-                                Text("Sync Status")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Label("Synced from iPhone", systemImage: "checkmark.icloud.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.green)
-                                    .lineLimit(1)
-                            }
                         }
 
                         Section("Playback Mode") {
@@ -81,12 +70,6 @@ struct AudiobookshelfWatchSettingsView: View {
                                 }
                             }
                             .disabled(isRefreshing)
-
-                            Button(role: .destructive) {
-                                deleteEmptySettings()
-                            } label: {
-                                Text("Delete Empty Settings")
-                            }
                         }
                     }
                 } else {
@@ -119,12 +102,6 @@ struct AudiobookshelfWatchSettingsView: View {
                                     }
                                 }
                                 .disabled(isRefreshing)
-
-                                Button(role: .destructive) {
-                                    deleteEmptySettings()
-                                } label: {
-                                    Text("Delete Empty Settings")
-                                }
                             }
                         }
                     }
@@ -194,51 +171,6 @@ struct AudiobookshelfWatchSettingsView: View {
         }
     }
 
-    private func deleteEmptySettings() {
-        AppLogger.settings.info("[Watch] Attempting to delete empty settings records")
-        let descriptor = FetchDescriptor<AudiobookshelfSettings>()
-
-        guard let allSettings = try? modelContext.fetch(descriptor) else {
-            AppLogger.settings.error("[Watch] Failed to fetch settings for deletion")
-            return
-        }
-
-        var deletedCount = 0
-        for setting in allSettings {
-            // Access all properties to resolve faults before checking/deleting
-            let id = setting.id
-            let url = setting.serverURL
-            let enabled = setting.isEnabled
-            let _ = setting.playbackMode  // Force fault resolution
-
-            if url.isEmpty {
-                AppLogger.settings.info(
-                    "[Watch] Deleting empty settings record with id: '\(id)', enabled: \(enabled)")
-                modelContext.delete(setting)
-                deletedCount += 1
-            }
-        }
-
-        if deletedCount > 0 {
-            do {
-                try modelContext.save()
-                AppLogger.settings.info("[Watch] Deleted \(deletedCount) empty settings record(s)")
-
-                // Clear current settings and reload after deletion
-                settings = nil
-                Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    loadSettings()
-                }
-            } catch {
-                AppLogger.settings.error(
-                    "[Watch] Failed to save after deleting empty settings: \(error.localizedDescription)"
-                )
-            }
-        } else {
-            AppLogger.settings.info("[Watch] No empty settings found to delete")
-        }
-    }
 }
 
 #Preview {

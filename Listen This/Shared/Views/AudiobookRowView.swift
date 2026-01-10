@@ -29,14 +29,27 @@ struct AudiobookRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Artwork thumbnail
+            // Artwork thumbnail with status badge overlay
             artwork
+                .overlay(alignment: .bottomTrailing) {
+                    statusIcon
+                        #if os(iOS)
+                            .font(.caption)
+                            .padding(4)
+                        #else
+                            .font(.system(size: 10))
+                            .padding(3)
+                        #endif
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .offset(x: 2, y: 2)
+                }
 
             // Book info
             VStack(alignment: .leading, spacing: 4) {
                 Text(audiobook.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
 
                 Text(audiobook.author)
                     .font(.subheadline)
@@ -56,18 +69,7 @@ struct AudiobookRowView: View {
                 #endif
             }
 
-            Spacer()
-
-            // Status icon in top-right corner
-            VStack {
-                statusIcon
-                    #if os(iOS)
-                        .font(.title3)
-                    #else
-                        .font(.body)
-                    #endif
-                Spacer()
-            }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
     }
