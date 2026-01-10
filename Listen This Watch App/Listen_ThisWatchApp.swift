@@ -4,6 +4,7 @@
 //
 
 import Combine
+import CoreData
 import SwiftData
 import SwiftUI
 import WatchConnectivity
@@ -77,6 +78,9 @@ struct Listen_ThisWatchApp: App {
 
                     // Start periodic orphaned cache cleanup (every 5 minutes)
                     startPeriodicCleanup()
+
+                    // Observe CloudKit changes to reload settings
+                    startObservingCloudKitChanges()
                 }
                 .onDisappear {
                     stopTransferMonitoring()
@@ -120,6 +124,22 @@ struct Listen_ThisWatchApp: App {
     private func stopPeriodicCleanup() {
         cleanupTimer?.invalidate()
         cleanupTimer = nil
+    }
+
+    private func startObservingCloudKitChanges() {
+        // Observe CloudKit remote changes to reload settings
+        let container = modelContainer
+        storeRemoteChangeNotification = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.NSPersistentStoreRemoteChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            AppLogger.general.info("[WatchApp] CloudKit remote change detected, reloading settings")
+            // Reload settings to pick up synced data
+            Task { @MainActor in
+                SettingsManager.shared.configure(modelContext: container.mainContext)
+            }
+        }
     }
 
     private func stopObservingCloudKitChanges() {

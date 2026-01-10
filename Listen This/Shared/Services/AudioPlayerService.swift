@@ -15,7 +15,7 @@ import SwiftData
 
 @MainActor
 @Observable
-final class AudioPlayerService: AudioPlayer {
+final class AudioPlayerService: NSObject, AudioPlayer {
 
     // MARK: - Logger
 
@@ -101,6 +101,7 @@ final class AudioPlayerService: AudioPlayer {
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        super.init()
         setupAudioSession()
         setupNotifications()
         setupRemoteCommandCenter()
