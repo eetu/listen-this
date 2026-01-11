@@ -11,6 +11,10 @@ import MediaPlayer
 import OSLog
 import SwiftData
 
+#if os(watchOS)
+    import WidgetKit
+#endif
+
 // MARK: - Concrete Implementation
 
 @MainActor
@@ -565,7 +569,6 @@ final class AudioPlayerService: NSObject, AudioPlayer {
                     self.savePlaybackState()
                 }
             }
-
         }
     }
 
@@ -585,9 +588,23 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             info[MPMediaItemPropertyArtist] = audiobook.author
         }
 
+        // Show current chapter info on lock screen
         if currentChapterIndex < sortedChapters.count {
-            info[MPMediaItemPropertyAlbumTitle] =
-                sortedChapters[currentChapterIndex].title
+            let chapter = sortedChapters[currentChapterIndex]
+            let totalChapters = sortedChapters.count
+
+            // For audiobooks, the chapter title should appear in the subtitle area
+            // Try multiple properties for better compatibility across iOS versions
+            let chapterInfo =
+                "Chapter \(currentChapterIndex + 1) of \(totalChapters): \(chapter.title)"
+
+            info[MPMediaItemPropertyAlbumTitle] = chapterInfo
+            info[MPNowPlayingInfoPropertyChapterNumber] = currentChapterIndex + 1
+            info[MPNowPlayingInfoPropertyChapterCount] = totalChapters
+
+            // Track number metadata
+            info[MPMediaItemPropertyAlbumTrackNumber] = currentChapterIndex + 1
+            info[MPMediaItemPropertyAlbumTrackCount] = totalChapters
         }
 
         #if os(iOS)
@@ -605,6 +622,7 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     private func setupRemoteCommandCenter() {
         let center = MPRemoteCommandCenter.shared()
 
+        // Play/Pause commands
         center.playCommand.addTarget { [weak self] _ in
             Task { await self?.play() }
             return .success
@@ -619,6 +637,50 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             Task {
                 guard let self else { return }
                 self.isPlaying ? await self.pause() : await self.play()
+            }
+            return .success
+        }
+
+        // Skip forward/backward commands (uses configured intervals)
+        center.skipForwardCommand.isEnabled = true
+        center.skipForwardCommand.preferredIntervals = [
+            NSNumber(value: SettingsManager.shared.skipForwardInterval)
+        ]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            Task { await self?.skipForward() }
+            return .success
+        }
+
+        center.skipBackwardCommand.isEnabled = true
+        center.skipBackwardCommand.preferredIntervals = [
+            NSNumber(value: SettingsManager.shared.skipBackwardInterval)
+        ]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            Task { await self?.skipBackward() }
+            return .success
+        }
+
+        // Next/Previous track commands (for chapter navigation)
+        center.nextTrackCommand.isEnabled = true
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            Task { await self?.nextChapter() }
+            return .success
+        }
+
+        center.previousTrackCommand.isEnabled = true
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            Task { await self?.previousChapter() }
+            return .success
+        }
+
+        // Change playback position (scrubbing from lock screen)
+        center.changePlaybackPositionCommand.isEnabled = true
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            Task {
+                _ = await self?.seek(to: event.positionTime)
             }
             return .success
         }
@@ -728,6 +790,11 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
 
         try? modelContext.save()
+
+        // Reload watch complications to show updated progress
+        #if os(watchOS)
+            WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     private func updateLastPlayed() {

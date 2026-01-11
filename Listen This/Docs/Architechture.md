@@ -92,12 +92,6 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 - WatchConnectivity file transfer (iPhone sender)
 - AudioPlayerService with AVFoundation integration
 - Chapter parsing and metadata extraction
-
-**In Progress:**
-- Full AVPlayer playback integration
-- watchOS application enhancements
-
-**Completed:**
 - CloudKit chunked file transfer system
 - iOS upload to CloudKit functionality with background support
 - watchOS download from CloudKit functionality with background support
@@ -106,10 +100,17 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 - Long-lived CloudKit operations for background execution
 - Cellular/WiFi configuration for transfers
 - Sleep timer with presets and end-of-chapter option
+- Audiobookshelf integration (server URL, API key, streaming support)
+- CloudKit remote change notifications for Watch
+- Settings sync across devices via CloudKit
+- Audio background mode for watchOS streaming
+- Advanced remote commands (skip forward/backward, chapter navigation, scrubbing from lock screen)
+
+**In Progress:**
+- watchOS application enhancements
 
 **Planned:**
-- Transfer method auto-selection based on file size
-- Additional content sources (Jellyfin, AudiobookShelf)
+- Additional content sources (Jellyfin)
 - Enhanced playback features (bookmarks)
 - CarPlay integration
 
@@ -169,10 +170,10 @@ The app uses three distinct storage layers, each serving a specific purpose:
 - Can be cleared and re-downloaded from iCloud Drive
 - Primary use: Offline playback, faster access than iCloud Drive
 
-**3. CloudKit Chunked Transfer (Permanent)**
+**3. CloudKit Chunked Transfer**
 - Managed by `CloudKitChunkedTransferManager`
 - Files split into 100MB chunks stored in CloudKit Private Database
-- Purpose: Fast audiobook transfers from iPhone → Watch over WiFi
+- Purpose: Faster audiobook transfers from iPhone → Watch over WiFi
 - Lifecycle: iPhone uploads chunks → Watch downloads chunks → chunks auto-deleted after successful Watch download
 - Not permanent storage: Multi-watch edge case requires re-upload
 - Primary use: Overcome WatchConnectivity transfer speed limitations
@@ -237,14 +238,13 @@ While `CacheEntry` syncs via CloudKit, each device manages its cache independent
 - Deleting a cache entry on one device doesn't affect other devices' files
 - CloudKit only syncs the metadata about what's cached, not the actual files
 
-**Important:** Using multiple ModelConfigurations (one for CloudKit, one local-only) causes SwiftData to create duplicate entity instances, leading to "ID occurs multiple times" errors in ForEach loops.
-
 #### Sync Triggers
-- Playback position update (debounced, every 30 seconds)
+- Playback position update (throttled, every 5 seconds during playback)
 - App enters background
 - Book completion
-- Manual sync request
-- Periodic background refresh (every 15 minutes)
+- Pause/stop playback
+- Chapter navigation
+- CloudKit remote change notifications (automatic)
 
 #### Conflict Resolution
 
@@ -257,6 +257,13 @@ The app uses timestamp-based conflict resolution to handle cross-device sync.
 - This prevents older local state from overwriting newer progress from another device
 
 **Key field:** `PlaybackSession.lastPlayed: Date` - Updated on every position save
+
+**Sync Mechanism (Simplified):**
+- **Removed:** Redundant WatchConnectivity progress sync (conflicted with CloudKit)
+- **Current:** Single CloudKit-based sync for all devices
+- **Watch CloudKit Observer:** Detects remote changes and refreshes settings
+- **Change Detection:** Only logs when settings actually change (filters out playback progress updates)
+- **Duplicate Cleanup:** Automatically merges duplicate settings records, keeps most recent
 
 #### Sync Flow
 
@@ -771,10 +778,11 @@ See `Listen This AppTests/TESTING.md` for complete documentation.
 - Load artwork on-demand when needed
 - Reduces initial load time and memory usage
 
-**Background Sync Throttling**
-- Debounce position updates with 30-second timer
+**Playback Position Throttling**
+- Throttle position updates to every 5 seconds during playback
 - Prevents excessive CloudKit writes
 - Reduces battery usage and network traffic
+- Only saves when actively playing (not paused)
 
 ---
 

@@ -18,6 +18,8 @@ Listen This is a cross-platform M4B audiobook player for iOS, iPadOS, and watchO
 - Only update README and Architechture.md with relevant information
 - Never add actual code into architecture docs, only pseudo code if applicable
 - Try to share as much code between iOS and watchOS targets in Shared directory
+- **Do not create separate instruction/setup files** - Add all instructions to CLAUDE.md instead
+- When code requires manual Xcode configuration (like adding files to targets), mention it directly in conversation rather than creating files
 
 ## Project Structure
 
@@ -75,8 +77,11 @@ Cross-device sync uses timestamp comparison in `AudioPlayerService.savePlaybackS
 
 ### Build Commands
 ```bash
-# Build project
-xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This"
+# Build project (iOS)
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
+
+# Build Watch app
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'
 
 # Run tests
 xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
@@ -84,6 +89,25 @@ xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=
 # Clean build
 xcodebuild clean -project "Listen This.xcodeproj" -scheme "Listen This"
 ```
+
+### Finding Available Simulators
+```bash
+# List all iOS simulators
+xcrun simctl list devices available | grep iPhone
+
+# List all watchOS simulators
+xcrun simctl list devices available | grep "Apple Watch"
+
+# List all iPad simulators
+xcrun simctl list devices available | grep iPad
+```
+
+### Common Build Destinations
+- **iPhone**: `'platform=iOS Simulator,name=iPhone 17'`
+- **iPad**: `'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`
+- **Apple Watch**: `'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'`
+
+Note: Simulator names change with Xcode/iOS versions. Use the commands above to find the latest available devices on your system.
 
 ### LSP Setup (for non-Xcode editors)
 - Requires `xcode-build-server` (install via Homebrew)

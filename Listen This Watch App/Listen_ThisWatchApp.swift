@@ -39,9 +39,19 @@ struct Listen_ThisWatchApp: App {
                 AudiobookshelfSettings.self,
             ])
 
+            // Use App Group container for shared database access with widget extension
+            guard let appGroupURL = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: "group.com.anarkisti.Listen-This"
+            ) else {
+                fatalError("Failed to access App Group container - check Signing & Capabilities")
+            }
+
+            let storeURL = appGroupURL.appendingPathComponent("default.store")
+            AppLogger.general.info("[WatchApp] Using App Group container at: \(storeURL.path)")
+
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
-                isStoredInMemoryOnly: false,
+                url: storeURL,
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
 
