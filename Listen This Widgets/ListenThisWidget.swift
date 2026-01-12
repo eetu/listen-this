@@ -175,23 +175,36 @@ struct GraphicCircularView: View {
     }
 }
 
-// Graphic Corner - Progress gauge with title
+// Graphic Corner - Progress percentage with gauge, or icon if no audiobook
 struct GraphicCornerView: View {
     let entry: AudiobookEntry
 
     var body: some View {
-        Text(entry.title)
-            .widgetCurvesContent()
-            .widgetLabel {
-                Gauge(value: entry.progress) {
-                    EmptyView()
+        if entry.title != "No Audiobook" {
+            // Show progress percentage
+            Text("\(Int(entry.progress * 100))%")
+                .font(.system(.body, design: .rounded))
+                .fontWeight(.semibold)
+                .widgetCurvesContent()
+                .widgetLabel {
+                    Gauge(value: entry.progress) {
+                        EmptyView()
+                    }
+                    .gaugeStyle(.accessoryLinear)
+                    .tint(.green)
                 }
-                .gaugeStyle(.accessoryLinear)
-                .tint(.green)
-            }
-            .containerBackground(for: .widget) {
-                Color.clear
-            }
+                .containerBackground(for: .widget) {
+                    Color.clear
+                }
+        } else {
+            // Fallback: just show book icon
+            Image(systemName: "book.fill")
+                .font(.title3)
+                .widgetCurvesContent()
+                .containerBackground(for: .widget) {
+                    Color.clear
+                }
+        }
     }
 }
 

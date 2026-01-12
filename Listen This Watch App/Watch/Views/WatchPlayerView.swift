@@ -17,6 +17,7 @@ struct WatchPlayerView: View {
     @Environment(WatchConnectivityManager.self) private var connectivity
 
     @State private var playerService: AudioPlayerService?
+    @State private var isLoadingPlayer = false
     @State private var showingChapterList = false
     @State private var showingContextMenu = false
     @State private var showingDeleteConfirmation = false
@@ -41,7 +42,10 @@ struct WatchPlayerView: View {
 
             VStack(spacing: 0) {
                 if audiobook.playabilityState.isPlayable {
-                    if let playerService {
+                    if isLoadingPlayer {
+                        loadingSpinner
+                            .padding(.bottom, 12)
+                    } else if let playerService {
                         PlayerControlsView(
                             player: playerService,
                             audiobook: audiobook,
@@ -127,6 +131,17 @@ struct WatchPlayerView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    // MARK: - Loading Spinner
+
+    private var loadingSpinner: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+            Text("Loading…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -321,9 +336,11 @@ struct WatchPlayerView: View {
 
     private func loadPlayerIfNeeded() async {
         guard playerService == nil, audiobook.playabilityState.isPlayable else { return }
+        isLoadingPlayer = true
         let service = AudioPlayerService(modelContext: modelContext)
-        playerService = service
         await service.load(audiobook: audiobook)
+        playerService = service
+        isLoadingPlayer = false
     }
 
     private func observeVolume() {

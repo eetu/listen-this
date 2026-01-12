@@ -101,7 +101,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     total: chapterProgress.duration,
                     height: 7,
                     foregroundColor: progressColor,
-                    backgroundColor: Color.white.opacity(0.3)
+                    backgroundColor: Color.white.opacity(0.2)
                 )
             #endif
 
