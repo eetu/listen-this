@@ -181,21 +181,23 @@ struct GraphicCornerView: View {
 
     var body: some View {
         if entry.title != "No Audiobook" {
-            // Show progress percentage
-            Text("\(Int(entry.progress * 100))%")
-                .font(.system(.body, design: .rounded))
-                .fontWeight(.semibold)
-                .widgetCurvesContent()
-                .widgetLabel {
-                    Gauge(value: entry.progress) {
-                        EmptyView()
-                    }
-                    .gaugeStyle(.accessoryLinear)
-                    .tint(.green)
+            // Stacked text: percentage + chapter info
+            VStack(spacing: 0) {
+                if entry.totalChapters > 0 {
+                    Text("Ch \(entry.chapterIndex + 1)/\(entry.totalChapters)")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\(Int(entry.progress * 100))%")
+                        .foregroundStyle(.secondary)
                 }
-                .containerBackground(for: .widget) {
-                    Color.clear
-                }
+            }
+            .widgetCurvesContent()
+            .widgetLabel {
+                Text(entry.title)
+            }
+            .containerBackground(for: .widget) {
+                Color.clear
+            }
         } else {
             // Fallback: just show book icon
             Image(systemName: "book.fill")
