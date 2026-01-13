@@ -85,25 +85,9 @@ struct LibraryView: View {
                 audiobook: book, connectivity: connectivity, downloadingBookIds: downloadingBookIds
             )
             .tag(book)
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                // Info/Details action
-                Button {
-                    detailsAudiobookId = book.id
-                } label: {
-                    Label("Info", systemImage: "info.circle")
-                }
-                .tint(.blue)
-
-                // Delete action - always available
-                Button(role: .destructive) {
-                    deleteAudiobookId = book.id
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .tint(.red)
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                // Transfer to Watch (only for cached books)
+            // Leading edge (swipe right) - Common actions (full swipe supported)
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                // Transfer to Watch (only for cached books) - primary action
                 if connectivity.isPaired && connectivity.isWatchAppInstalled
                     && book.isFileCached
                 {
@@ -115,7 +99,7 @@ struct LibraryView: View {
                     .tint(.blue)
                 }
 
-                // Download for remote books that support downloading and aren't cached
+                // Download for remote books - primary action for streamable content
                 if book.requiresStreaming && book.sourceIdentifier != nil {
                     Button {
                         Task {
@@ -127,6 +111,23 @@ struct LibraryView: View {
                     .tint(.green)
                     .disabled(downloadingBookIds.contains(book.id))
                 }
+            }
+            // Trailing edge (swipe left) - Info & Delete
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                // Delete action - leftmost, supports full swipe
+                Button(role: .destructive) {
+                    deleteAudiobookId = book.id
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+
+                // Info/Details action - rightmost
+                Button {
+                    detailsAudiobookId = book.id
+                } label: {
+                    Label("Info", systemImage: "info.circle")
+                }
+                .tint(.blue)
             }
             .contextMenu {
                 contextMenuItems(for: book, connectivity: connectivity)
