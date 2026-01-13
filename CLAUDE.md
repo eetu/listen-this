@@ -21,6 +21,22 @@ Listen This is a cross-platform M4B audiobook player for iOS, iPadOS, and watchO
 - **Do not create separate instruction/setup files** - Add all instructions to CLAUDE.md instead
 - When code requires manual Xcode configuration (like adding files to targets), mention it directly in conversation rather than creating files
 
+### Swift & Language Features
+
+The project targets modern OS versions and should use current Swift features:
+- **Minimum Deployment Targets**: iOS 18.0, watchOS 11.0
+- **Swift Concurrency**: Use modern async/await, actors, and Task APIs
+- **Swift 6 Compatibility**: Write code that's forward-compatible with Swift 6 language mode
+  - Use `OSAllocatedUnfairLock` for thread-safe state instead of `NSLock` where appropriate
+  - Prefer `@MainActor` and actor isolation over manual synchronization
+  - Use `Sendable` types for concurrent code
+  - Avoid mutable captured variables in concurrent closures
+- **SwiftUI**: Use latest SwiftUI features available in iOS 18/watchOS 11
+  - `.task { }` modifier instead of `.onAppear { Task { } }`
+  - `@Observable` macro for observable objects
+  - New SwiftData integration patterns
+- **Swift Testing**: Use Swift Testing framework (not XCTest) for new tests
+
 ## Project Structure
 
 ```

@@ -5,6 +5,7 @@
 //  Main library view showing audiobook collection
 //
 
+import Network
 import OSLog
 import SwiftData
 import SwiftUI
@@ -28,6 +29,9 @@ struct LibraryView: View {
     // Track books currently downloading
     @State private var downloadingBookIds: Set<UUID> = []
 
+    // Initial sync state
+    @State private var isInitialSyncComplete = false
+
     var filteredAudiobooks: [Audiobook] {
         if searchText.isEmpty {
             return audiobooks
@@ -41,7 +45,11 @@ struct LibraryView: View {
     var body: some View {
         Group {
             if let connectivity {
-                sidebarContent(connectivity: connectivity)
+                if isInitialSyncComplete {
+                    sidebarContent(connectivity: connectivity)
+                } else {
+                    initialSyncLoadingView
+                }
             } else {
                 ProgressView("Loading...")
             }
@@ -52,6 +60,9 @@ struct LibraryView: View {
                 manager.configure(modelContext: modelContext)
                 connectivity = manager
             }
+
+            // Wait for initial sync (grace period for CloudKit)
+            await waitForInitialSync()
 
             // Clean up orphaned caches on view appearance
             await cleanupOrphanedCaches()
@@ -313,6 +324,59 @@ struct LibraryView: View {
             AppLogger.import.error(
                 "Failed to download remote book: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Initial Sync
+
+    private var initialSyncLoadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+        }
+    }
+
+    /// Wait for initial CloudKit sync with a grace period
+    /// Skips if no network connection to allow offline playback of cached books
+    private func waitForInitialSync() async {
+        // Check network availability
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "NetworkMonitor")
+
+        let hasNetwork = await withCheckedContinuation {
+            (continuation: CheckedContinuation<Bool, Never>) in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+
+            monitor.pathUpdateHandler = { path in
+                resumed.withLock { wasResumed in
+                    if !wasResumed {
+                        wasResumed = true
+                        continuation.resume(returning: path.status == .satisfied)
+                        monitor.cancel()
+                    }
+                }
+            }
+            monitor.start(queue: queue)
+
+            // Timeout after 0.5 seconds
+            queue.asyncAfter(deadline: .now() + 0.5) {
+                resumed.withLock { wasResumed in
+                    if !wasResumed {
+                        wasResumed = true
+                        continuation.resume(returning: false)
+                        monitor.cancel()
+                    }
+                }
+            }
+        }
+
+        if hasNetwork {
+            // Use a short grace period to allow CloudKit to sync initial data
+            // If data already exists locally, this will be quick
+            try? await Task.sleep(for: .seconds(1.5))
+        } else {
+            AppLogger.general.info("No network connection, skipping initial sync wait")
+        }
+
+        isInitialSyncComplete = true
     }
 
     // MARK: - Cache Cleanup

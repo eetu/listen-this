@@ -40,9 +40,11 @@ struct Listen_ThisWatchApp: App {
             ])
 
             // Use App Group container for shared database access with widget extension
-            guard let appGroupURL = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: "group.com.anarkisti.Listen-This"
-            ) else {
+            guard
+                let appGroupURL = FileManager.default.containerURL(
+                    forSecurityApplicationGroupIdentifier: "group.com.anarkisti.Listen-This"
+                )
+            else {
                 fatalError("Failed to access App Group container - check Signing & Capabilities")
             }
 
@@ -138,7 +140,6 @@ struct Listen_ThisWatchApp: App {
 
     private func startObservingCloudKitChanges() {
         // Observe CloudKit remote changes to reload settings
-        let container = modelContainer
         storeRemoteChangeNotification = NotificationCenter.default.addObserver(
             forName: NSNotification.Name.NSPersistentStoreRemoteChange,
             object: nil,
@@ -179,6 +180,15 @@ struct Listen_ThisWatchApp: App {
         } else if newPhase == .active && oldPhase == .background {
             // App becoming active from background
             AppLogger.general.info("[WatchApp] Becoming active from background")
+
+            Task { @MainActor in
+                // Trigger SwiftData to check for CloudKit changes
+                // Saving the context will cause @Query to re-evaluate with any synced changes
+                try? modelContainer.mainContext.save()
+
+                AppLogger.general.info(
+                    "[WatchApp] Triggered context refresh after returning from background")
+            }
 
             // Check if Watch Connectivity became reachable while we were in background
             if watchConnectivityManager.isReachable {

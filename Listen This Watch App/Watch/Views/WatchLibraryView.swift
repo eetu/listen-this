@@ -3,6 +3,7 @@
 //  Listen This Watch App
 //
 
+import Network
 import Observation
 import SwiftData
 import SwiftUI
@@ -25,13 +26,20 @@ struct WatchLibraryView: View {
     @State private var cloudKitDownloadAudiobookId: UUID?
     @State private var bluetoothDownloadAudiobookId: UUID?
 
+    // Initial sync state
+    @State private var isInitialSyncComplete = false
+
     var body: some View {
         NavigationStack {
             Group {
-                if audiobooks.isEmpty {
-                    emptyStateView
+                if isInitialSyncComplete {
+                    if audiobooks.isEmpty {
+                        emptyStateView
+                    } else {
+                        audiobookList
+                    }
                 } else {
-                    audiobookList
+                    initialSyncLoadingView
                 }
             }
             .navigationTitle("Library")
@@ -53,17 +61,74 @@ struct WatchLibraryView: View {
                 AudiobookshelfWatchSettingsView()
             }
         }
-        .onAppear {
+        .task {
             connectivity.configure(modelContext: modelContext)
+
+            // Wait for initial sync (grace period for CloudKit)
+            await waitForInitialSync()
 
             // Send cached book list to iPhone when view appears
             connectivity.sendCachedAudiobookList()
 
             // Clean up orphaned cache files (files that no longer have audiobook entries)
-            Task {
-                await cleanupOrphanedCaches()
+            await cleanupOrphanedCaches()
+        }
+    }
+
+    // MARK: - Initial Sync
+
+    private var initialSyncLoadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Syncing...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    /// Wait for initial CloudKit sync with a grace period
+    /// Skips if no network connection to allow offline playback of cached books
+    private func waitForInitialSync() async {
+        // Check network availability
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "NetworkMonitor")
+
+        let hasNetwork = await withCheckedContinuation {
+            (continuation: CheckedContinuation<Bool, Never>) in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+
+            monitor.pathUpdateHandler = { path in
+                resumed.withLock { wasResumed in
+                    if !wasResumed {
+                        wasResumed = true
+                        continuation.resume(returning: path.status == .satisfied)
+                        monitor.cancel()
+                    }
+                }
+            }
+            monitor.start(queue: queue)
+
+            // Timeout after 0.5 seconds
+            queue.asyncAfter(deadline: .now() + 0.5) {
+                resumed.withLock { wasResumed in
+                    if !wasResumed {
+                        wasResumed = true
+                        continuation.resume(returning: false)
+                        monitor.cancel()
+                    }
+                }
             }
         }
+
+        if hasNetwork {
+            // Use a short grace period to allow CloudKit to sync initial data
+            try? await Task.sleep(for: .seconds(1.5))
+        } else {
+            AppLogger.general.info("[Watch] No network connection, skipping initial sync wait")
+        }
+
+        isInitialSyncComplete = true
     }
 
     // MARK: - Orphaned Cache Cleanup

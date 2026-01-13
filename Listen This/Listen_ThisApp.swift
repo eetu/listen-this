@@ -126,6 +126,14 @@ struct Listen_ThisApp: App {
             // App becoming active from background
             AppLogger.general.debug("Becoming active from background")
 
+            Task { @MainActor in
+                // Trigger SwiftData to check for CloudKit changes
+                // Saving the context will cause @Query to re-evaluate with any synced changes
+                try? modelContainer.mainContext.save()
+
+                AppLogger.general.debug("Triggered context refresh after returning from background")
+            }
+
             #if os(iOS)
                 // Check if Watch Connectivity became reachable while we were in background
                 if watchConnectivity.isReachable {
