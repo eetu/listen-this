@@ -431,10 +431,11 @@ struct LibraryRow: View {
 
 #Preview {
     @Previewable @State var selectedAudiobook: Audiobook?
+
+    let container = try! previewLibraryContainer()
+
     NavigationStack {
         LibraryView(selectedAudiobook: $selectedAudiobook)
-            .modelContainer(for: [
-                Audiobook.self, Chapter.self, PlaybackSession.self, CacheEntry.self,
-            ])
+            .modelContainer(container)
     }
 }

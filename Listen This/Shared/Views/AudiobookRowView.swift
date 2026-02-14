@@ -27,22 +27,28 @@ struct AudiobookRowView: View {
         self.isTransferring = isTransferring
     }
 
+    private var showStatusIcon: Bool {
+        isTransferring || audiobook.playabilityState != .cached
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Artwork thumbnail with status badge overlay
             artwork
                 .overlay(alignment: .bottomTrailing) {
-                    statusIcon
-                        #if os(iOS)
-                            .font(.caption)
-                            .padding(4)
-                        #else
-                            .font(.system(size: 10))
-                            .padding(3)
-                        #endif
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .offset(x: 2, y: 2)
+                    if showStatusIcon {
+                        statusIcon
+                            #if os(iOS)
+                                .font(.caption)
+                                .padding(4)
+                            #else
+                                .font(.system(size: 10))
+                                .padding(3)
+                            #endif
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .offset(x: 2, y: 2)
+                    }
                 }
 
             // Book info

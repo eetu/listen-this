@@ -700,6 +700,23 @@ extension Audiobook {
         return audiobook
     }
 
+
+    /// Loads preview artwork PNG from `PreviewContent/PreviewArtwork/` in the app bundle.
+    /// This folder is registered as a Development Asset, so it is included in Debug builds
+    /// (making it available to Xcode Previews) but is automatically stripped from
+    /// Release / App Store builds — artwork images never reach production.
+    ///
+    /// Usage: `Audiobook.previewArtworkData(named: "hobbit")`  →  looks for `hobbit.png`
+    static func previewArtworkData(named filename: String) -> Data? {
+        guard let url = Bundle.main.url(
+            forResource: filename,
+            withExtension: "png",
+            subdirectory: "PreviewArtwork"
+        ) else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+
     /// Create multiple sample audiobooks for previews
     static func previewLibrary() -> [Audiobook] {
         return [
@@ -744,7 +761,6 @@ extension Chapter {
 
 // MARK: - SwiftData Preview Container Helper
 
-@MainActor
 func createPreviewContainer() throws -> ModelContainer {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try ModelContainer(
@@ -769,6 +785,109 @@ func createPreviewContainer() throws -> ModelContainer {
 
     try context.save()
 
+    return container
+}
+
+/// Creates a ModelContainer pre-populated with a variety of audiobooks in different states,
+/// for use in the LibraryView #Preview.
+func previewLibraryContainer() throws -> ModelContainer {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(
+        for: Audiobook.self, Chapter.self, PlaybackSession.self, CacheEntry.self,
+        configurations: config
+    )
+    let context = ModelContext(container)
+
+    // 1. Cached locally — no status badge shown
+    let cached = Audiobook(
+        title: "The Hobbit",
+        author: "J.R.R. Tolkien",
+        narrator: "Andy Serkis",
+        duration: 11 * 3600,
+        fileSize: 450_000_000,
+        iCloudRelativePath: "Documents/Audiobooks/The_Hobbit.m4b"
+    )
+    cached.chapterCount = 19
+    cached.artworkData = Audiobook.previewArtworkData(named: "hobbit")
+    // Attach a CacheEntry so playabilityState returns .cached
+    let cacheEntry = CacheEntry(
+        filePath: cached.expectedCachePath ?? "/tmp/cached.m4b",
+        fileSize: 450_000_000,
+        downloadedDate: .now,
+        lastAccessedDate: .now
+    )
+    cacheEntry.audiobook = cached
+    cached.cacheEntry = cacheEntry
+    // Playback 40% through — shows progress bar
+    let session = PlaybackSession(currentPosition: 11 * 3600 * 0.4, lastPlayed: .now)
+    session.audiobook = cached
+    cached.playbackSession = session
+    context.insert(cached)
+    context.insert(cacheEntry)
+    context.insert(session)
+
+    // 2. Streamable (Audiobookshelf) — shows wifi badge
+    let streamable = Audiobook(
+        title: "Project Hail Mary",
+        author: "Andy Weir",
+        narrator: "Ray Porter",
+        duration: 16 * 3600,
+        fileSize: 600_000_000
+    )
+    streamable.sourceType = "audiobookshelf"
+    streamable.sourceIdentifier = "abs-item-42"
+    streamable.chapterCount = 32
+    streamable.artworkData = Audiobook.previewArtworkData(named: "project_hail_mary")
+    context.insert(streamable)
+
+    // 3. iCloud Drive — not yet downloaded, shows icloud.slash badge
+    let icloudPending = Audiobook(
+        title: "Dune",
+        author: "Frank Herbert",
+        narrator: "Scott Brick",
+        duration: 21 * 3600,
+        fileSize: 800_000_000,
+        iCloudRelativePath: "Documents/Audiobooks/Dune.m4b"
+    )
+    icloudPending.chapterCount = 48
+    icloudPending.artworkData = Audiobook.previewArtworkData(named: "dune")
+    context.insert(icloudPending)
+
+    // 4. Audiobookshelf — downloaded and cached, no progress yet — no badge
+    let downloaded = Audiobook(
+        title: "Ender's Game",
+        author: "Orson Scott Card",
+        narrator: "Stefan Rudnicki",
+        duration: 11.4 * 3600,
+        fileSize: 400_000_000
+    )
+    downloaded.sourceType = "audiobookshelf"
+    downloaded.sourceIdentifier = "abs-item-99"
+    downloaded.chapterCount = 15
+    let downloadedCache = CacheEntry(
+        filePath: downloaded.expectedCachePath ?? "/tmp/enders.m4b",
+        fileSize: 400_000_000,
+        downloadedDate: .now,
+        lastAccessedDate: .now
+    )
+    downloadedCache.audiobook = downloaded
+    downloaded.cacheEntry = downloadedCache
+    context.insert(downloaded)
+    context.insert(downloadedCache)
+
+    // 5. Long title stress test — iCloud not downloaded
+    let longTitle = Audiobook(
+        title: "The Name of the Wind: The Kingkiller Chronicle, Day One",
+        author: "Patrick Rothfuss",
+        narrator: "Nick Podehl",
+        duration: 27 * 3600,
+        fileSize: 950_000_000,
+        iCloudRelativePath: "Documents/Audiobooks/Name_of_the_Wind.m4b"
+    )
+    longTitle.chapterCount = 88
+    context.insert(longTitle)
+
+    try context.save()
     return container
 }
 
