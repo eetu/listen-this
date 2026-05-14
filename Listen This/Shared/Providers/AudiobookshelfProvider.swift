@@ -610,14 +610,12 @@ final class AudiobookshelfProvider: ContentSource {
     // MARK: - Progress Sync (Optional)
 
     func syncProgress(identifier: String, position: Double) async throws {
-        // TODO: Implement progress sync to Audiobookshelf
-        // POST /api/session/{sessionId}/sync
-        logger.debug("Progress sync not yet implemented")
+        // Progress sync to Audiobookshelf server is a future enhancement
+        // Would use POST /api/session/{sessionId}/sync
     }
 
     func getProgress(identifier: String) async throws -> Double? {
-        // TODO: Implement progress fetch from Audiobookshelf
-        logger.debug("Progress fetch not yet implemented")
+        // Progress fetch from Audiobookshelf server is a future enhancement
         return nil
     }
 

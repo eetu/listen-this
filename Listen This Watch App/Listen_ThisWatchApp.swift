@@ -25,44 +25,64 @@ struct Listen_ThisWatchApp: App {
     let modelContainer: ModelContainer
 
     init() {
-        do {
-            // All models in a single schema with CloudKit sync
-            // Note: CacheEntry will sync via CloudKit, but this is acceptable
-            // because the relationship is optional and device-specific cleanup
-            // won't affect other devices' ability to maintain their own cache entries
-            let schema = Schema([
-                Audiobook.self,
-                Chapter.self,
-                PlaybackSession.self,
-                CacheEntry.self,
-                UserSettings.self,
-                AudiobookshelfSettings.self,
-            ])
+        // All models in a single schema with CloudKit sync
+        // Note: CacheEntry will sync via CloudKit, but this is acceptable
+        // because the relationship is optional and device-specific cleanup
+        // won't affect other devices' ability to maintain their own cache entries
+        let schema = Schema([
+            Audiobook.self,
+            Chapter.self,
+            PlaybackSession.self,
+            CacheEntry.self,
+            UserSettings.self,
+            AudiobookshelfSettings.self,
+        ])
 
-            // Use App Group container for shared database access with widget extension
-            guard
-                let appGroupURL = FileManager.default.containerURL(
-                    forSecurityApplicationGroupIdentifier: "group.com.anarkisti.Listen-This"
-                )
-            else {
-                fatalError("Failed to access App Group container - check Signing & Capabilities")
-            }
+        // Use App Group container for shared database access with widget extension
+        let appGroupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.anarkisti.Listen-This"
+        )
 
+        if let appGroupURL = appGroupURL {
             let storeURL = appGroupURL.appendingPathComponent("default.store")
             AppLogger.general.info("[WatchApp] Using App Group container at: \(storeURL.path)")
 
-            let modelConfiguration = ModelConfiguration(
+            do {
+                let modelConfiguration = ModelConfiguration(
+                    schema: schema,
+                    url: storeURL,
+                    cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
+                )
+
+                modelContainer = try ModelContainer(
+                    for: schema,
+                    configurations: [modelConfiguration]
+                )
+                return
+            } catch {
+                AppLogger.general.error(
+                    "[WatchApp] App Group ModelContainer failed: \(error.localizedDescription)")
+            }
+        } else {
+            AppLogger.general.error("[WatchApp] App Group container not available")
+        }
+
+        // Fallback: try standard location with CloudKit
+        do {
+            let cloudConfig = ModelConfiguration(
                 schema: schema,
-                url: storeURL,
+                isStoredInMemoryOnly: false,
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
-
-            modelContainer = try ModelContainer(
-                for: schema,
-                configurations: [modelConfiguration]
-            )
+            modelContainer = try ModelContainer(for: schema, configurations: [cloudConfig])
+            AppLogger.general.info("[WatchApp] Using fallback CloudKit container")
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            // Last resort: local-only storage
+            AppLogger.general.error(
+                "[WatchApp] CloudKit fallback failed: \(error.localizedDescription). Using local storage.")
+            let localConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            // Force try - local storage should not fail
+            modelContainer = try! ModelContainer(for: schema, configurations: [localConfig])
         }
     }
 

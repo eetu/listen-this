@@ -45,7 +45,7 @@ struct AudiobookshelfBrowserView: View {
                         }
 
                         Button("Settings") {
-                            // TODO: Navigate to settings
+                            // Dismiss browser so user can access settings from main view
                             dismiss()
                         }
                     }

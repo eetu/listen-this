@@ -28,38 +28,51 @@ struct Listen_ThisApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        do {
-            // All models in a single schema with CloudKit sync
-            // Note: CacheEntry will sync via CloudKit, but this is acceptable
-            // because the relationship is optional and device-specific cleanup
-            // won't affect other devices' ability to maintain their own cache entries
-            let schema = Schema([
-                Audiobook.self,
-                Chapter.self,
-                PlaybackSession.self,
-                CacheEntry.self,
-                UserSettings.self,
-                AudiobookshelfSettings.self,
-            ])
+        // All models in a single schema with CloudKit sync
+        // Note: CacheEntry will sync via CloudKit, but this is acceptable
+        // because the relationship is optional and device-specific cleanup
+        // won't affect other devices' ability to maintain their own cache entries
+        let schema = Schema([
+            Audiobook.self,
+            Chapter.self,
+            PlaybackSession.self,
+            CacheEntry.self,
+            UserSettings.self,
+            AudiobookshelfSettings.self,
+        ])
 
+        do {
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false,
                 cloudKitDatabase: .private("iCloud.com.anarkisti.Listen-This")
             )
 
-            let container = try ModelContainer(
+            modelContainer = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
-
-            modelContainer = container
-
         } catch {
-            // Provide more helpful error message
+            // CloudKit container failed - fall back to local-only storage
+            // This allows the app to function without iCloud sync
             AppLogger.general.error(
-                "ModelContainer initialization error: \(error.localizedDescription)")
-            fatalError("Could not initialize ModelContainer. See console for details.")
+                "CloudKit ModelContainer failed: \(error.localizedDescription). Using local storage.")
+
+            do {
+                let localConfig = ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: false,
+                    cloudKitDatabase: .none
+                )
+                modelContainer = try ModelContainer(for: schema, configurations: [localConfig])
+            } catch {
+                // Last resort: in-memory storage so app doesn't crash
+                AppLogger.general.error(
+                    "Local ModelContainer failed: \(error.localizedDescription). Using in-memory storage.")
+                let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                // Force try is acceptable here - in-memory should never fail
+                modelContainer = try! ModelContainer(for: schema, configurations: [memoryConfig])
+            }
         }
     }
 
