@@ -75,10 +75,10 @@ struct ImportView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Label(
-                                "Place M4B files in iCloud Drive/Documents",
+                                "Place M4B files in iCloud Drive",
                                 systemImage: "1.circle.fill")
                             Label(
-                                "Use 'Import M4B File' to pick files", systemImage: "3.circle.fill")
+                                "Tap 'Import M4B File' to select", systemImage: "2.circle.fill")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
