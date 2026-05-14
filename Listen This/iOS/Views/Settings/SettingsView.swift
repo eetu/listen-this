@@ -85,16 +85,6 @@ struct SettingsView: View {
                     Text("Connect to Audiobookshelf server to stream or download audiobooks")
                 }
 
-                // MARK: - App
-                Section {
-                    NavigationLink {
-                        Text("About - Coming Soon")
-                    } label: {
-                        Label("About", systemImage: "info.circle")
-                    }
-                } header: {
-                    Text("App")
-                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

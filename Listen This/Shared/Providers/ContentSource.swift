@@ -109,6 +109,8 @@ struct AudiobookMetadata {
 }
 // MARK: - Mock Implementation (Previews & Testing)
 
+#if DEBUG
+
 @MainActor
 final class MockContentSource: ContentSource {
     var isAuthenticated = false
@@ -207,3 +209,5 @@ final class MockContentSource: ContentSource {
         return nil
     }
 }
+
+#endif

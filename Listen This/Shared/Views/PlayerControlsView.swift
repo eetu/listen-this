@@ -300,6 +300,8 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 // MARK: - Previews (Modern #Preview)
 //
 
+#if DEBUG
+
 #if os(watchOS)
     #Preview("Paused · Middle Chapter") {
         @Previewable @State var volume: Float = 0.7
@@ -409,3 +411,5 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         .padding()
     }
 #endif
+
+#endif // DEBUG

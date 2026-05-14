@@ -87,9 +87,14 @@ struct AudiobookRowView: View {
         {
             Image(uiImage: uiImage)
                 .resizable()
+                .interpolation(.high)
+                .antialiased(true)
                 .aspectRatio(contentMode: .fill)
                 .frame(width: artworkSize, height: artworkSize)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                #if os(watchOS)
+                .drawingGroup()
+                #endif
         } else {
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(Color.gray.opacity(0.3))

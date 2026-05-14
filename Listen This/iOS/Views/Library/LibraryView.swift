@@ -431,6 +431,7 @@ struct LibraryRow: View {
     }
 }
 
+#if DEBUG
 #Preview {
     @Previewable @State var selectedAudiobook: Audiobook?
 
@@ -441,3 +442,4 @@ struct LibraryRow: View {
             .modelContainer(container)
     }
 }
+#endif

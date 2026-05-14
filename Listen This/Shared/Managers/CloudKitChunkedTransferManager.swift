@@ -653,14 +653,16 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         Task { @MainActor in
             logger.info("Background URLSession finished all events")
 
-            #if os(iOS)
+            #if os(iOS) && canImport(UIKit)
                 // Call the completion handler stored in AppDelegate to let iOS know we're done
                 // This is critical for iOS to properly handle background URL session events
-                if let handler = AppDelegate.backgroundSessionCompletionHandler {
+                // Note: AppDelegate may not be available in test targets
+                if let appDelegateClass = NSClassFromString("Listen_This.AppDelegate") as? NSObject.Type,
+                   let handler = appDelegateClass.value(forKey: "backgroundSessionCompletionHandler") as? (() -> Void) {
                     DispatchQueue.main.async {
                         handler()
                     }
-                    AppDelegate.backgroundSessionCompletionHandler = nil
+                    appDelegateClass.setValue(nil, forKey: "backgroundSessionCompletionHandler")
                     logger.info("Called background session completion handler")
                 }
             #endif

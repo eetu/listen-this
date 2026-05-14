@@ -107,10 +107,13 @@ struct WatchPlayerView: View {
             {
                 Image(uiImage: image)
                     .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
                     .scaledToFill()
                     .ignoresSafeArea()
                     .blur(radius: 5)
                     .opacity(0.5)
+                    .drawingGroup()
             }
         }
     }

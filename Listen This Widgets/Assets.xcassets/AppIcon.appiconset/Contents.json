@@ -1,8 +1,9 @@
 {
   "images" : [
     {
+      "filename" : "listen-this.png",
       "idiom" : "universal",
-      "platform" : "watchos",
+      "platform" : "ios",
       "size" : "1024x1024"
     }
   ],

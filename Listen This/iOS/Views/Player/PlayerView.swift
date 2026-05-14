@@ -310,6 +310,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             {
                 Image(uiImage: image)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
             } else {
                 RoundedRectangle(cornerRadius: 16)
@@ -318,6 +319,7 @@ struct PlayerViewContent<Player: AudioPlayer & Observable>: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -483,6 +485,7 @@ private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
 
 // MARK: - Previews
 
+#if DEBUG
 #Preview("Playing with Chapters") {
     PlayerViewContent(
         audiobook: PreviewData.audiobook,
@@ -523,3 +526,4 @@ private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
         )
     )
 }
+#endif
