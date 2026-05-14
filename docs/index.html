@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Listen This - M4B Audiobook Player</title>
+    <meta name="description" content="A simple, focused M4B audiobook player for iPhone, iPad, and Apple Watch.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --body-bg: #f0f0f0;
+            --surface-bg: #ffffff;
+            --text-primary: #525252;
+            --text-muted: #a0a0a0;
+            --accent: #f78f08;
+            --accent-soft: rgba(247, 143, 8, 0.15);
+            --border: #d2d2d7;
+            --shadow: rgba(60, 64, 67, 0.3) 0 1px 2px 0, rgba(60, 64, 67, 0.15) 0 2px 6px 2px;
+            --radius: 6px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --body-bg: #0f0f0f;
+                --surface-bg: #252525;
+                --text-primary: #d6d6d6;
+                --text-muted: #a0a0a0;
+                --accent-soft: rgba(247, 143, 8, 0.2);
+                --border: #3a3a3a;
+                --shadow: none;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 400;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--body-bg);
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        header h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.04em;
+            text-transform: lowercase;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 80px 20px;
+        }
+
+        .hero h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 48px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero p {
+            font-size: 18px;
+            font-weight: 300;
+            color: var(--text-muted);
+            max-width: 500px;
+            margin: 0 auto 32px;
+        }
+
+        .app-store-badge {
+            height: 54px;
+        }
+
+        .screenshots {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            padding: 40px 20px;
+        }
+
+        .screenshots img {
+            width: 200px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .features {
+            padding: 80px 20px;
+        }
+
+        .features h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            text-align: center;
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 48px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        .feature {
+            background: var(--surface-bg);
+            padding: 1.5em;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .feature h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .feature p {
+            font-size: 14px;
+            font-weight: 300;
+            color: var(--text-muted);
+        }
+
+        .feature.accent {
+            border: 3px solid var(--accent);
+            background: linear-gradient(153deg, rgba(255,237,207,1) 0%, rgba(255,239,171,1) 56%);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .feature.accent {
+                background: var(--accent-soft);
+            }
+        }
+
+        .feature.accent h4 {
+            color: var(--text-primary);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .feature.accent h4 {
+                color: var(--accent);
+            }
+        }
+
+        footer {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 300;
+            border-top: 1px solid var(--border);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: opacity 0.15s;
+        }
+
+        footer a:hover {
+            opacity: 0.8;
+        }
+
+        .links {
+            margin-top: 16px;
+        }
+
+        .links a {
+            margin: 0 12px;
+        }
+
+        @media (max-width: 600px) {
+            .hero h2 {
+                font-size: 32px;
+            }
+
+            .hero p {
+                font-size: 16px;
+            }
+
+            .screenshots img {
+                width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>listen this</h1>
+        </div>
+    </header>
+
+    <section class="hero">
+        <h2>Your Audiobooks,<br>Everywhere</h2>
+        <p>A simple, focused M4B audiobook player for iPhone, iPad, and Apple Watch. Your progress syncs automatically via iCloud.</p>
+        <!-- Uncomment when app is live on App Store -->
+        <!-- <a href="https://apps.apple.com/app/listen-this/id000000000">
+            <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" class="app-store-badge">
+        </a> -->
+    </section>
+
+    <section class="screenshots">
+        <img src="Screenshots/iPhone/01-library.png" alt="Library view">
+        <img src="Screenshots/iPhone/02-player.png" alt="Player view">
+        <img src="Screenshots/iPhone/03-import.png" alt="Import view">
+    </section>
+
+    <section class="features">
+        <h3>features</h3>
+        <div class="feature-grid">
+            <div class="feature">
+                <h4>Import from Anywhere</h4>
+                <p>Add M4B audiobooks from Files, iCloud Drive, or your self-hosted Audiobookshelf server.</p>
+            </div>
+            <div class="feature">
+                <h4>Chapter Navigation</h4>
+                <p>Jump between chapters with ease. Skip forward or back with customizable intervals.</p>
+            </div>
+            <div class="feature">
+                <h4>Playback Speed</h4>
+                <p>Listen at your own pace with adjustable speed from 0.5x to 2.5x.</p>
+            </div>
+            <div class="feature">
+                <h4>Sleep Timer</h4>
+                <p>Fall asleep listening. Shake to extend when you're not quite ready to stop.</p>
+            </div>
+            <div class="feature accent">
+                <h4>Apple Watch</h4>
+                <p>Download audiobooks to your Watch for offline listening during workouts or walks.</p>
+            </div>
+            <div class="feature">
+                <h4>iCloud Sync</h4>
+                <p>Start on iPhone, continue on iPad, finish on Watch. Your progress follows you.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 listen this</p>
+        <div class="links">
+            <a href="privacy.html">privacy</a>
+            <a href="https://github.com/eetu/listen-this">github</a>
+        </div>
+    </footer>
+</body>
+</html>

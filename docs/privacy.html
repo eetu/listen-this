@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Listen This</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --body-bg: #f0f0f0;
+            --surface-bg: #ffffff;
+            --text-primary: #525252;
+            --text-muted: #a0a0a0;
+            --accent: #f78f08;
+            --accent-soft: rgba(247, 143, 8, 0.15);
+            --border: #d2d2d7;
+            --shadow: rgba(60, 64, 67, 0.3) 0 1px 2px 0, rgba(60, 64, 67, 0.15) 0 2px 6px 2px;
+            --radius: 6px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --body-bg: #0f0f0f;
+                --surface-bg: #252525;
+                --text-primary: #d6d6d6;
+                --text-muted: #a0a0a0;
+                --accent-soft: rgba(247, 143, 8, 0.2);
+                --border: #3a3a3a;
+                --shadow: none;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 400;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--body-bg);
+        }
+
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        header a {
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.04em;
+            text-transform: lowercase;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: opacity 0.15s;
+        }
+
+        header a:hover {
+            opacity: 0.8;
+        }
+
+        main {
+            padding: 48px 0;
+        }
+
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 40px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+
+        .updated {
+            font-size: 13px;
+            font-weight: 300;
+            color: var(--text-muted);
+            margin-bottom: 48px;
+        }
+
+        h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 500;
+            margin-top: 40px;
+            margin-bottom: 16px;
+        }
+
+        p {
+            font-weight: 300;
+            margin-bottom: 16px;
+        }
+
+        ul {
+            margin-bottom: 16px;
+            padding-left: 24px;
+        }
+
+        li {
+            font-weight: 300;
+            margin-bottom: 8px;
+        }
+
+        li strong {
+            font-weight: 500;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: opacity 0.15s;
+        }
+
+        a:hover {
+            opacity: 0.8;
+        }
+
+        footer {
+            padding: 40px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 300;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="index.html">listen this</a>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <h1>Privacy Policy</h1>
+            <p class="updated">Last updated: May 14, 2026</p>
+
+            <h2>Overview</h2>
+            <p>Listen This is an audiobook player app that respects your privacy. We do not collect, store, or share any personal information.</p>
+
+            <h2>Data Storage</h2>
+            <p>All your data stays on your devices:</p>
+            <ul>
+                <li><strong>Audiobook files</strong> - Stored locally on your device and optionally in your personal iCloud Drive</li>
+                <li><strong>Library metadata</strong> - Book titles, authors, chapters, and playback progress sync via your personal iCloud account</li>
+                <li><strong>App settings</strong> - Stored locally on your device</li>
+            </ul>
+
+            <h2>iCloud Sync</h2>
+            <p>If you use iCloud sync, your library and playback progress are stored in your private iCloud container. This data is:</p>
+            <ul>
+                <li>Encrypted by Apple</li>
+                <li>Accessible only to you</li>
+                <li>Not visible to us or any third party</li>
+            </ul>
+            <p>You can disable iCloud sync in your device's Settings app.</p>
+
+            <h2>Audiobookshelf Connection</h2>
+            <p>If you connect to a self-hosted Audiobookshelf server:</p>
+            <ul>
+                <li>Server credentials are stored securely in your device's Keychain</li>
+                <li>Communication happens directly between your device and your server</li>
+                <li>We do not have access to your server or its contents</li>
+            </ul>
+
+            <h2>Data Collection</h2>
+            <p>We do not collect:</p>
+            <ul>
+                <li>Personal information</li>
+                <li>Usage analytics</li>
+                <li>Crash reports</li>
+                <li>Advertising identifiers</li>
+            </ul>
+
+            <h2>Third-Party Services</h2>
+            <p>Listen This does not integrate with any third-party analytics, advertising, or tracking services.</p>
+
+            <h2>Children's Privacy</h2>
+            <p>Listen This does not collect any personal information from anyone, including children under 13.</p>
+
+            <h2>Contact</h2>
+            <p>If you have questions about this privacy policy, you can open an issue on our <a href="https://github.com/eetu/listen-this">GitHub repository</a>.</p>
+
+            <h2>Changes</h2>
+            <p>We may update this privacy policy from time to time. Changes will be posted to this page with an updated revision date.</p>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 listen this</p>
+        </div>
+    </footer>
+</body>
+</html>
