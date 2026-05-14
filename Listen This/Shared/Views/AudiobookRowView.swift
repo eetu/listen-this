@@ -9,9 +9,16 @@ import SwiftUI
 
 /// Shared audiobook row view that adapts to platform
 struct AudiobookRowView: View {
-    let audiobook: Audiobook
     let showProgress: Bool
     let isTransferring: Bool
+
+    // Pre-captured values to prevent detached object crashes
+    private let title: String
+    private let author: String
+    private let artworkData: Data?
+    private let duration: Double
+    private let currentPosition: Double
+    private let playabilityState: AudiobookPlayabilityState
 
     #if os(iOS)
         private let artworkSize: CGFloat = 60
@@ -21,14 +28,44 @@ struct AudiobookRowView: View {
         private let cornerRadius: CGFloat = 6
     #endif
 
-    init(audiobook: Audiobook, showProgress: Bool = true, isTransferring: Bool = false) {
-        self.audiobook = audiobook
+    /// Initialize with pre-captured values (preferred for iOS to avoid detached object crashes)
+    init(
+        title: String,
+        author: String,
+        artworkData: Data?,
+        duration: Double,
+        currentPosition: Double,
+        playabilityState: AudiobookPlayabilityState,
+        showProgress: Bool = true,
+        isTransferring: Bool = false
+    ) {
+        self.title = title
+        self.author = author
+        self.artworkData = artworkData
+        self.duration = duration
+        self.currentPosition = currentPosition
+        self.playabilityState = playabilityState
         self.showProgress = showProgress
         self.isTransferring = isTransferring
     }
+    
+    /// Initialize directly from audiobook (captures values at init time)
+    /// Used by watchOS where the detached object issue is less common
+    init(audiobook: Audiobook, showProgress: Bool = true, isTransferring: Bool = false) {
+        self.showProgress = showProgress
+        self.isTransferring = isTransferring
+        
+        // Capture all values at init to resolve faults and avoid accessing detached SwiftData objects
+        self.title = audiobook.title
+        self.author = audiobook.author
+        self.artworkData = audiobook.artworkData
+        self.duration = audiobook.duration
+        self.currentPosition = audiobook.playbackSession?.currentPosition ?? 0
+        self.playabilityState = audiobook.playabilityState
+    }
 
     private var showStatusIcon: Bool {
-        isTransferring || audiobook.playabilityState != .cached
+        isTransferring || playabilityState != .cached
     }
 
     var body: some View {
@@ -53,22 +90,19 @@ struct AudiobookRowView: View {
 
             // Book info
             VStack(alignment: .leading, spacing: 4) {
-                Text(audiobook.title)
+                Text(title)
                     .font(.headline)
                     .lineLimit(2, reservesSpace: true)
 
-                Text(audiobook.author)
+                Text(author)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 #if os(iOS)
                     // Progress indicator (iOS only)
-                    if showProgress,
-                        let session = audiobook.playbackSession,
-                        session.currentPosition > 0
-                    {
-                        ProgressView(value: session.currentPosition, total: audiobook.duration)
+                    if showProgress, currentPosition > 0 {
+                        ProgressView(value: currentPosition, total: duration)
                             .progressViewStyle(.linear)
                             .frame(maxWidth: .infinity)
                     }
@@ -82,7 +116,7 @@ struct AudiobookRowView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if let artworkData = audiobook.artworkData,
+        if let artworkData = artworkData,
             let uiImage = UIImage(data: artworkData)
         {
             Image(uiImage: uiImage)
@@ -116,10 +150,9 @@ struct AudiobookRowView: View {
                     .controlSize(.mini)
                 #endif
         } else {
-            let state = audiobook.playabilityState
-            if state != .cached {
-                Image(systemName: state.iconName)
-                    .foregroundStyle(state.color)
+            if playabilityState != .cached {
+                Image(systemName: playabilityState.iconName)
+                    .foregroundStyle(playabilityState.color)
             }
         }
     }

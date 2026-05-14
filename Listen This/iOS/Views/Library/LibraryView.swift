@@ -67,6 +67,23 @@ struct LibraryView: View {
             // Clean up orphaned caches on view appearance
             await cleanupOrphanedCaches()
         }
+        .onChange(of: audiobooks) { _, newBooks in
+            // Clear selection if the selected audiobook was deleted (e.g., via CloudKit sync)
+            if let selected = selectedAudiobook,
+               !newBooks.contains(where: { $0.id == selected.id }) {
+                selectedAudiobook = nil
+            }
+            // Also clear any sheet states for deleted books
+            if let id = deleteAudiobookId, !newBooks.contains(where: { $0.id == id }) {
+                deleteAudiobookId = nil
+            }
+            if let id = transferAudiobookId, !newBooks.contains(where: { $0.id == id }) {
+                transferAudiobookId = nil
+            }
+            if let id = detailsAudiobookId, !newBooks.contains(where: { $0.id == id }) {
+                detailsAudiobookId = nil
+            }
+        }
     }
 
     @ViewBuilder
@@ -81,6 +98,12 @@ struct LibraryView: View {
     @ViewBuilder
     private func libraryList(connectivity: iOSWatchConnectivityManager) -> some View {
         List(filteredAudiobooks, selection: $selectedAudiobook) { book in
+            // Capture all values we need before any closures
+            let bookId = book.id
+            let isFileCached = book.isFileCached
+            let requiresStreaming = book.requiresStreaming
+            let sourceIdentifier = book.sourceIdentifier
+            
             LibraryRow(
                 audiobook: book, connectivity: connectivity, downloadingBookIds: downloadingBookIds
             )
@@ -88,11 +111,9 @@ struct LibraryView: View {
             // Leading edge (swipe right) - Common actions (full swipe supported)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 // Transfer to Watch (only for cached books) - primary action
-                if connectivity.isPaired && connectivity.isWatchAppInstalled
-                    && book.isFileCached
-                {
+                if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
                     Button {
-                        transferAudiobookId = book.id
+                        transferAudiobookId = bookId
                     } label: {
                         Label("Transfer", systemImage: "applewatch")
                     }
@@ -100,37 +121,39 @@ struct LibraryView: View {
                 }
 
                 // Download for remote books - primary action for streamable content
-                if book.requiresStreaming && book.sourceIdentifier != nil {
+                if requiresStreaming && sourceIdentifier != nil {
                     Button {
+                        downloadingBookIds.insert(bookId)
                         Task {
-                            await downloadRemoteBook(book)
+                            await downloadRemoteBookById(bookId)
+                            downloadingBookIds.remove(bookId)
                         }
                     } label: {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
                     .tint(.green)
-                    .disabled(downloadingBookIds.contains(book.id))
+                    .disabled(downloadingBookIds.contains(bookId))
                 }
             }
             // Trailing edge (swipe left) - Info & Delete
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 // Delete action - leftmost, supports full swipe
                 Button(role: .destructive) {
-                    deleteAudiobookId = book.id
+                    deleteAudiobookId = bookId
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
 
                 // Info/Details action - rightmost
                 Button {
-                    detailsAudiobookId = book.id
+                    detailsAudiobookId = bookId
                 } label: {
                     Label("Info", systemImage: "info.circle")
                 }
                 .tint(.blue)
             }
             .contextMenu {
-                contextMenuItems(for: book, connectivity: connectivity)
+                contextMenuItems(for: bookId, isFileCached: isFileCached, connectivity: connectivity)
             }
         }
         .refreshable {
@@ -160,7 +183,11 @@ struct LibraryView: View {
         }
         .sheet(
             isPresented: .init(
-                get: { deleteAudiobookId != nil },
+                get: { 
+                    // Only show sheet if audiobook still exists
+                    guard let id = deleteAudiobookId else { return false }
+                    return audiobooks.contains(where: { $0.id == id })
+                },
                 set: { if !$0 { deleteAudiobookId = nil } }
             )
         ) {
@@ -172,6 +199,10 @@ struct LibraryView: View {
                     connectivity: connectivity,
                     modelContext: modelContext,
                     onDismiss: {
+                        // Clear selection if deleted book was selected
+                        if selectedAudiobook?.id == id {
+                            selectedAudiobook = nil
+                        }
                         deleteAudiobookId = nil
                     }
                 )
@@ -207,24 +238,22 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func contextMenuItems(
-        for audiobook: Audiobook, connectivity: iOSWatchConnectivityManager
+        for bookId: UUID, isFileCached: Bool, connectivity: iOSWatchConnectivityManager
     ) -> some View {
         // Send to Watch (only for cached books)
-        if connectivity.isPaired && connectivity.isWatchAppInstalled && audiobook.isFileCached {
+        if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
             Button {
-                transferAudiobookId = audiobook.id
+                transferAudiobookId = bookId
             } label: {
                 Label("Send to Watch", systemImage: "applewatch")
             }
         }
 
-        // Delete (only show if file exists)
-        if audiobook.isFileCached || audiobook.iCloudRelativePath != nil {
-            Button(role: .destructive) {
-                deleteAudiobookId = audiobook.id
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
+        // Delete - always show in context menu
+        Button(role: .destructive) {
+            deleteAudiobookId = bookId
+        } label: {
+            Label("Delete", systemImage: "trash")
         }
     }
 
@@ -236,6 +265,18 @@ struct LibraryView: View {
         } catch {
             AppLogger.import.error("Failed to refresh library: \(error.localizedDescription)")
         }
+    }
+
+    private func downloadRemoteBookById(_ bookId: UUID) async {
+        // Fetch the audiobook fresh from context to avoid detached object issues
+        let descriptor = FetchDescriptor<Audiobook>(
+            predicate: #Predicate { $0.id == bookId }
+        )
+        guard let audiobook = try? modelContext.fetch(descriptor).first else {
+            AppLogger.import.error("Audiobook not found for download")
+            return
+        }
+        await downloadRemoteBook(audiobook)
     }
 
     private func downloadRemoteBook(_ audiobook: Audiobook) async {
@@ -418,15 +459,43 @@ struct LibraryView: View {
 // MARK: - Library Row Component
 
 struct LibraryRow: View {
-    let audiobook: Audiobook
     let connectivity: iOSWatchConnectivityManager
     let downloadingBookIds: Set<UUID>
+    
+    // Captured values to prevent detached object crashes
+    private let audiobookId: UUID
+    private let title: String
+    private let author: String
+    private let artworkData: Data?
+    private let duration: Double
+    private let currentPosition: Double
+    private let playabilityState: AudiobookPlayabilityState
+    
+    init(audiobook: Audiobook, connectivity: iOSWatchConnectivityManager, downloadingBookIds: Set<UUID>) {
+        self.connectivity = connectivity
+        self.downloadingBookIds = downloadingBookIds
+        
+        // Capture values at init to resolve faults and prevent crashes
+        self.audiobookId = audiobook.id
+        self.title = audiobook.title
+        self.author = audiobook.author
+        // Access artworkData to resolve the fault - this is critical for CloudKit-synced books
+        self.artworkData = audiobook.artworkData
+        self.duration = audiobook.duration
+        self.currentPosition = audiobook.playbackSession?.currentPosition ?? 0
+        self.playabilityState = audiobook.playabilityState
+    }
 
     var body: some View {
         AudiobookRowView(
-            audiobook: audiobook,
+            title: title,
+            author: author,
+            artworkData: artworkData,
+            duration: duration,
+            currentPosition: currentPosition,
+            playabilityState: playabilityState,
             showProgress: true,
-            isTransferring: downloadingBookIds.contains(audiobook.id)
+            isTransferring: downloadingBookIds.contains(audiobookId)
         )
     }
 }
