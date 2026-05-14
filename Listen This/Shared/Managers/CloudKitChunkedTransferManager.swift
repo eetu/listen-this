@@ -336,8 +336,16 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         var attempt = 0
         while true {
             do { return try await operation() } catch {
+                // Don't retry quota exceeded errors - fail immediately with user-friendly message
+                if let ckError = error as? CKError, ckError.code == .quotaExceeded {
+                    throw ChunkTransferError.quotaExceeded
+                }
+
                 attempt += 1
-                guard attempt <= maxRetryCount else { throw error }
+                guard attempt <= maxRetryCount else {
+                    // Convert CloudKit errors to user-friendly errors
+                    throw ChunkTransferError.from(error)
+                }
                 try await Task.sleep(
                     nanoseconds: retryBaseDelay * UInt64(pow(2, Double(attempt - 1)))
                 )
@@ -723,6 +731,8 @@ enum ChunkTransferError: LocalizedError {
     case chunkNotFound
     case incompleteUpload
     case networkError
+    case quotaExceeded
+    case cloudKitError(String)
     static let alreadyUploaded = ChunkTransferError.incompleteUpload
 
     var errorDescription: String? {
@@ -741,6 +751,25 @@ enum ChunkTransferError: LocalizedError {
             return "Upload is incomplete, try again"
         case .networkError:
             return "Network error during transfer"
+        case .quotaExceeded:
+            return "iCloud storage is full. Free up space or use Direct Transfer instead."
+        case .cloudKitError(let message):
+            return message
         }
+    }
+
+    /// Convert a CloudKit error to a user-friendly ChunkTransferError
+    static func from(_ error: Error) -> ChunkTransferError {
+        if let ckError = error as? CKError {
+            switch ckError.code {
+            case .quotaExceeded:
+                return .quotaExceeded
+            case .networkFailure, .networkUnavailable:
+                return .networkError
+            default:
+                return .cloudKitError(ckError.localizedDescription)
+            }
+        }
+        return .cloudKitError(error.localizedDescription)
     }
 }

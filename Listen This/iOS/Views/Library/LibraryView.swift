@@ -330,8 +330,10 @@ struct LibraryView: View {
     // MARK: - Initial Sync
 
     private var initialSyncLoadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
+        ContentUnavailableView {
+            Label("Syncing Library", systemImage: "icloud.and.arrow.down")
+        } description: {
+            Text("Checking iCloud for your audiobooks...")
         }
     }
 

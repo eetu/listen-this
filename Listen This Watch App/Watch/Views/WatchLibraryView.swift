@@ -439,9 +439,24 @@ struct DownloadOptionsSheet: View {
     let onSelectBluetooth: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(WatchConnectivityManager.self) private var connectivity
 
     @State private var cloudKitAvailability: ChunkAvailability = .notUploaded
     @State private var isCheckingAvailability = true
+
+    /// Determine which method to recommend based on conditions
+    private var recommendedMethod: RecommendedTransferMethod {
+        // If already uploaded to CloudKit, that's fastest
+        if cloudKitAvailability == .fullyUploaded {
+            return .wifi
+        }
+        // If iPhone is nearby, direct transfer works without needing iCloud storage
+        if connectivity.isReachable {
+            return .direct
+        }
+        // Neither available - no clear recommendation
+        return .none
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -452,9 +467,14 @@ struct DownloadOptionsSheet: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
 
-                Text("Choose Download Method")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text(
+                    ByteCountFormatter.string(
+                        fromByteCount: audiobook.fileSize,
+                        countStyle: .file
+                    )
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
 
             Divider()
@@ -463,23 +483,34 @@ struct DownloadOptionsSheet: View {
                 ProgressView()
                     .padding()
             } else {
-                // CloudKit option
+                // WiFi option (CloudKit)
                 DownloadOptionButton(
-                    icon: "icloud.and.arrow.down.fill",
-                    title: "iCloud WiFi",
-                    subtitle: cloudKitAvailabilityText,
+                    icon: "wifi",
+                    title: "Fast Download",
+                    subtitle: wifiOptionSubtitle,
                     isAvailable: cloudKitAvailability == .fullyUploaded,
+                    isRecommended: recommendedMethod == .wifi,
                     action: onSelectCloudKit
                 )
 
-                // Bluetooth option
+                // Direct transfer option (Bluetooth/WatchConnectivity)
                 DownloadOptionButton(
-                    icon: "iphone.and.arrow.right.outward",
-                    title: "From iPhone",
-                    subtitle: "Bluetooth transfer",
+                    icon: "iphone",
+                    title: "Direct Transfer",
+                    subtitle: directOptionSubtitle,
                     isAvailable: true,
+                    isRecommended: recommendedMethod == .direct,
                     action: onSelectBluetooth
                 )
+
+                // Help text
+                if cloudKitAvailability != .fullyUploaded {
+                    Text("Fast Download requires uploading from iPhone first")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 4)
+                }
             }
         }
         .padding()
@@ -488,14 +519,22 @@ struct DownloadOptionsSheet: View {
         }
     }
 
-    private var cloudKitAvailabilityText: String {
+    private var wifiOptionSubtitle: String {
         switch cloudKitAvailability {
         case .fullyUploaded:
-            return "Ready to download"
+            return "Via WiFi"
         case .partiallyUploaded:
             return "Upload incomplete"
         case .notUploaded:
             return "Not uploaded yet"
+        }
+    }
+
+    private var directOptionSubtitle: String {
+        if connectivity.isReachable {
+            return "iPhone nearby"
+        } else {
+            return "Bring iPhone closer"
         }
     }
 
@@ -506,11 +545,19 @@ struct DownloadOptionsSheet: View {
     }
 }
 
+/// Which transfer method is recommended
+private enum RecommendedTransferMethod {
+    case wifi      // CloudKit - already uploaded
+    case direct    // WatchConnectivity - iPhone nearby
+    case none      // No clear recommendation
+}
+
 struct DownloadOptionButton: View {
     let icon: String
     let title: String
     let subtitle: String
     let isAvailable: Bool
+    var isRecommended: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -526,6 +573,16 @@ struct DownloadOptionButton: View {
                         Text(title)
                             .font(.footnote)
                             .fontWeight(.semibold)
+
+                        if isRecommended && isAvailable {
+                            Text("Best")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.green)
+                                .clipShape(Capsule())
+                        }
                     }
 
                     Text(subtitle)
@@ -543,11 +600,21 @@ struct DownloadOptionButton: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(isAvailable ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
+            .background(buttonBackground)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(!isAvailable)
+    }
+
+    private var buttonBackground: Color {
+        if !isAvailable {
+            return Color.gray.opacity(0.1)
+        }
+        if isRecommended {
+            return Color.green.opacity(0.15)
+        }
+        return Color.blue.opacity(0.1)
     }
 }
 

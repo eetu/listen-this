@@ -291,18 +291,34 @@ struct CloudKitTransferView: View {
         // Explanation section
         VStack {
             VStack(alignment: .leading, spacing: 8) {
-                Text(
-                    viewModel.mode == .upload ? "Fast Watch Transfer" : "Download from iPhone"
-                )
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                HStack {
+                    Image(systemName: "wifi")
+                        .foregroundStyle(.blue)
+                    Text(
+                        viewModel.mode == .upload ? "Fast WiFi Transfer" : "Download from iCloud"
+                    )
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                }
 
                 Text(
                     viewModel.mode == .upload
-                        ? "Faster than Bluetooth file transfer. Uses temporary iCloud space to sync audiobook to your Apple Watch over WiFi."
-                        : "Download audiobook chunks that were uploaded from your iPhone."
+                        ? "Transfers your audiobook to Apple Watch over WiFi. Much faster than Bluetooth."
+                        : "Download audiobook that was uploaded from your iPhone."
                 )
                 .font(.caption)
+                .foregroundStyle(.secondary)
+
+                if viewModel.mode == .upload {
+                    Label {
+                        Text("Uses temporary iCloud storage (\(ByteCountFormatter.string(fromByteCount: viewModel.audiobook.fileSize, countStyle: .file)))")
+                            .font(.caption)
+                    } icon: {
+                        Image(systemName: "icloud")
+                            .foregroundStyle(.blue)
+                    }
+                    .foregroundStyle(.secondary)
+                }
             }.padding()
         }
         #if os(iOS)
@@ -359,22 +375,54 @@ struct CloudKitTransferView: View {
     @ViewBuilder
     private func infoSection(_ viewModel: CloudKitTransferViewModel) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("How it works")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+
             if viewModel.mode == .upload {
-                Label(
-                    "Upload audiobook temporarily to iCloud using WiFi", systemImage: "info.circle")
-                Label(
-                    "After upload has finished download can be started from your watch",
-                    systemImage: "info.circle")
-                Label(
-                    "Temporary files are removed after Download is finished",
-                    systemImage: "info.circle")
+                Label {
+                    Text("Upload via WiFi to your iCloud")
+                } icon: {
+                    Image(systemName: "1.circle.fill")
+                        .foregroundStyle(.blue)
+                }
+                Label {
+                    Text("Open Watch app and download")
+                } icon: {
+                    Image(systemName: "2.circle.fill")
+                        .foregroundStyle(.blue)
+                }
+                Label {
+                    Text("Temporary files auto-delete after download")
+                } icon: {
+                    Image(systemName: "3.circle.fill")
+                        .foregroundStyle(.blue)
+                }
+
+                Divider()
+                    .padding(.vertical, 4)
+
+                Label {
+                    Text("Not enough iCloud space? Use Direct Transfer instead")
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "lightbulb")
+                        .foregroundStyle(.orange)
+                }
             } else {
-                Label(
-                    "Download audiobook from iCloud to your watch using WiFi",
-                    systemImage: "info.circle")
-                Label(
-                    "Temporary files are removed after Download is finished",
-                    systemImage: "info.circle")
+                Label {
+                    Text("Download via WiFi from your iCloud")
+                } icon: {
+                    Image(systemName: "1.circle.fill")
+                        .foregroundStyle(.blue)
+                }
+                Label {
+                    Text("Temporary files auto-delete after download")
+                } icon: {
+                    Image(systemName: "2.circle.fill")
+                        .foregroundStyle(.blue)
+                }
             }
         }
         .font(.caption)

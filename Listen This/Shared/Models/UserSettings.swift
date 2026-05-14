@@ -243,16 +243,9 @@ final class SettingsManager {
 
     /// Audiobookshelf server URL
     var audiobookshelfServerURL: String {
-        get {
-            let url = audiobookshelfSettings?.serverURL ?? ""
-            if audiobookshelfSettings == nil {
-                AppLogger.settings.warning("audiobookshelfSettings is nil, returning empty string")
-            } else if url.isEmpty {
-                AppLogger.settings.warning("audiobookshelfSettings.serverURL is empty")
-            }
-            return url
-        }
+        get { audiobookshelfSettings?.serverURL ?? "" }
         set {
+            ensureAudiobookshelfSettingsExist()
             audiobookshelfSettings?.serverURL = newValue
             audiobookshelfSettings?.touch()
             save()
@@ -263,6 +256,7 @@ final class SettingsManager {
     var audiobookshelfAPIKey: String {
         get { audiobookshelfSettings?.apiKey ?? "" }
         set {
+            ensureAudiobookshelfSettingsExist()
             audiobookshelfSettings?.apiKey = newValue
             audiobookshelfSettings?.touch()
             save()
@@ -273,6 +267,7 @@ final class SettingsManager {
     var audiobookshelfEnabled: Bool {
         get { audiobookshelfSettings?.isEnabled ?? false }
         set {
+            ensureAudiobookshelfSettingsExist()
             audiobookshelfSettings?.isEnabled = newValue
             audiobookshelfSettings?.touch()
             save()
@@ -418,49 +413,48 @@ final class SettingsManager {
                 )
                 audiobookshelfSettings = first
 
-                // Clean up any duplicate records (keep the one with most recent lastModified)
+                // Clean up any duplicate records
                 if existing.count > 1 {
                     AppLogger.settings.warning(
                         "[SettingsManager] Found \(existing.count) AudiobookshelfSettings records, cleaning up duplicates"
                     )
 
-                    // Find the most recently modified record
-                    let mostRecent = existing.max(by: { $0.lastModified < $1.lastModified })
+                    // Prefer configured records (with server URL) over empty ones
+                    // If multiple configured, keep most recently modified
+                    let configured = existing.filter { !$0.serverURL.isEmpty }
+                    let bestRecord: AudiobookshelfSettings?
+
+                    if let configuredBest = configured.max(by: { $0.lastModified < $1.lastModified }) {
+                        // Use the best configured record
+                        bestRecord = configuredBest
+                        AppLogger.settings.info(
+                            "[SettingsManager] Keeping configured record - serverURL: '\(configuredBest.serverURL)'"
+                        )
+                    } else {
+                        // No configured records, keep most recent empty one
+                        bestRecord = existing.max(by: { $0.lastModified < $1.lastModified })
+                    }
 
                     // Delete all others
-                    for setting in existing where setting !== mostRecent {
+                    for setting in existing where setting !== bestRecord {
                         AppLogger.settings.info(
-                            "[SettingsManager] Deleting duplicate record - serverURL: '\(setting.serverURL)', lastModified: \(setting.lastModified)"
+                            "[SettingsManager] Deleting duplicate record - serverURL: '\(setting.serverURL)'"
                         )
                         context.delete(setting)
                     }
 
-                    // Use the most recent one
-                    if let mostRecent = mostRecent {
-                        audiobookshelfSettings = mostRecent
-                        AppLogger.settings.info(
-                            "[SettingsManager] Using most recent record - serverURL: '\(mostRecent.serverURL)', lastModified: \(mostRecent.lastModified)"
-                        )
+                    if let bestRecord = bestRecord {
+                        audiobookshelfSettings = bestRecord
                     }
 
                     try context.save()
                 }
             } else {
-                #if os(iOS)
-                    // iOS: Create default Audiobookshelf settings if none exist
-                    AppLogger.settings.info(
-                        "[SettingsManager] Creating new Audiobookshelf settings with default values"
-                    )
-                    let newSettings = AudiobookshelfSettings()
-                    context.insert(newSettings)
-                    try context.save()
-                    audiobookshelfSettings = newSettings
-                #else
-                    // Watch: Don't create settings, wait for sync from iPhone
-                    AppLogger.settings.info(
-                        "[SettingsManager] No settings found - waiting for sync from iPhone")
-                    audiobookshelfSettings = nil
-                #endif
+                // No settings found yet - wait for CloudKit sync before creating new ones
+                // This prevents creating empty settings that would override synced data
+                AppLogger.settings.info(
+                    "[SettingsManager] No AudiobookshelfSettings found - will create after sync if needed")
+                audiobookshelfSettings = nil
             }
         } catch {
             #if os(iOS)
@@ -479,19 +473,31 @@ final class SettingsManager {
         }
     }
 
+    /// Ensures AudiobookshelfSettings exists, creating it on-demand if needed
+    /// This is called when user first configures Audiobookshelf on a device
+    private func ensureAudiobookshelfSettingsExist() {
+        guard audiobookshelfSettings == nil else { return }
+        guard let context = modelContext else {
+            AppLogger.settings.error("Cannot create AudiobookshelfSettings: no model context")
+            return
+        }
+
+        AppLogger.settings.info(
+            "[SettingsManager] Creating AudiobookshelfSettings on-demand (user is configuring)")
+        let newSettings = AudiobookshelfSettings()
+        context.insert(newSettings)
+        audiobookshelfSettings = newSettings
+        // Don't save yet - the caller will save after setting values
+    }
+
     private func save() {
         guard let context = modelContext else {
             AppLogger.settings.error("Cannot save settings: no model context")
             return
         }
         do {
-            if let abs = audiobookshelfSettings {
-                AppLogger.settings.info(
-                    "Saving Audiobookshelf settings - serverURL: '\(abs.serverURL)', enabled: \(abs.isEnabled)"
-                )
-            }
             try context.save()
-            AppLogger.settings.info("Settings saved successfully to SwiftData/CloudKit")
+            AppLogger.settings.debug("Settings saved to SwiftData/CloudKit")
         } catch {
             AppLogger.settings.error("Failed to save settings: \(error.localizedDescription)")
         }
