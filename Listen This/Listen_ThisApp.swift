@@ -23,6 +23,11 @@ struct Listen_ThisApp: App {
 
         // App Delegate for background URLSession handling
         @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+        
+        // State for handling incoming file URLs
+        @State private var pendingImportURL: URL?
+        @State private var showingImportAlert = false
+        @State private var importAlertMessage = ""
     #endif
 
     @Environment(\.scenePhase) private var scenePhase
@@ -81,6 +86,14 @@ struct Listen_ThisApp: App {
             ContentView()
                 #if os(iOS)
                     .environment(watchConnectivity)
+                    .onOpenURL { url in
+                        handleIncomingURL(url)
+                    }
+                    .alert("Import Result", isPresented: $showingImportAlert) {
+                        Button("OK", role: .cancel) { }
+                    } message: {
+                        Text(importAlertMessage)
+                    }
                 #endif
                 .onAppear {
                     // Configure SettingsManager with model context
@@ -106,6 +119,12 @@ struct Listen_ThisApp: App {
                                 }
                             }
                         }
+                        
+                        // Process any pending import URL
+                        if let url = pendingImportURL {
+                            pendingImportURL = nil
+                            importAudiobookFromURL(url)
+                        }
                     #endif
                 }
         }
@@ -114,6 +133,52 @@ struct Listen_ThisApp: App {
             handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
         }
     }
+
+    // MARK: - URL Handling
+    
+    #if os(iOS)
+    private func handleIncomingURL(_ url: URL) {
+        AppLogger.import.info("Received URL to open: \(url.lastPathComponent)")
+        
+        // Check if it's a file URL with supported extension
+        guard url.isFileURL else {
+            AppLogger.import.error("URL is not a file URL")
+            return
+        }
+        
+        let ext = url.pathExtension.lowercased()
+        guard ext == "m4b" || ext == "m4a" else {
+            AppLogger.import.error("Unsupported file extension: \(ext)")
+            importAlertMessage = "Unsupported file type. Please select an M4B or M4A audiobook file."
+            showingImportAlert = true
+            return
+        }
+        
+        // Import the audiobook
+        importAudiobookFromURL(url)
+    }
+    
+    private func importAudiobookFromURL(_ url: URL) {
+        Task { @MainActor in
+            let libraryService = AudiobookLibraryService(modelContext: modelContainer.mainContext)
+            
+            do {
+                let audiobook = try await libraryService.importFile(from: url)
+                AppLogger.import.info("Successfully imported: \(audiobook.title)")
+                importAlertMessage = "Successfully imported \"\(audiobook.title)\""
+                showingImportAlert = true
+            } catch let error as AudiobookError {
+                AppLogger.import.error("Import failed: \(error.userMessage)")
+                importAlertMessage = "Import failed: \(error.userMessage)"
+                showingImportAlert = true
+            } catch {
+                AppLogger.import.error("Import failed: \(error.localizedDescription)")
+                importAlertMessage = "Import failed: \(error.localizedDescription)"
+                showingImportAlert = true
+            }
+        }
+    }
+    #endif
 
     // MARK: - Scene Phase Handling
 

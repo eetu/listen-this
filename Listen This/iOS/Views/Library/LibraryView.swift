@@ -31,6 +31,11 @@ struct LibraryView: View {
 
     // Initial sync state
     @State private var isInitialSyncComplete = false
+    @State private var isSyncingInBackground = false
+    
+    // Watch transfer hint
+    @AppStorage("hasSeenWatchTransferHint") private var hasSeenWatchTransferHint = false
+    @State private var showWatchTransferHint = false
 
     var filteredAudiobooks: [Audiobook] {
         if searchText.isEmpty {
@@ -89,7 +94,11 @@ struct LibraryView: View {
     @ViewBuilder
     private func sidebarContent(connectivity: iOSWatchConnectivityManager) -> some View {
         if filteredAudiobooks.isEmpty {
-            emptyStateView
+            if isSyncingInBackground {
+                skeletonLoadingView
+            } else {
+                emptyStateView
+            }
         } else {
             libraryList(connectivity: connectivity)
         }
@@ -234,6 +243,65 @@ struct LibraryView: View {
                 AudiobookDetailsSheet(audiobook: audiobook)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if showWatchTransferHint {
+                watchTransferHintBanner(connectivity: connectivity)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onAppear {
+            checkWatchTransferHint(connectivity: connectivity)
+        }
+        .onChange(of: audiobooks) { _, _ in
+            checkWatchTransferHint(connectivity: connectivity)
+        }
+    }
+    
+    private func checkWatchTransferHint(connectivity: iOSWatchConnectivityManager) {
+        guard !hasSeenWatchTransferHint else { return }
+        guard connectivity.isPaired && connectivity.isWatchAppInstalled else { return }
+        
+        // Check if any book is cached and ready for transfer
+        let hasCachedBooks = audiobooks.contains { $0.isFileCached }
+        
+        if hasCachedBooks {
+            withAnimation(.easeInOut(duration: 0.3).delay(0.5)) {
+                showWatchTransferHint = true
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func watchTransferHintBanner(connectivity: iOSWatchConnectivityManager) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "applewatch")
+                .font(.title2)
+                .foregroundStyle(.blue)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Transfer to Apple Watch")
+                    .font(.subheadline.weight(.medium))
+                Text("Swipe right on any audiobook to send it to your Watch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Button {
+                withAnimation {
+                    hasSeenWatchTransferHint = true
+                    showWatchTransferHint = false
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding()
     }
 
     @ViewBuilder
@@ -377,10 +445,80 @@ struct LibraryView: View {
             Text("Checking iCloud for your audiobooks...")
         }
     }
+    
+    private var skeletonLoadingView: some View {
+        List {
+            ForEach(0..<3, id: \.self) { _ in
+                SkeletonRow()
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    // Disabled during sync
+                } label: {
+                    Label("Add Book", systemImage: "plus")
+                }
+                .disabled(true)
 
-    /// Wait for initial CloudKit sync with a grace period
-    /// Skips if no network connection to allow offline playback of cached books
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .overlay(alignment: .bottom) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Syncing from iCloud...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .background(.regularMaterial, in: Capsule())
+            .padding(.bottom, 16)
+        }
+    }
+
+    /// Key to track if user has ever had audiobooks (persists across reinstalls via iCloud KVS)
+    private static let hasEverHadAudiobooksKey = "hasEverHadAudiobooks"
+    
+    /// Wait for initial CloudKit sync with adaptive grace period
+    /// - Uses longer wait time for fresh installs (no local data)
+    /// - Skips if no network connection to allow offline playback
     private func waitForInitialSync() async {
+        // Check if we have any local data already
+        let hasLocalData = !audiobooks.isEmpty
+        
+        if hasLocalData {
+            // Data exists locally, no need to wait for sync
+            // Also mark that user has had audiobooks before
+            NSUbiquitousKeyValueStore.default.set(true, forKey: Self.hasEverHadAudiobooksKey)
+            AppLogger.general.info("Local data exists, skipping sync wait")
+            isInitialSyncComplete = true
+            return
+        }
+        
+        // Check if user has ever had audiobooks on any device
+        // This persists via iCloud Key-Value Store across reinstalls
+        let hasEverHadAudiobooks = NSUbiquitousKeyValueStore.default.bool(forKey: Self.hasEverHadAudiobooksKey)
+        
+        if !hasEverHadAudiobooks {
+            // Truly new user - skip sync wait entirely, show empty state
+            AppLogger.general.info("New user detected, skipping sync wait")
+            isInitialSyncComplete = true
+            return
+        }
+        
+        // User has had audiobooks before - wait for CloudKit sync
+        AppLogger.general.info("Returning user detected, waiting for CloudKit sync")
+        
         // Check network availability
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "NetworkMonitor")
@@ -413,14 +551,47 @@ struct LibraryView: View {
         }
 
         if hasNetwork {
-            // Use a short grace period to allow CloudKit to sync initial data
-            // If data already exists locally, this will be quick
-            try? await Task.sleep(for: .seconds(1.5))
+            // Returning user with network - wait for CloudKit sync
+            let initialWait: Double = 2.0
+            let pollInterval: Double = 0.5
+            var elapsed: Double = 0
+            
+            while elapsed < initialWait {
+                try? await Task.sleep(for: .seconds(pollInterval))
+                elapsed += pollInterval
+                
+                if !audiobooks.isEmpty {
+                    AppLogger.general.info("CloudKit sync completed after \(elapsed)s")
+                    isInitialSyncComplete = true
+                    return
+                }
+            }
+            
+            // Show skeleton UI and continue syncing in background
+            AppLogger.general.info("Showing skeleton UI, continuing sync in background")
+            isInitialSyncComplete = true
+            isSyncingInBackground = true
+            
+            // Continue waiting in background for up to 30 seconds for returning users
+            let maxBackgroundWait: Double = 30.0
+            while elapsed < maxBackgroundWait {
+                try? await Task.sleep(for: .seconds(1.0))
+                elapsed += 1.0
+                
+                if !audiobooks.isEmpty {
+                    AppLogger.general.info("CloudKit sync completed after \(elapsed)s (background)")
+                    isSyncingInBackground = false
+                    return
+                }
+            }
+            
+            // Give up - maybe user deleted all their audiobooks
+            AppLogger.general.info("No audiobooks found after \(elapsed)s, showing empty state")
+            isSyncingInBackground = false
         } else {
             AppLogger.general.info("No network connection, skipping initial sync wait")
+            isInitialSyncComplete = true
         }
-
-        isInitialSyncComplete = true
     }
 
     // MARK: - Cache Cleanup
@@ -452,6 +623,67 @@ struct LibraryView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showingAddBook = true
+                } label: {
+                    Label("Add Book", systemImage: "plus")
+                }
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddBook) {
+            ImportView()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+    }
+}
+
+// MARK: - Skeleton Row Component
+
+struct SkeletonRow: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Artwork placeholder
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.gray.opacity(0.2))
+                .frame(width: 60, height: 60)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                // Title placeholder
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 180, height: 16)
+                
+                // Author placeholder
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.15))
+                    .frame(width: 120, height: 14)
+                
+                // Progress placeholder
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.gray.opacity(0.1))
+                    .frame(height: 4)
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .opacity(isAnimating ? 0.5 : 1.0)
+        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
+        .onAppear {
+            isAnimating = true
         }
     }
 }

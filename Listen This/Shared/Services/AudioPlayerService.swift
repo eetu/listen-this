@@ -312,48 +312,57 @@ final class AudioPlayerService: NSObject, AudioPlayer {
                 securityScopedURL = cloudURL
             #endif
 
-            let fileExists = FileManager.default.fileExists(atPath: cloudURL.path)
-            logger.debug("File exists at iCloud path: \(fileExists)")
+            // Check if file is fully downloaded (not just a placeholder)
+            let isDownloaded = isICloudFileDownloaded(at: cloudURL)
+            logger.debug("File downloaded at iCloud path: \(isDownloaded)")
 
-            // Check if file needs to be downloaded from iCloud
-            if !fileExists {
+            // Download if not fully available locally
+            if !isDownloaded {
                 logger.info("Starting iCloud download...")
                 try await downloadiCloudFile(at: cloudURL)
             }
 
-            guard FileManager.default.fileExists(atPath: cloudURL.path) else {
-                logger.error("File still not found after download attempt")
+            guard isICloudFileDownloaded(at: cloudURL) else {
+                logger.error("File still not downloaded after download attempt")
                 throw AudiobookError.fileNotFound
             }
 
-            // Cache the iCloud file locally for offline access
-            // This ensures the file persists even if iOS evicts iCloud downloads
+            // Start caching in background but return iCloud URL immediately for playback
+            // This prevents UI freeze when copying large files
             if let expectedCachePath = audiobook.expectedCachePath {
                 let cacheURL = URL(fileURLWithPath: expectedCachePath)
 
-                // Only copy if not already cached
-                if !FileManager.default.fileExists(atPath: cacheURL.path) {
-                    logger.info("Caching iCloud file to local storage: \(cacheURL.path)")
-
-                    // Create cache directory if needed
-                    let cacheDir = cacheURL.deletingLastPathComponent()
-                    try? FileManager.default.createDirectory(
-                        at: cacheDir,
-                        withIntermediateDirectories: true
-                    )
-
-                    // Copy file to cache
+                // If already cached, use cache
+                if FileManager.default.fileExists(atPath: cacheURL.path) {
+                    logger.info("Using existing cached file")
+                    return cacheURL
+                }
+                
+                // Start background caching - don't wait for it
+                let sourceURL = cloudURL
+                Task.detached(priority: .utility) {
                     do {
-                        try FileManager.default.copyItem(at: cloudURL, to: cacheURL)
-                        logger.info("Successfully cached iCloud file")
-                        return cacheURL
+                        // Create cache directory if needed
+                        let cacheDir = cacheURL.deletingLastPathComponent()
+                        try? FileManager.default.createDirectory(
+                            at: cacheDir,
+                            withIntermediateDirectories: true
+                        )
+                        
+                        // Copy file to cache
+                        try FileManager.default.copyItem(at: sourceURL, to: cacheURL)
+                        await MainActor.run {
+                            AppLogger.player.info("Successfully cached iCloud file in background")
+                        }
                     } catch {
-                        logger.warning("Failed to cache iCloud file: \(error.localizedDescription)")
-                        // Fall back to using iCloud URL directly
+                        await MainActor.run {
+                            AppLogger.player.warning("Failed to cache iCloud file: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
 
+            // Return iCloud URL immediately for playback
             return cloudURL
         }
 
@@ -361,22 +370,98 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         throw AudiobookError.fileNotFound
     }
 
+    /// Check if an iCloud file is fully downloaded (not just a placeholder)
+    private func isICloudFileDownloaded(at url: URL) -> Bool {
+        // First check if file exists at all
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return false
+        }
+        
+        // Check the ubiquitous item download status
+        do {
+            let resourceValues = try url.resourceValues(forKeys: [
+                .ubiquitousItemDownloadingStatusKey,
+                .ubiquitousItemIsDownloadingKey
+            ])
+            
+            // If it's current, it's fully downloaded
+            if resourceValues.ubiquitousItemDownloadingStatus == .current {
+                return true
+            }
+            
+            // If status is nil, it might be a local file (not in iCloud)
+            // In that case, existence check is sufficient
+            if resourceValues.ubiquitousItemDownloadingStatus == nil {
+                return true
+            }
+            
+            return false
+        } catch {
+            // If we can't get resource values, fall back to existence check
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+    }
+    
     private func downloadiCloudFile(at url: URL) async throws {
-        // Trigger iCloud download
-        try FileManager.default.startDownloadingUbiquitousItem(at: url)
+        // First, wait a moment for iCloud to sync the file list
+        // This helps when the device just synced metadata but not file placeholders
+        var attempts = 0
+        let maxInitialAttempts = 10
+        
+        while attempts < maxInitialAttempts {
+            do {
+                // Try to trigger iCloud download
+                try FileManager.default.startDownloadingUbiquitousItem(at: url)
+                logger.info("iCloud download started successfully")
+                break
+            } catch {
+                attempts += 1
+                if attempts >= maxInitialAttempts {
+                    logger.error("Failed to start iCloud download after \(attempts) attempts: \(error.localizedDescription)")
+                    throw AudiobookError.downloadFailed
+                }
+                logger.debug("Waiting for iCloud file placeholder (attempt \(attempts)/\(maxInitialAttempts))")
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
 
-        // Wait for download to complete (up to 5 minutes)
-        for _ in 0..<300 {
+        // Wait for download to complete (up to 10 minutes for large files)
+        for i in 0..<600 {
             try await Task.sleep(nanoseconds: 1_000_000_000)
 
-            let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-            if status?.ubiquitousItemDownloadingStatus == .current {
+            // Check download status
+            let resourceValues = try? url.resourceValues(forKeys: [
+                .ubiquitousItemDownloadingStatusKey,
+                .ubiquitousItemIsDownloadingKey,
+                .ubiquitousItemDownloadRequestedKey
+            ])
+            
+            let status = resourceValues?.ubiquitousItemDownloadingStatus
+            
+            // Fully downloaded
+            if status == .current {
+                logger.info("iCloud download completed after \(i + 1)s")
                 return
             }
-
-            // Check if file now exists
-            if FileManager.default.fileExists(atPath: url.path) {
-                return
+            
+            // Still downloading - continue waiting
+            if resourceValues?.ubiquitousItemIsDownloading == true {
+                // Log progress every 10 seconds
+                if (i + 1) % 10 == 0 {
+                    logger.debug("iCloud download in progress... (\(i + 1)s)")
+                }
+                continue
+            }
+            
+            // Not downloading and not current - might need to re-trigger
+            if status == .notDownloaded && resourceValues?.ubiquitousItemDownloadRequested != true {
+                logger.debug("Re-triggering iCloud download...")
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            }
+            
+            // Log progress every 10 seconds
+            if (i + 1) % 10 == 0 {
+                logger.debug("Waiting for iCloud download... (\(i + 1)s, status: \(String(describing: status)))")
             }
         }
 

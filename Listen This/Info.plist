@@ -10,5 +10,57 @@
 		<string>audio</string>
 		<string>fetch</string>
 	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>M4B Audiobook</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>m4b</string>
+				<string>m4a</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.m4b-audiobook</string>
+				<string>com.apple.m4a-audio</string>
+				<string>public.mpeg-4-audio</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.apple.m4b-audiobook</string>
+			<key>UTTypeDescription</key>
+			<string>M4B Audiobook</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audiobook</string>
+				<string>public.mpeg-4-audio</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>m4b</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>audio/x-m4b</string>
+					<string>audio/mp4</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UISupportsDocumentBrowser</key>
+	<true/>
 </dict>
 </plist>

@@ -17,5 +17,7 @@
 	<array>
 		<string>iCloud.com.anarkisti.Listen-This</string>
 	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)com.anarkisti.Listen-This</string>
 </dict>
 </plist>
