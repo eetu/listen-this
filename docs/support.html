@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support - Listen This</title>
+    <meta name="description" content="Get help with Listen This audiobook player.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --body-bg: #f0f0f0;
+            --surface-bg: #ffffff;
+            --text-primary: #525252;
+            --text-muted: #a0a0a0;
+            --accent: #f78f08;
+            --accent-soft: rgba(247, 143, 8, 0.15);
+            --border: #d2d2d7;
+            --shadow: rgba(60, 64, 67, 0.3) 0 1px 2px 0, rgba(60, 64, 67, 0.15) 0 2px 6px 2px;
+            --radius: 6px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --body-bg: #0f0f0f;
+                --surface-bg: #252525;
+                --text-primary: #d6d6d6;
+                --text-muted: #a0a0a0;
+                --accent-soft: rgba(247, 143, 8, 0.2);
+                --border: #3a3a3a;
+                --shadow: none;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 400;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--body-bg);
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .app-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+        }
+
+        header h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.04em;
+            text-transform: lowercase;
+        }
+
+        .page-header {
+            text-align: center;
+            padding: 60px 20px 40px;
+        }
+
+        .page-header h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 36px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+
+        .page-header p {
+            font-size: 16px;
+            font-weight: 300;
+            color: var(--text-muted);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .faq {
+            padding: 40px 20px 80px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .faq h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 24px;
+        }
+
+        .faq-item {
+            background: var(--surface-bg);
+            padding: 1.5em;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+
+        .faq-item h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .faq-item p {
+            font-size: 14px;
+            font-weight: 300;
+            color: var(--text-muted);
+        }
+
+        .faq-image {
+            margin-top: 16px;
+            max-width: 100%;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .faq-list {
+            margin: 12px 0;
+            padding-left: 24px;
+            font-size: 14px;
+            font-weight: 300;
+            color: var(--text-muted);
+        }
+
+        .faq-list li {
+            margin-bottom: 8px;
+        }
+
+        .faq-note {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .contact-section {
+            padding: 40px 20px 80px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .contact-section h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+
+        .contact-section p {
+            font-size: 14px;
+            font-weight: 300;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        .contact-card {
+            background: var(--surface-bg);
+            padding: 2em;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+
+        .contact-card p {
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            display: inline-block;
+            background: var(--accent);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: opacity 0.15s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .email-link {
+            display: block;
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .email-link a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .email-link a:hover {
+            opacity: 0.8;
+        }
+
+        footer {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 300;
+            border-top: 1px solid var(--border);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: opacity 0.15s;
+        }
+
+        footer a:hover {
+            opacity: 0.8;
+        }
+
+        .links {
+            margin-top: 16px;
+        }
+
+        .links a {
+            margin: 0 12px;
+        }
+
+        @media (max-width: 600px) {
+            .page-header h2 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="index.html" class="brand">
+                <img src="app-icon.png" alt="Listen This" class="app-icon">
+                <h1>listen this</h1>
+            </a>
+        </div>
+    </header>
+
+    <section class="page-header">
+        <h2>Support</h2>
+        <p>Find answers to common questions or get in touch if you need help.</p>
+    </section>
+
+    <section class="faq">
+        <h3>frequently asked questions</h3>
+
+        <div class="faq-item">
+            <h4>How do I add audiobooks to the app?</h4>
+            <p>Tap the "+" button in your library to import M4B files from your device or iCloud Drive. If you have Audiobookshelf configured, you can also browse and download from your server.</p>
+            <img src="Screenshots/import.png" alt="Import audiobooks dialog" class="faq-image">
+        </div>
+
+        <div class="faq-item">
+            <h4>Which file formats are supported?</h4>
+            <p>Listen This supports M4B and M4A audiobook files. These formats preserve chapter information and are widely used by audiobook providers.</p>
+        </div>
+
+        <div class="faq-item">
+            <h4>How does iCloud sync work?</h4>
+            <p>Your audiobook library and playback progress sync automatically via iCloud. Start listening on your iPhone and continue on your iPad or Apple Watch. Make sure iCloud is enabled for Listen This in your device settings.</p>
+        </div>
+
+        <div class="faq-item">
+            <h4>How do I listen on Apple Watch?</h4>
+            <p>Open the Watch app, select an audiobook, and tap the download button. Once downloaded, you can listen offline during workouts or walks without your iPhone nearby.</p>
+        </div>
+
+        <div class="faq-item">
+            <h4>How can I transfer audiobooks to Apple Watch faster?</h4>
+            <p>For the fastest transfer, swipe left on an audiobook in your iPhone library and tap "Transfer". Once uploaded to iCloud, open the Watch app and download the audiobook - it will transfer via iCloud instead of Bluetooth, which is much faster for large files.</p>
+            <img src="Screenshots/swipe-transfer.png" alt="Swipe left to reveal Transfer button" class="faq-image">
+        </div>
+
+        <div class="faq-item">
+            <h4>How do I connect to Audiobookshelf?</h4>
+            <p>Go to Settings and configure your server:</p>
+            <ol class="faq-list">
+                <li><strong>Server URL</strong> - Enter your server address, either local (e.g., http://192.168.1.123:13378) or remote (e.g., https://audiobooks.example.com)</li>
+                <li><strong>API Key</strong> - Generate a key in Audiobookshelf: Settings → Users → [Your User] → API Tokens → Create</li>
+                <li><strong>Test Connection</strong> - Tap to verify your settings work</li>
+                <li><strong>Enable</strong> - After a successful test, toggle on "Enable Audiobookshelf"</li>
+            </ol>
+            <img src="Screenshots/abs.png" alt="Audiobookshelf settings" class="faq-image">
+            <p class="faq-note"><strong>Troubleshooting:</strong> Make sure your phone is on the same network as your server. If using a domain, check that DNS resolves correctly. Double-check the API key has no extra spaces.</p>
+        </div>
+
+        <div class="faq-item">
+            <h4>How does the sleep timer work?</h4>
+            <p>Tap the moon icon in the player to set a sleep timer. When the timer is about to end, shake your device to extend it if you're not ready to stop listening.</p>
+        </div>
+
+        <div class="faq-item">
+            <h4>How do I delete an audiobook or view details?</h4>
+            <p>Swipe right on an audiobook in your library to reveal Info and Delete buttons.</p>
+            <img src="Screenshots/swipe-delete.png" alt="Swipe right to reveal Info and Delete buttons" class="faq-image">
+        </div>
+
+        <div class="faq-item">
+            <h4>My audiobook isn't importing correctly</h4>
+            <p>Make sure the file is a valid M4B or M4A file. If importing from iCloud, ensure the file is fully downloaded. For very large files, the import may take a moment.</p>
+        </div>
+    </section>
+
+    <section class="contact-section">
+        <h3>need more help?</h3>
+        <p>If you can't find the answer to your question above, we're here to help.</p>
+
+        <div class="contact-card">
+            <p>Report a bug or request a feature on GitHub:</p>
+            <a href="https://github.com/eetu/listen-this/issues/new?template=bug_report.md" class="btn">Report an Issue</a>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 listen this</p>
+        <div class="links">
+            <a href="privacy.html">privacy</a>
+            <a href="https://github.com/eetu/listen-this">github</a>
+        </div>
+    </footer>
+</body>
+</html>

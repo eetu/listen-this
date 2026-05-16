@@ -6,3 +6,6 @@ build/
 
 # Xcode Build Server config (contains machine-specific paths)
 buildServer.json
+
+# App Store response drafts
+APP_STORE_RESPONSE.md

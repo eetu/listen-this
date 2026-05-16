@@ -32,7 +32,7 @@ final class AudiobookshelfSettings {
 
     // MARK: - Server Configuration
 
-    /// Server URL (e.g., "http://192.168.1.69:13378")
+    /// Server URL (e.g., "http://192.168.1.123:13378")
     var serverURL: String = ""
 
     /// API key for authentication (synced via CloudKit)

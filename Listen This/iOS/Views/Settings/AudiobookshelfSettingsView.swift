@@ -73,7 +73,7 @@ struct AudiobookshelfSettingsView: View {
                 Text("Server")
             } footer: {
                 Text(
-                    "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server URL (e.g., http://192.168.1.69:13378) and the API key."
+                    "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server URL (e.g., http://192.168.1.123:13378) and the API key."
                 )
             }
 
