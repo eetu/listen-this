@@ -85,6 +85,14 @@ struct SettingsView: View {
                     Text("Connect to Audiobookshelf server to stream or download audiobooks")
                 }
 
+                // MARK: - Support
+                Section {
+                    Link(destination: URL(string: "https://eetu.github.io/listen-this/support.html")!) {
+                        Label("Support", systemImage: "questionmark.circle")
+                    }
+                } footer: {
+                    Text("Get help or report issues")
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
