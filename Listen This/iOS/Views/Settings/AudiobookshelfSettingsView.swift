@@ -22,9 +22,9 @@ struct AudiobookshelfSettingsView: View {
     @State private var isTestingConnection: Bool = false
     @State private var testResult: TestResult?
     @State private var showTestResult: Bool = false
+    @State private var hasAttemptedLocalNetworkConnection: Bool = false
 
     enum TestResult {
-        case success
         case failure(String)
     }
 
@@ -171,18 +171,13 @@ struct AudiobookshelfSettingsView: View {
         }
         .navigationTitle("Audiobookshelf")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Connection Test", isPresented: $showTestResult) {
+        .alert("Connection Failed", isPresented: $showTestResult) {
             Button("OK") {
                 showTestResult = false
             }
         } message: {
-            switch testResult {
-            case .success:
-                Text("Connection successful! You can now enable Audiobookshelf integration.")
-            case .failure(let message):
-                Text("Connection failed: \(message)")
-            case .none:
-                Text("Unknown result")
+            if case .failure(let message) = testResult {
+                Text(message)
             }
         }
         .onAppear {
@@ -212,52 +207,84 @@ struct AudiobookshelfSettingsView: View {
     private func testConnection() {
         isTestingConnection = true
 
+        let isLocalNetwork = serverURL.hasPrefix("http://192.168.")
+            || serverURL.hasPrefix("http://10.")
+            || serverURL.hasPrefix("http://172.")
+            || serverURL.contains("localhost")
+
         Task {
-            do {
-                guard let url = URL(string: serverURL) else {
-                    throw AudiobookshelfError.invalidServerURL
-                }
+            // For local network URLs on first attempt, we retry after failure
+            // because iOS blocks the request while showing the permission dialog
+            let maxAttempts = (isLocalNetwork && !hasAttemptedLocalNetworkConnection) ? 2 : 1
 
-                let provider = AudiobookshelfProvider()
-                try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
+            for attempt in 1...maxAttempts {
+                let startTime = Date()
 
-                // Save settings
-                settingsManager.audiobookshelfServerURL = serverURL
-                settingsManager.audiobookshelfLastConnectionTest = Date()
-                settingsManager.audiobookshelfLastConnectionSuccess = true
+                do {
+                    guard let url = URL(string: serverURL) else {
+                        throw AudiobookshelfError.invalidServerURL
+                    }
 
-                await MainActor.run {
-                    testResult = .success
-                    showTestResult = true
-                    isTestingConnection = false
-                }
+                    let provider = AudiobookshelfProvider()
+                    try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
 
-            } catch {
-                settingsManager.audiobookshelfLastConnectionTest = Date()
-                settingsManager.audiobookshelfLastConnectionSuccess = false
+                    // Save settings
+                    settingsManager.audiobookshelfServerURL = serverURL
+                    settingsManager.audiobookshelfLastConnectionTest = Date()
+                    settingsManager.audiobookshelfLastConnectionSuccess = true
 
-                // Check if this might be a local network permission issue
-                let errorMessage: String
-                if serverURL.hasPrefix("http://192.168.") || serverURL.hasPrefix("http://10.")
-                    || serverURL.hasPrefix("http://172.") || serverURL.contains("localhost")
-                {
-                    // Local network - might be permission issue
-                    if let urlError = error as? URLError,
-                        urlError.code == .timedOut || urlError.code == .cannotConnectToHost
+                    await MainActor.run {
+                        hasAttemptedLocalNetworkConnection = true
+                        // Success is shown via the UI status indicator - no alert needed
+                        isTestingConnection = false
+                    }
+                    return // Success, exit the function
+
+                } catch {
+                    let elapsed = Date().timeIntervalSince(startTime)
+
+                    // If this is the first attempt on local network and it failed quickly with a network error,
+                    // the permission dialog was likely shown. Retry automatically.
+                    // A quick failure (< 2 seconds) suggests the request was blocked by the permission dialog.
+                    if attempt < maxAttempts,
+                       let urlError = error as? URLError,
+                       [.timedOut, .cannotConnectToHost, .networkConnectionLost].contains(urlError.code),
+                       elapsed < 2.0
                     {
-                        errorMessage =
-                            "Connection timed out. If this is your first time connecting, iOS may have requested local network permission. Please try again."
+                        // Wait a moment for the system to settle after permission grant, then retry
+                        try? await Task.sleep(for: .seconds(1))
+                        continue
+                    }
+
+                    settingsManager.audiobookshelfLastConnectionTest = Date()
+                    settingsManager.audiobookshelfLastConnectionSuccess = false
+
+                    let errorMessage: String
+                    if isLocalNetwork {
+                        if let urlError = error as? URLError {
+                            switch urlError.code {
+                            case .timedOut, .cannotConnectToHost, .networkConnectionLost:
+                                errorMessage =
+                                    "Cannot connect to server. Please check:\n\n1. Local Network permission is enabled in Settings → Listen This → Local Network\n\n2. The server is running and reachable\n\n3. The URL and port are correct"
+                            case .notConnectedToInternet:
+                                errorMessage = "No internet connection. Please check your WiFi settings."
+                            default:
+                                errorMessage = error.localizedDescription
+                            }
+                        } else {
+                            errorMessage = error.localizedDescription
+                        }
                     } else {
                         errorMessage = error.localizedDescription
                     }
-                } else {
-                    errorMessage = error.localizedDescription
-                }
 
-                await MainActor.run {
-                    testResult = .failure(errorMessage)
-                    showTestResult = true
-                    isTestingConnection = false
+                    await MainActor.run {
+                        hasAttemptedLocalNetworkConnection = true
+                        testResult = .failure(errorMessage)
+                        showTestResult = true
+                        isTestingConnection = false
+                    }
+                    return
                 }
             }
         }

@@ -18,6 +18,7 @@ struct ImportView: View {
     @State private var showingFilePicker = false
     @State private var showingRefreshSheet = false
     @State private var showingAudiobookshelf = false
+    @State private var showingAudiobookshelfSettings = false
 
     var body: some View {
         NavigationStack {
@@ -38,8 +39,7 @@ struct ImportView: View {
                         }
                     } else {
                         Button {
-                            // Navigate to settings
-                            dismiss()
+                            showingAudiobookshelfSettings = true
                         } label: {
                             Label("Setup Audiobookshelf", systemImage: "server.rack")
                         }
@@ -69,22 +69,35 @@ struct ImportView: View {
                 }
 
                 Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("How to Add Audiobooks")
-                            .font(.headline)
-
+                    VStack(alignment: .leading, spacing: 12) {
+                        // iCloud Drive instructions
                         VStack(alignment: .leading, spacing: 4) {
-                            Label(
-                                "Place M4B files in iCloud Drive",
-                                systemImage: "1.circle.fill")
-                            Label(
-                                "Tap 'Import M4B File' to select", systemImage: "2.circle.fill")
+                            Label("From iCloud Drive", systemImage: "icloud")
+                                .font(.subheadline.weight(.medium))
+                            
+                            Text("Place M4B files in iCloud Drive, then tap 'Import M4B File' to select them.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        
+                        // Audiobookshelf instructions
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("From Audiobookshelf", systemImage: "server.rack")
+                                .font(.subheadline.weight(.medium))
+                            
+                            if SettingsManager.shared.audiobookshelfEnabled {
+                                Text("Tap 'Browse Audiobookshelf' to add books from your server library.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Tap 'Setup Audiobookshelf' to connect to your self-hosted server.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 } header: {
-                    Text("Instructions")
+                    Text("How to Add Audiobooks")
                 }
             }
             .navigationTitle("Import Audiobooks")
@@ -107,6 +120,11 @@ struct ImportView: View {
             }
             .sheet(isPresented: $showingAudiobookshelf) {
                 AudiobookshelfBrowserView()
+            }
+            .sheet(isPresented: $showingAudiobookshelfSettings) {
+                NavigationStack {
+                    AudiobookshelfSettingsView()
+                }
             }
             .overlay {
                 if isImporting {
