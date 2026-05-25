@@ -421,30 +421,54 @@ final class AudiobookshelfProvider: ContentSource {
             throw AudiobookshelfError.noToken
         }
 
-        // POST /api/items/{id}/play to initiate playback session
-        let playURL =
-            serverURL
-            .appendingPathComponent("api")
-            .appendingPathComponent("items")
-            .appendingPathComponent(identifier)
-            .appendingPathComponent("play")
+        // First, fetch item details with expanded=1 to get the track's contentUrl (which includes the file ino)
+        // This is needed because /api/items/{id}/file/{ino} is the proper streaming endpoint
+        var itemComponents = URLComponents(
+            url: serverURL
+                .appendingPathComponent("api")
+                .appendingPathComponent("items")
+                .appendingPathComponent(identifier),
+            resolvingAgainstBaseURL: false
+        )
+        // expanded=1 is required to get track information including contentUrl
+        itemComponents?.queryItems = [URLQueryItem(name: "expanded", value: "1")]
+        
+        guard let itemURL = itemComponents?.url else {
+            throw AudiobookshelfError.invalidServerURL
+        }
 
-        var request = URLRequest(url: playURL)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var itemRequest = URLRequest(url: itemURL)
+        itemRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
+        let (itemData, itemResponse) = try await session.data(for: itemRequest)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let itemHttpResponse = itemResponse as? HTTPURLResponse,
+              itemHttpResponse.statusCode == 200 else {
             throw AudiobookshelfError.itemNotFound
         }
 
-        _ = try JSONDecoder().decode(AudiobookshelfPlaybackSessionResponse.self, from: data)
+        let item = try JSONDecoder().decode(AudiobookshelfLibraryItem.self, from: itemData)
 
-        // Return stream URL with token
-        // Audiobookshelf uses /api/items/{id}/download for full audiobook download/stream
-        var components = URLComponents(
+        // Get the first track's contentUrl (format: /api/items/{id}/file/{ino})
+        // For single-file M4B audiobooks, there's typically one track
+        if let firstTrack = item.media.tracks?.first {
+            // contentUrl is a relative path like "/api/items/{id}/file/{ino}"
+            // We need to construct the full URL with the server base and auth token
+            var streamComponents = URLComponents(
+                url: serverURL.appendingPathComponent(firstTrack.contentUrl),
+                resolvingAgainstBaseURL: false
+            )
+            streamComponents?.queryItems = [URLQueryItem(name: "token", value: token)]
+
+            if let streamURL = streamComponents?.url {
+                logger.info("Generated stream URL from track contentUrl: \(streamURL.absoluteString)")
+                return streamURL
+            }
+        }
+
+        // Fallback to /download endpoint if no tracks found (for backwards compatibility)
+        logger.warning("No tracks found, falling back to /download endpoint")
+        var fallbackComponents = URLComponents(
             url:
                 serverURL
                 .appendingPathComponent("api")
@@ -452,13 +476,13 @@ final class AudiobookshelfProvider: ContentSource {
                 .appendingPathComponent(identifier)
                 .appendingPathComponent("download"), resolvingAgainstBaseURL: false)
 
-        components?.queryItems = [URLQueryItem(name: "token", value: token)]
+        fallbackComponents?.queryItems = [URLQueryItem(name: "token", value: token)]
 
-        guard let streamURL = components?.url else {
+        guard let streamURL = fallbackComponents?.url else {
             throw AudiobookshelfError.invalidServerURL
         }
 
-        logger.info("Generated stream URL: \(streamURL.absoluteString)")
+        logger.info("Generated stream URL (fallback): \(streamURL.absoluteString)")
         return streamURL
     }
 
