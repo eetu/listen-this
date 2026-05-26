@@ -57,9 +57,9 @@ struct AudiobookshelfBrowserView: View {
                     }
                 } else {
                     List(filteredAudiobooks, id: \.identifier) { metadata in
-                        AudiobookshelfRow(metadata: metadata) {
+                        AudiobookshelfRow(metadata: metadata, onAdd: {
                             addToLibrary(metadata: metadata)
-                        }
+                        }, apiKey: SettingsManager.shared.audiobookshelfAPIKey)
                     }
                     .searchable(text: $searchText, prompt: "Search Audiobookshelf library")
                 }
@@ -223,6 +223,7 @@ struct AudiobookshelfBrowserView: View {
 struct AudiobookshelfRow: View {
     let metadata: AudiobookMetadata
     let onAdd: () -> Void
+    let apiKey: String
 
     @Environment(\.modelContext) private var modelContext
     @Query private var audiobooks: [Audiobook]
@@ -345,13 +346,21 @@ struct AudiobookshelfRow: View {
     }
 
     private func loadArtwork() async {
-        guard let artworkURL = metadata.artworkURL else { return }
+        guard let artworkURL = metadata.artworkURL else {
+            AppLogger.import.debug("No artwork URL for \(metadata.title)")
+            return
+        }
+
+        var request = URLRequest(url: artworkURL)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: artworkURL)
-            if let image = UIImage(data: data) {
-                await MainActor.run {
-                    artworkImage = image
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                if let image = UIImage(data: data) {
+                    await MainActor.run {
+                        artworkImage = image
+                    }
                 }
             }
         } catch {
