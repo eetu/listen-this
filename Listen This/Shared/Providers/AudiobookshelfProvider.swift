@@ -442,8 +442,13 @@ final class AudiobookshelfProvider: ContentSource {
 
         let (itemData, itemResponse) = try await session.data(for: itemRequest)
 
-        guard let itemHttpResponse = itemResponse as? HTTPURLResponse,
-              itemHttpResponse.statusCode == 200 else {
+        guard let itemHttpResponse = itemResponse as? HTTPURLResponse else {
+            logger.error("Invalid response type for item request")
+            throw AudiobookshelfError.itemNotFound
+        }
+        
+        guard itemHttpResponse.statusCode == 200 else {
+            logger.error("Item request failed with status \(itemHttpResponse.statusCode) for \(identifier)")
             throw AudiobookshelfError.itemNotFound
         }
 
