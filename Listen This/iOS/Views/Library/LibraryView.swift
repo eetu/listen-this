@@ -128,20 +128,25 @@ struct LibraryView: View {
                     let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
                     let isOnWatchOrCloud = isOnWatch || isUploadedToCloudKit
 
-                    // Distinguish an in-flight transfer ("Sending…") from one that
-                    // already completed ("Sent"); both disable the button.
-                    let label = hasActiveTransfer ? "Sending…" : (isOnWatchOrCloud ? "Sent" : "Transfer")
+                    // One button that morphs by state (keeps swipe membership
+                    // stable): Cancel while transferring, Sent (disabled) once on
+                    // the Watch/CloudKit, otherwise Transfer.
+                    let label = hasActiveTransfer ? "Cancel" : (isOnWatchOrCloud ? "Sent" : "Transfer")
                     let icon = hasActiveTransfer
-                        ? "arrow.triangle.2.circlepath"
+                        ? "xmark.circle"
                         : (isOnWatchOrCloud ? "checkmark" : "applewatch")
 
                     Button {
-                        transferAudiobookId = bookId
+                        if hasActiveTransfer {
+                            connectivity.cancelTransfer(for: bookId.uuidString)
+                        } else {
+                            transferAudiobookId = bookId
+                        }
                     } label: {
                         Label(label, systemImage: icon)
                     }
-                    .tint(hasActiveTransfer ? .blue : (isOnWatchOrCloud ? .gray : .blue))
-                    .disabled(hasActiveTransfer || isOnWatchOrCloud)
+                    .tint(hasActiveTransfer ? .orange : (isOnWatchOrCloud ? .gray : .blue))
+                    .disabled(!hasActiveTransfer && isOnWatchOrCloud)
                 }
 
                 // Download for remote books - primary action for streamable content
