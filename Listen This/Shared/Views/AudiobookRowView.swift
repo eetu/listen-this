@@ -9,6 +9,8 @@ import SwiftUI
 
 /// Shared audiobook row view that adapts to platform
 struct AudiobookRowView: View {
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
     let showProgress: Bool
     let isTransferring: Bool
 
@@ -145,7 +147,10 @@ struct AudiobookRowView: View {
                 .frame(width: artworkSize, height: artworkSize)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 #if os(watchOS)
-                .drawingGroup()
+                // Rasterize via Metal for smoother scrolling, but not under
+                // reduced luminance (Always-On Display / background), where GPU
+                // submissions are rejected and would log Metal errors.
+                .drawingGroupIfActive(isLuminanceReduced: isLuminanceReduced)
                 #endif
         } else {
             RoundedRectangle(cornerRadius: cornerRadius)
@@ -172,6 +177,20 @@ struct AudiobookRowView: View {
                 Image(systemName: playabilityState.iconName)
                     .foregroundStyle(playabilityState.color)
             }
+        }
+    }
+}
+
+private extension View {
+    /// Apply drawingGroup() only when the display is at full luminance. Under
+    /// reduced luminance (Always-On Display / background) the system rejects GPU
+    /// submissions, so the Metal-backed rasterization must be skipped.
+    @ViewBuilder
+    func drawingGroupIfActive(isLuminanceReduced: Bool) -> some View {
+        if isLuminanceReduced {
+            self
+        } else {
+            drawingGroup()
         }
     }
 }

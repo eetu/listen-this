@@ -26,6 +26,10 @@ struct WatchLibraryView: View {
     @State private var cloudKitDownloadAudiobookId: UUID?
     @State private var bluetoothDownloadAudiobookId: UUID?
 
+    // Removal confirmation is owned here (not on the row) so presenting the
+    // alert doesn't tear down the swiped row before it can show.
+    @State private var removeDownloadAudiobookId: UUID?
+
     // Initial sync state
     @State private var isInitialSyncComplete = false
 
@@ -195,6 +199,9 @@ struct WatchLibraryView: View {
                     onShowDownloadOptions: { audiobook in
                         downloadOptionsAudiobookId = audiobook.id
                     },
+                    onRequestRemove: {
+                        removeDownloadAudiobookId = audiobook.id
+                    },
                     modelContext: modelContext
                 )
                 .id(audiobook.id)  // Explicit ID to maintain row identity
@@ -250,6 +257,26 @@ struct WatchLibraryView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Remove Download",
+            isPresented: .init(
+                get: { removeDownloadAudiobookId != nil },
+                set: { if !$0 { removeDownloadAudiobookId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let id = removeDownloadAudiobookId,
+                    let audiobook = audiobooks.first(where: { $0.id == id })
+                {
+                    removeDownload(for: audiobook)
+                }
+                removeDownloadAudiobookId = nil
+            }
+            Button("Cancel", role: .cancel) { removeDownloadAudiobookId = nil }
+        } message: {
+            Text("This will remove the downloaded file from your Watch.")
+        }
     }
 
     // MARK: - Actions
@@ -273,11 +300,10 @@ struct AudiobookRowWithActions: View {
     let audiobook: Audiobook
     let onTap: () -> Void
     let onShowDownloadOptions: (Audiobook) -> Void
+    let onRequestRemove: () -> Void
     let modelContext: ModelContext
 
     @Environment(WatchConnectivityManager.self) private var connectivity
-
-    @State private var showingRemoveConfirmation = false
 
     // Capture audiobook ID at initialization
     private let audiobookId: UUID
@@ -286,11 +312,13 @@ struct AudiobookRowWithActions: View {
         audiobook: Audiobook,
         onTap: @escaping () -> Void,
         onShowDownloadOptions: @escaping (Audiobook) -> Void,
+        onRequestRemove: @escaping () -> Void,
         modelContext: ModelContext
     ) {
         self.audiobook = audiobook
         self.onTap = onTap
         self.onShowDownloadOptions = onShowDownloadOptions
+        self.onRequestRemove = onRequestRemove
         self.modelContext = modelContext
         self.audiobookId = audiobook.id
     }
@@ -324,18 +352,22 @@ struct AudiobookRowWithActions: View {
                 .tint(.blue)
                 .disabled(hasActiveTransfer || audiobook.playabilityState == .cached)
             }
-            // Trailing edge (swipe left) - cancel or remove. allowsFullSwipe is
-            // false because neither action deletes the library row (Remove only
-            // clears the local download); a destructive full swipe would animate
-            // a row deletion the data source never makes, crashing the List.
-            // A single button (label/action vary) keeps membership stable.
+            // Trailing edge (swipe left) - cancel or remove.
+            // IMPORTANT: do NOT use role: .destructive here. A destructive swipe
+            // action makes the List animate the row's removal when triggered,
+            // but neither action deletes the library row (Remove only clears the
+            // local download), so the data source still returns the same count
+            // and UIKit throws an "invalid number of items" inconsistency. The
+            // red tint conveys the destructive intent without that animation.
+            // allowsFullSwipe is false for the same reason, and removal is
+            // confirmed by the parent to avoid tearing down this row mid-present.
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 let isCached = audiobook.playabilityState == .cached
-                Button(role: .destructive) {
+                Button {
                     if hasActiveTransfer {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
                     } else if isCached {
-                        showingRemoveConfirmation = true
+                        onRequestRemove()
                     }
                 } label: {
                     Label(
@@ -345,12 +377,6 @@ struct AudiobookRowWithActions: View {
                 }
                 .tint(hasActiveTransfer ? .orange : .red)
                 .disabled(!hasActiveTransfer && !isCached)
-            }
-            .alert("Remove Download", isPresented: $showingRemoveConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Remove", role: .destructive) { removeDownload(for: audiobook) }
-            } message: {
-                Text("This will remove the downloaded file from your Watch.")
             }
             .onAppear {
                 // Clean up stale cache entries when view appears
@@ -364,18 +390,6 @@ struct AudiobookRowWithActions: View {
     private func cleanupStaleCacheEntry() {
         let cacheManager = AudiobookCacheManager(modelContext: modelContext)
         cacheManager.cleanupStaleCacheEntry(for: audiobook)
-    }
-
-    private func removeDownload(for audiobook: Audiobook) {
-        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-
-        do {
-            try cacheManager.removeCache(for: audiobook)
-            // Update cached audiobook list sent to iPhone
-            connectivity.sendCachedAudiobookList()
-        } catch {
-            AppLogger.cache.error("[WatchLibraryView] Failed to remove cache: \(error)")
-        }
     }
 }
 

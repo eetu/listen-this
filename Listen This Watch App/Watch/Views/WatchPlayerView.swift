@@ -116,7 +116,14 @@ struct WatchPlayerView: View {
 
     private var backgroundArtworkView: some View {
         Group {
-            if let data = audiobook.artworkData,
+            if isLuminanceReduced {
+                // Always-On Display / background: don't render the Metal-backed
+                // blur + drawingGroup. The system rejects GPU submissions in the
+                // background (kIOGPUCommandBufferCallbackErrorBackgroundExecution
+                // NotPermitted), and a dark background is better for burn-in and
+                // battery anyway.
+                Color.black.ignoresSafeArea()
+            } else if let data = audiobook.artworkData,
                 let image = UIImage(data: data)
             {
                 Image(uiImage: image)
@@ -126,9 +133,7 @@ struct WatchPlayerView: View {
                     .scaledToFill()
                     .ignoresSafeArea()
                     .blur(radius: 5)
-                    // Dim the bright artwork on Always-On Display to reduce
-                    // burn-in and battery use while the wrist is down.
-                    .opacity(isLuminanceReduced ? 0.15 : 0.5)
+                    .opacity(0.5)
                     .drawingGroup()
             }
         }
