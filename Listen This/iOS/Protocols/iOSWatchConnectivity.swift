@@ -17,6 +17,7 @@ protocol iOSWatchConnectivity: AnyObject {
     var isWatchAppInstalled: Bool { get }
     var activeTransfers: [String: WatchTransferProgress] { get }
     var watchCachedAudiobookIds: Set<String> { get set }
+    var cloudKitUploadedAudiobookIds: Set<String> { get set }
     var lastError: Error? { get }
     var session: WCSession? { get }
 
@@ -25,4 +26,6 @@ protocol iOSWatchConnectivity: AnyObject {
     func cancelTransfer(for audiobookId: String)
     func requestWatchCachedList()
     func checkOutstandingTransfers()
+    func markCloudKitUploaded(audiobookId: String)
+    func clearCloudKitUploaded(audiobookId: String)
 }

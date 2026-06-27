@@ -231,6 +231,9 @@ final class MockCloudKitTransferManager: CloudKitTransferManager {
     func cancelTransfer(audiobookId: UUID) {
         activeUploads.removeValue(forKey: audiobookId)
         activeDownloads.removeValue(forKey: audiobookId)
+        // Also clear any partial upload state so checkCloudKitChunks returns notUploaded
+        uploadedBooks.remove(audiobookId)
+        uploadedChunks.removeValue(forKey: audiobookId)
     }
 
     // MARK: - Preview & Test Helpers
@@ -447,6 +450,7 @@ final class MockiOSWatchConnectivity: iOSWatchConnectivity {
     var isWatchAppInstalled = true
     var activeTransfers: [String: WatchTransferProgress] = [:]
     var watchCachedAudiobookIds: Set<String> = []
+    var cloudKitUploadedAudiobookIds: Set<String> = []
     var lastError: Error?
     var session: WCSession?
 
@@ -528,6 +532,14 @@ final class MockiOSWatchConnectivity: iOSWatchConnectivity {
         // Mock implementation - no-op
     }
 
+    func markCloudKitUploaded(audiobookId: String) {
+        cloudKitUploadedAudiobookIds.insert(audiobookId)
+    }
+
+    func clearCloudKitUploaded(audiobookId: String) {
+        cloudKitUploadedAudiobookIds.remove(audiobookId)
+    }
+
     // MARK: - Preview & Test Helpers
 
     /// Simulate active transfer at specific progress (for previews)
@@ -552,6 +564,7 @@ final class MockiOSWatchConnectivity: iOSWatchConnectivity {
     func reset() {
         activeTransfers.removeAll()
         watchCachedAudiobookIds.removeAll()
+        cloudKitUploadedAudiobookIds.removeAll()
         lastError = nil
         shouldFailTransfer = false
         simulateNetworkDelay = true

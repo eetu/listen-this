@@ -9,6 +9,7 @@
 import OSLog
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct WatchConnectivityTransferView: View {
     @Environment(\.dismiss) private var dismiss
@@ -16,11 +17,14 @@ struct WatchConnectivityTransferView: View {
     @Environment(iOSWatchConnectivityManager.self) private var connectivity
 
     let audiobook: Audiobook
+    
+    private let settingsManager = SettingsManager.shared
 
     @State private var cacheManager: AudiobookCacheManager?
     @State private var isTransferring = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var isCharging = false
 
     var activeTransfer: WatchTransferProgress? {
         connectivity.activeTransfers[audiobook.id.uuidString]
@@ -28,6 +32,11 @@ struct WatchConnectivityTransferView: View {
 
     var hasActiveTransfer: Bool {
         activeTransfer != nil
+    }
+    
+    /// Whether transfer is blocked due to charging-only setting
+    var isBlockedByChargingSetting: Bool {
+        settingsManager.transferToWatchWhileChargingOnly && !isCharging
     }
 
     var buttonText: String {
@@ -87,6 +96,13 @@ struct WatchConnectivityTransferView: View {
         .onAppear {
             cacheManager = AudiobookCacheManager(modelContext: modelContext)
             connectivity.configure(modelContext: modelContext)
+            
+            // Enable battery monitoring
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            updateChargingState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
+            updateChargingState()
         }
     }
 
@@ -173,27 +189,66 @@ struct WatchConnectivityTransferView: View {
 
     private func transferProgressCard(_ transfer: WatchTransferProgress) -> some View {
         VStack(spacing: 16) {
-            VStack(spacing: 12) {
-                HStack {
-                    if transfer.isActive {
-                        ProgressView()
-                            .controlSize(.regular)
-                    }
-                    Text(transfer.isActive ? "Transferring..." : "Transfer Complete")
-                        .font(.headline)
-                }
-
-                if transfer.isActive {
-                    Text("Keep your Apple Watch nearby")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding()
-            .background(transfer.isActive ? Color.blue.opacity(0.1) : Color.green.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
             if transfer.isActive {
+                // Active transfer with detailed progress
+                VStack(spacing: 16) {
+                    // Progress circle with percentage
+                    ZStack {
+                        Circle()
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 8)
+                            .frame(width: 100, height: 100)
+                        
+                        Circle()
+                            .trim(from: 0, to: transfer.progress)
+                            .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 100, height: 100)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.3), value: transfer.progress)
+                        
+                        VStack(spacing: 2) {
+                            Text("\(transfer.progressPercentage)%")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .monospacedDigit()
+                            
+                            if !transfer.speedText.isEmpty {
+                                Text(transfer.speedText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                    
+                    // Transfer details
+                    VStack(spacing: 8) {
+                        Text("Transferring to Watch")
+                            .font(.headline)
+                        
+                        // Bytes transferred
+                        Text(transfer.progressText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        
+                        // Estimated time remaining
+                        if let timeRemaining = transfer.estimatedTimeRemainingText {
+                            Text(timeRemaining)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Text("Keep your Apple Watch nearby")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+                // Cancel button
                 Button(role: .destructive) {
                     connectivity.cancelTransfer(for: audiobook.id.uuidString)
                 } label: {
@@ -203,20 +258,51 @@ struct WatchConnectivityTransferView: View {
                 .buttonStyle(.bordered)
                 .tint(.red)
             } else {
-                VStack(spacing: 8) {
+                // Transfer complete
+                VStack(spacing: 12) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.largeTitle)
+                        .font(.system(size: 60))
                         .foregroundStyle(.green)
 
                     Text("Transfer Complete")
-                        .font(.headline)
+                        .font(.title3)
+                        .fontWeight(.semibold)
 
                     Text("The audiobook is now available on your Apple Watch")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                    
+                    // Show final transfer stats
+                    HStack(spacing: 16) {
+                        VStack(spacing: 4) {
+                            Text(ByteCountFormatter.string(fromByteCount: transfer.totalBytes, countStyle: .file))
+                                .font(.headline)
+                                .monospacedDigit()
+                            Text("Total Size")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        if !transfer.speedText.isEmpty {
+                            Divider()
+                                .frame(height: 30)
+                            
+                            VStack(spacing: 4) {
+                                Text(transfer.speedText)
+                                    .font(.headline)
+                                    .monospacedDigit()
+                                Text("Avg Speed")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
                 }
                 .padding()
+                .background(Color.green.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
     }
@@ -225,6 +311,29 @@ struct WatchConnectivityTransferView: View {
 
     private var transferActionCard: some View {
         VStack(spacing: 16) {
+            // Charging requirement warning
+            if isBlockedByChargingSetting {
+                HStack(spacing: 12) {
+                    Image(systemName: "bolt.slash.fill")
+                        .font(.title2)
+                        .foregroundStyle(.orange)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Charging Required")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Connect your iPhone to power to start the transfer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(Color.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            
             if audiobook.isFileCached {
                 Button {
                     Task {
@@ -243,7 +352,7 @@ struct WatchConnectivityTransferView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     isTransferring || hasActiveTransfer || !connectivity.isPaired
-                        || !connectivity.isWatchAppInstalled)
+                        || !connectivity.isWatchAppInstalled || isBlockedByChargingSetting)
 
             } else {
                 Button {
@@ -262,7 +371,7 @@ struct WatchConnectivityTransferView: View {
                 }
                 .disabled(
                     isTransferring || hasActiveTransfer || !connectivity.isPaired
-                        || !connectivity.isWatchAppInstalled)
+                        || !connectivity.isWatchAppInstalled || isBlockedByChargingSetting)
             }
 
             // Tips
@@ -355,6 +464,13 @@ struct WatchConnectivityTransferView: View {
                 isTransferring = false
             }
         }
+    }
+    
+    // MARK: - Battery Monitoring
+    
+    private func updateChargingState() {
+        let batteryState = UIDevice.current.batteryState
+        isCharging = batteryState == .charging || batteryState == .full
     }
 }
 

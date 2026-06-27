@@ -193,6 +193,8 @@ struct CloudKitStorageView: View {
                 uploadedAudiobooks.removeAll { $0.audiobookId == audiobookId }
                 // Recalculate total storage
                 totalStorageUsed = uploadedAudiobooks.reduce(0) { $0 + $1.fileSize }
+                // Clear from tracking so transfer button becomes available again
+                iOSWatchConnectivityManager.shared.clearCloudKitUploaded(audiobookId: audiobookId.uuidString)
             }
 
         } catch {
@@ -211,6 +213,10 @@ struct CloudKitStorageView: View {
         for uploaded in uploadedAudiobooks {
             do {
                 try await manager.deleteAudiobookFromCloud(audiobookId: uploaded.audiobookId)
+                // Clear from tracking so transfer button becomes available again
+                await MainActor.run {
+                    iOSWatchConnectivityManager.shared.clearCloudKitUploaded(audiobookId: uploaded.audiobookId.uuidString)
+                }
             } catch {
                 AppLogger.cloudKit.error(
                     "Failed to delete \(uploaded.title): \(error.localizedDescription)")

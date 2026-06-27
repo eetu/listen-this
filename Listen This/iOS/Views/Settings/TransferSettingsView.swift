@@ -68,6 +68,27 @@ struct TransferSettingsView: View {
                     "When enabled, CloudKit transfers can use cellular data. This may incur data charges for large audiobook files. WiFi is always preferred when available."
                 )
             }
+            
+            // Charging-only transfer setting
+            Section {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsManager.transferToWatchWhileChargingOnly },
+                        set: { settingsManager.transferToWatchWhileChargingOnly = $0 }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Transfer While Charging Only")
+                        Text("Preserve iPhone battery")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text(
+                    "When enabled, transfers to Apple Watch will only start when your iPhone is connected to power. This helps preserve battery life during large file transfers."
+                )
+            }
 
             // Automatic mode explanation
             if selectedMethod == .automatic {
