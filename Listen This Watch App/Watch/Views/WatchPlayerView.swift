@@ -14,6 +14,7 @@ struct WatchPlayerView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @Environment(WatchConnectivityManager.self) private var connectivity
 
     @State private var playerService: AudioPlayerService?
@@ -122,7 +123,9 @@ struct WatchPlayerView: View {
                     .scaledToFill()
                     .ignoresSafeArea()
                     .blur(radius: 5)
-                    .opacity(0.5)
+                    // Dim the bright artwork on Always-On Display to reduce
+                    // burn-in and battery use while the wrist is down.
+                    .opacity(isLuminanceReduced ? 0.15 : 0.5)
                     .drawingGroup()
             }
         }

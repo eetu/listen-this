@@ -666,8 +666,9 @@ struct LibraryView: View {
 // MARK: - Skeleton Row Component
 
 struct SkeletonRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Artwork placeholder
@@ -696,9 +697,13 @@ struct SkeletonRow: View {
         }
         .padding(.vertical, 4)
         .opacity(isAnimating ? 0.5 : 1.0)
-        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+            value: isAnimating
+        )
         .onAppear {
-            isAnimating = true
+            // Skip the pulsing animation entirely when Reduce Motion is on.
+            isAnimating = !reduceMotion
         }
     }
 }

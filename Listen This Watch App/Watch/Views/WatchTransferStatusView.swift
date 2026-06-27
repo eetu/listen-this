@@ -10,6 +10,7 @@ import SwiftUI
 
 struct WatchTransferStatusView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @Environment(WatchConnectivityManager.self) private var connectivity
 
     let audiobook: Audiobook
@@ -97,7 +98,10 @@ struct WatchTransferStatusView: View {
                     .stroke(Color.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .frame(width: 60, height: 60)
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.3), value: transfer.progress)
+                    .animation(
+                        isLuminanceReduced ? nil : .easeInOut(duration: 0.3),
+                        value: transfer.progress
+                    )
                 
                 Text("\(transfer.progressPercentage)%")
                     .font(.system(.headline, design: .rounded, weight: .bold))
