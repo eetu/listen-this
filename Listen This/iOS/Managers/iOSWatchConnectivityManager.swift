@@ -137,7 +137,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         let transfer = session.transferFile(fileURL, metadata: metadata)
         activeFileTransfers.append(transfer)
 
-        AppLogger.watchConnectivity.info(
+        AppLogger.watchConnectivity.notice(
             "[Transfer] Started \(audiobook.title, privacy: .public): size=\(fileSize) bytes, reachable=\(session.isReachable)"
         )
 
@@ -196,7 +196,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
                 }
             }
 
-            AppLogger.watchConnectivity.info(
+            AppLogger.watchConnectivity.notice(
                 "[Transfer] After wait: isTransferring=\(transfer.isTransferring), waited \(waitCount) ticks"
             )
 
@@ -221,7 +221,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
 
                     // DEBUG: surface what the system actually reports each poll so
                     // we can tell whether sender-side progress ever advances.
-                    AppLogger.watchConnectivity.info(
+                    AppLogger.watchConnectivity.notice(
                         "[Transfer] poll #\(pollCount): isTransferring=\(transfer.isTransferring), fraction=\(fraction), completedUnit=\(transfer.progress.completedUnitCount), totalUnit=\(transfer.progress.totalUnitCount)"
                     )
                     pollCount += 1
@@ -544,7 +544,7 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
         Task { @MainActor in
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
 
-            AppLogger.watchConnectivity.info(
+            AppLogger.watchConnectivity.notice(
                 "[Transfer] didFinish: error=\(error?.localizedDescription ?? "none", privacy: .public), finalFraction=\(fileTransfer.progress.fractionCompleted)"
             )
 
