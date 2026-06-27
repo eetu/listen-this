@@ -84,6 +84,7 @@ struct WatchPlayerView: View {
                     } label: {
                         Image(systemName: "ellipsis")
                     }
+                    .accessibilityLabel("Options")
                 }
             }
         }
@@ -142,6 +143,7 @@ struct WatchPlayerView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Chapters")
             }
         }
     }

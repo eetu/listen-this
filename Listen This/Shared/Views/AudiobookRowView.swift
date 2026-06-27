@@ -68,6 +68,22 @@ struct AudiobookRowView: View {
         isTransferring || playabilityState != .cached
     }
 
+    /// Single spoken description so VoiceOver reads the row as one element,
+    /// including transfer/playability state and progress that are otherwise
+    /// only conveyed visually.
+    private var accessibilityDescription: String {
+        var parts = ["\(title), by \(author)"]
+        if isTransferring {
+            parts.append("Transferring")
+        } else if playabilityState != .cached {
+            parts.append(playabilityState.statusText)
+        }
+        if showProgress, duration > 0, currentPosition > 0 {
+            parts.append("\(Int((currentPosition / duration) * 100)) percent played")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Artwork thumbnail with status badge overlay
@@ -79,7 +95,7 @@ struct AudiobookRowView: View {
                                 .font(.caption)
                                 .padding(4)
                             #else
-                                .font(.system(size: 10))
+                                .font(.caption2)
                                 .padding(3)
                             #endif
                             .background(.ultraThinMaterial)
@@ -112,6 +128,8 @@ struct AudiobookRowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
     }
 
     @ViewBuilder

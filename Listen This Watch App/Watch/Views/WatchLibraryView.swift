@@ -50,6 +50,7 @@ struct WatchLibraryView: View {
                     } label: {
                         Image(systemName: "gear")
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .navigationDestination(isPresented: $showingPlayer) {
@@ -502,7 +503,7 @@ struct DownloadOptionsSheet: View {
                 // Help text
                 if cloudKitAvailability != .fullyUploaded {
                     Text("Fast Download requires uploading from iPhone first")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
@@ -572,7 +573,8 @@ struct DownloadOptionButton: View {
 
                         if isRecommended && isAvailable {
                             Text("Best")
-                                .font(.system(size: 8, weight: .semibold))
+                                .font(.caption2)
+                                .fontWeight(.semibold)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
@@ -582,7 +584,7 @@ struct DownloadOptionButton: View {
                     }
 
                     Text(subtitle)
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
 

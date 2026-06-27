@@ -27,6 +27,14 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     /// Progress color extracted from artwork
     @State private var progressColor: Color = .blue
 
+    /// Control icon sizes that scale with Dynamic Type
+    @ScaledMetric(relativeTo: .title) private var skipIconSize: CGFloat = 30
+    #if os(iOS)
+        @ScaledMetric(relativeTo: .largeTitle) private var playIconSize: CGFloat = 60
+    #elseif os(watchOS)
+        @ScaledMetric(relativeTo: .largeTitle) private var playIconSize: CGFloat = 50
+    #endif
+
     // MARK: - Computed
 
     private var chapters: [Chapter] {
@@ -66,7 +74,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
             if let error = player.loadError {
                 Text(error.localizedDescription)
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
@@ -119,6 +127,10 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     in: 0...max(chapterProgress.duration, 0.01)
                 )
                 .tint(progressColor)
+                .accessibilityLabel("Playback position")
+                .accessibilityValue(
+                    "\(formatTime(chapterProgress.elapsed)) of \(formatTime(chapterProgress.duration))"
+                )
             #endif
 
             HStack {
@@ -126,7 +138,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 Spacer()
                 Text(formatTime(chapterProgress.duration))
             }
-            .font(.system(size: 12))
+            .font(.caption)
             .monospacedDigit()
             .foregroundStyle(.secondary)
         }
@@ -162,6 +174,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 .font(skipFont)
         }
         .disabled(player.currentChapterIndex == 0)
+        .accessibilityLabel("Previous chapter")
     }
 
     private var nextChapterButton: some View {
@@ -172,6 +185,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 .font(skipFont)
         }
         .disabled(player.currentChapterIndex >= chapters.count - 1)
+        .accessibilityLabel("Next chapter")
     }
 
     private var skipBackwardButton: some View {
@@ -181,6 +195,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
             Image(systemName: "gobackward.\(settings.skipBackwardInterval)")
                 .font(skipFont)
         }
+        .accessibilityLabel("Skip back \(settings.skipBackwardInterval) seconds")
     }
 
     private var skipForwardButton: some View {
@@ -190,6 +205,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
             Image(systemName: "goforward.\(settings.skipForwardInterval)")
                 .font(skipFont)
         }
+        .accessibilityLabel("Skip forward \(settings.skipForwardInterval) seconds")
     }
 
     private var playPauseButton: some View {
@@ -216,6 +232,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                     .frame(width: 60, height: 60)
             #endif
         }
+        .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
     }
 
     private var spacing: CGFloat {
@@ -227,15 +244,11 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
     }
 
     private var skipFont: Font {
-        .system(size: 30)
+        .system(size: skipIconSize)
     }
 
     private var playFont: Font {
-        #if os(iOS)
-            .system(size: 60)
-        #elseif os(watchOS)
-            .system(size: 50)
-        #endif
+        .system(size: playIconSize)
     }
 
     // MARK: - Formatting
