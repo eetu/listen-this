@@ -137,11 +137,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         let transfer = session.transferFile(fileURL, metadata: metadata)
         activeFileTransfers.append(transfer)
 
-        AppLogger.watchConnectivity.notice(
-            "[Transfer] Started \(audiobook.title, privacy: .public): size=\(fileSize) bytes, reachable=\(session.isReachable)"
-        )
-
-        // Observe transfer progress
+        // Observe transfer lifecycle (active/done)
         observeTransferProgress(transfer, for: audiobook.id.uuidString)
     }
 
@@ -183,7 +179,11 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
 
     private func observeTransferProgress(_ transfer: WCSessionFileTransfer, for audiobookId: String)
     {
-        // Poll for progress (WCSessionFileTransfer doesn't have KVO for progress)
+        // WatchConnectivity does not expose usable byte-level progress on the
+        // sender: WCSessionFileTransfer.progress stays at completedUnitCount 0
+        // (totalUnitCount 100) for the whole transfer and only didFinish signals
+        // completion. So we don't track a percentage here - we just keep the
+        // entry marked active for the indeterminate UI until the transfer ends.
         Task {
             // Wait for transfer to start
             var waitCount = 0
@@ -196,42 +196,13 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
                 }
             }
 
-            AppLogger.watchConnectivity.notice(
-                "[Transfer] After wait: isTransferring=\(transfer.isTransferring), waited \(waitCount) ticks"
-            )
-
             if !transfer.isTransferring && waitCount >= 100 {
-                AppLogger.watchConnectivity.error(
-                    "[Transfer] Never started transferring within 10s; removing"
-                )
                 activeTransfers.removeValue(forKey: audiobookId)
                 return
             }
 
-            // Monitor transfer progress. WCSessionFileTransfer exposes a KVO
-            // `Progress`; read its completedUnitCount each poll so the UI shows
-            // real bytes/speed/ETA instead of being frozen at 0%.
-            var pollCount = 0
+            // Keep the entry alive while transferring; didFinish handles completion.
             while transfer.isTransferring {
-                if var progress = activeTransfers[audiobookId] {
-                    progress.isActive = true
-                    // fractionCompleted is unit-agnostic; scale to our byte total.
-                    let fraction = transfer.progress.fractionCompleted
-                    let completedBytes = Int64(fraction * Double(progress.totalBytes))
-
-                    // DEBUG: surface what the system actually reports each poll so
-                    // we can tell whether sender-side progress ever advances.
-                    AppLogger.watchConnectivity.notice(
-                        "[Transfer] poll #\(pollCount): isTransferring=\(transfer.isTransferring), fraction=\(fraction), completedUnit=\(transfer.progress.completedUnitCount), totalUnit=\(transfer.progress.totalUnitCount)"
-                    )
-                    pollCount += 1
-
-                    if completedBytes > progress.bytesTransferred {
-                        progress.updateProgress(bytesTransferred: completedBytes)
-                    }
-                    activeTransfers[audiobookId] = progress
-                }
-
                 try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
 
                 if activeTransfers[audiobookId] == nil {
@@ -543,10 +514,6 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
     ) {
         Task { @MainActor in
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
-
-            AppLogger.watchConnectivity.notice(
-                "[Transfer] didFinish: error=\(error?.localizedDescription ?? "none", privacy: .public), finalFraction=\(fileTransfer.progress.fractionCompleted)"
-            )
 
             if let error = error {
                 // Update transfer status to failed
