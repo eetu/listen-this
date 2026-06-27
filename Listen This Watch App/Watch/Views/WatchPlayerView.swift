@@ -34,6 +34,15 @@ struct WatchPlayerView: View {
         audiobook.chapters?.sorted(by: { $0.index < $1.index })
     }
 
+    /// Index of the chapter currently being played, for highlighting and
+    /// scroll-to-current in the chapter list.
+    var currentChapterIndex: Int? {
+        guard let chapters = sortedChapters, let time = playerService?.currentPosition else {
+            return nil
+        }
+        return chapters.last(where: { $0.startTime <= time })?.index
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -122,7 +131,7 @@ struct WatchPlayerView: View {
 
     private var bottomToolbar: some View {
         HStack {
-            if sortedChapters != nil {
+            if let chapters = sortedChapters, !chapters.isEmpty {
                 Button {
                     showingChapterList = true
                 } label: {
@@ -175,23 +184,44 @@ struct WatchPlayerView: View {
     // MARK: - Chapter List
 
     private var chapterListSheet: some View {
-        List(sortedChapters ?? []) { chapter in
-            Button {
-                Task {
-                    await playerService?.seek(to: chapter.startTime)
-                    showingChapterList = false
+        ScrollViewReader { proxy in
+            List(sortedChapters ?? []) { chapter in
+                let isCurrent = chapter.index == currentChapterIndex
+                Button {
+                    Task {
+                        await playerService?.seek(to: chapter.startTime)
+                        showingChapterList = false
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chapter \(chapter.index + 1)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(chapter.title)
+                        }
+                        Spacer()
+                        if isCurrent {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .foregroundStyle(.tint)
+                        }
+                    }
                 }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Chapter \(chapter.index + 1)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(chapter.title)
+                .listRowBackground(
+                    isCurrent ? Color.accentColor.opacity(0.2) : Color.clear
+                )
+                .id(chapter.index)
+            }
+            .navigationTitle("Chapters")
+            .focusable(true)
+            .onAppear {
+                // Jump to the chapter that's playing so the user isn't dropped
+                // at the top of a 100+ chapter list.
+                if let current = currentChapterIndex {
+                    proxy.scrollTo(current, anchor: .center)
                 }
             }
         }
-        .navigationTitle("Chapters")
-        .focusable(true)
     }
 
     // MARK: - Context Menu
@@ -379,16 +409,10 @@ struct VolumeView: WKInterfaceObjectRepresentable {
     func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
         let view = WKInterfaceVolumeControl(origin: .local)
 
-        // Keep the volume control focused to enable digital crown rotation
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak view] timer in
-            if let view = view {
-                view.focus()
-            } else {
-                timer.invalidate()
-            }
-        }
-
-        // Initial focus
+        // Take focus once so the Digital Crown drives volume on the main screen.
+        // We deliberately do NOT pin focus on a repeating timer: that leaked the
+        // timer for the control's lifetime and permanently hijacked the crown,
+        // so sheets like the chapter list could never use it for scrolling.
         DispatchQueue.main.async {
             view.focus()
         }
