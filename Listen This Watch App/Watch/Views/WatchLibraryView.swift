@@ -327,6 +327,14 @@ struct AudiobookRowWithActions: View {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
     }
 
+    /// Whether the book is downloaded locally. Reading `cacheEntry` (a SwiftData
+    /// relationship) registers an observation dependency so the row and its
+    /// swipe buttons refresh when the download is removed; playabilityState
+    /// alone reads the filesystem and isn't tracked, leaving stale button state.
+    var isCached: Bool {
+        audiobook.cacheEntry != nil && audiobook.playabilityState == .cached
+    }
+
     var body: some View {
         AudiobookRow(audiobook: audiobook)
             .onTapGesture {
@@ -350,7 +358,7 @@ struct AudiobookRowWithActions: View {
                     Label("Download", systemImage: "arrow.down.circle")
                 }
                 .tint(.blue)
-                .disabled(hasActiveTransfer || audiobook.playabilityState == .cached)
+                .disabled(hasActiveTransfer || isCached)
             }
             // Trailing edge (swipe left) - cancel or remove.
             // IMPORTANT: do NOT use role: .destructive here. A destructive swipe
@@ -362,7 +370,6 @@ struct AudiobookRowWithActions: View {
             // allowsFullSwipe is false for the same reason, and removal is
             // confirmed by the parent to avoid tearing down this row mid-present.
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                let isCached = audiobook.playabilityState == .cached
                 Button {
                     if hasActiveTransfer {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
