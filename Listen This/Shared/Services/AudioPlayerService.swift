@@ -845,10 +845,14 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             }()
 
         // Check if CloudKit synced newer data from another device
-        // If the session's lastPlayed is newer than what we loaded,
-        // and we haven't actually played yet (no local changes), don't overwrite
+        // If the session's lastPlayed is newer than what we loaded, adopt it -
+        // but only when we're NOT actively playing here. Adopting (and seeking)
+        // mid-listen would yank the user to a different position, which feels
+        // like a bug. While playing, this device is authoritative and its
+        // progress wins on save below.
         if let knownTimestamp = lastKnownPlayedTimestamp,
-            session.lastPlayed > knownTimestamp
+            session.lastPlayed > knownTimestamp,
+            !isPlaying
         {
             // Remote has newer data - adopt it instead of overwriting
             logger.info(

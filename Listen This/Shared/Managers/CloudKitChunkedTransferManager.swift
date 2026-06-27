@@ -256,9 +256,16 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
 
         persistCacheEntry()
 
-        // Clean up chunks and manifest from iCloud after successful download
-        // This frees up iCloud storage since the file is now on the Watch
+        // Clean up chunks and manifest from iCloud after successful download to
+        // free iCloud storage - but only once the local file is verified, so an
+        // interrupted or short write can't delete the only cloud copy and lose
+        // the audiobook entirely.
+        let expectedSize = manifest.fileSize
         Task {
+            guard self.verifyDownloadedFile(at: outputURL, expectedSize: expectedSize) else {
+                logger.error("Skipping iCloud cleanup: downloaded file failed verification")
+                return
+            }
             do {
                 try await deleteAudiobookFromCloud(audiobookId: audiobook.id)
             } catch {
@@ -268,6 +275,17 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         return outputURL
+    }
+
+    /// Verify a downloaded file exists and matches the manifest's size before we
+    /// reclaim its iCloud copy.
+    private func verifyDownloadedFile(at url: URL, expectedSize: Int64) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let size = (attrs[.size] as? NSNumber)?.int64Value
+        else {
+            return false
+        }
+        return size == expectedSize
     }
 
     func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
