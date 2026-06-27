@@ -254,7 +254,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         // defer delete it.
         completedSuccessfully = true
 
-        persistCacheEntry()
+        persistCacheEntry(for: audiobook, at: outputURL)
 
         // Clean up chunks and manifest from iCloud after successful download to
         // free iCloud storage - but only once the local file is verified, so an
@@ -662,7 +662,21 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         return data
     }
 
-    private func persistCacheEntry() {
+    /// Record a CacheEntry for the downloaded file so the book reads as cached
+    /// (cacheEntry != nil) consistently with the direct-transfer path. Without
+    /// this, a CloudKit/WiFi-downloaded book had its file on disk but no
+    /// cacheEntry, so the library couldn't tell it was already downloaded.
+    private func persistCacheEntry(for audiobook: Audiobook, at url: URL) {
+        if audiobook.cacheEntry == nil {
+            let entry = CacheEntry()
+            entry.audiobook = audiobook
+            audiobook.cacheEntry = entry
+            modelContext.insert(entry)
+        }
+        audiobook.cacheEntry?.filePath = url.path
+        audiobook.cacheEntry?.fileSize =
+            (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        audiobook.cacheEntry?.lastAccessedDate = Date()
         try? modelContext.save()
     }
 
