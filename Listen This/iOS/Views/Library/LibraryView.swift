@@ -126,15 +126,22 @@ struct LibraryView: View {
                     let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
                     let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
                     let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
-                    let isAlreadyTransferred = isOnWatch || isUploadedToCloudKit || hasActiveTransfer
-                    
+                    let isOnWatchOrCloud = isOnWatch || isUploadedToCloudKit
+
+                    // Distinguish an in-flight transfer ("Sending…") from one that
+                    // already completed ("Sent"); both disable the button.
+                    let label = hasActiveTransfer ? "Sending…" : (isOnWatchOrCloud ? "Sent" : "Transfer")
+                    let icon = hasActiveTransfer
+                        ? "arrow.triangle.2.circlepath"
+                        : (isOnWatchOrCloud ? "checkmark" : "applewatch")
+
                     Button {
                         transferAudiobookId = bookId
                     } label: {
-                        Label(isAlreadyTransferred ? "Sent" : "Transfer", systemImage: isAlreadyTransferred ? "checkmark" : "applewatch")
+                        Label(label, systemImage: icon)
                     }
-                    .tint(isAlreadyTransferred ? .gray : .blue)
-                    .disabled(isAlreadyTransferred)
+                    .tint(hasActiveTransfer ? .blue : (isOnWatchOrCloud ? .gray : .blue))
+                    .disabled(hasActiveTransfer || isOnWatchOrCloud)
                 }
 
                 // Download for remote books - primary action for streamable content
@@ -739,6 +746,9 @@ struct LibraryRow: View {
     }
 
     var body: some View {
+        // Reading activeTransfers here observes it, so the spinner badge appears
+        // while a direct Watch transfer is in flight (not just remote downloads).
+        let isWatchTransferring = connectivity.activeTransfers[audiobookId.uuidString] != nil
         AudiobookRowView(
             title: title,
             author: author,
@@ -747,7 +757,7 @@ struct LibraryRow: View {
             currentPosition: currentPosition,
             playabilityState: playabilityState,
             showProgress: true,
-            isTransferring: downloadingBookIds.contains(audiobookId)
+            isTransferring: downloadingBookIds.contains(audiobookId) || isWatchTransferring
         )
     }
 }
