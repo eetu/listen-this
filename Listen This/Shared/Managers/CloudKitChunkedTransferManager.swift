@@ -195,6 +195,17 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             withIntermediateDirectories: true
         )
 
+        // Fail early if there isn't room for the whole file rather than filling
+        // the (limited) Watch disk and dying partway through. Uses
+        // attributesOfFileSystem since volumeAvailableCapacity* is iOS-only.
+        let containingDir = outputURL.deletingLastPathComponent()
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: containingDir.path),
+            let freeSize = (attrs[.systemFreeSize] as? NSNumber)?.int64Value,
+            freeSize < manifest.fileSize
+        {
+            throw ChunkTransferError.insufficientStorage
+        }
+
         FileManager.default.createFile(atPath: path, contents: nil)
         let handle = try FileHandle(forWritingTo: outputURL)
         defer { try? handle.close() }
@@ -208,6 +219,15 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         )
         // Ensure the progress entry is never orphaned on a thrown error.
         defer { activeDownloads.removeValue(forKey: audiobookId) }
+
+        // Track success so a thrown error doesn't leave a corrupt partial file.
+        var completedSuccessfully = false
+        defer {
+            if !completedSuccessfully {
+                try? handle.close()
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
 
         var written: Int64 = 0
 
@@ -229,6 +249,10 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
                 activeDownloads[audiobookId] = progress
             }
         }
+
+        // All chunks written — the file is complete, so don't let the cleanup
+        // defer delete it.
+        completedSuccessfully = true
 
         persistCacheEntry()
 
@@ -820,6 +844,7 @@ enum ChunkTransferError: LocalizedError {
     case incompleteUpload
     case networkError
     case quotaExceeded
+    case insufficientStorage
     case cloudKitError(String)
     static let alreadyUploaded = ChunkTransferError.incompleteUpload
 
@@ -841,6 +866,8 @@ enum ChunkTransferError: LocalizedError {
             return "Network error during transfer"
         case .quotaExceeded:
             return "iCloud storage is full. Free up space or use Direct Transfer instead."
+        case .insufficientStorage:
+            return "Not enough free space on this device to download the audiobook. Free up space and try again."
         case .cloudKitError(let message):
             return message
         }

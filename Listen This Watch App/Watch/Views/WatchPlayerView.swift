@@ -104,7 +104,10 @@ struct WatchPlayerView: View {
             await loadPlayerIfNeeded()
         }
         .onDisappear {
-            Task { await playerService?.pause() }
+            // Don't pause here: presenting a sheet (chapters, options, sleep
+            // timer, speed) or the wrist going down triggers onDisappear, which
+            // would stop playback and breaks background audio. Playback is
+            // controlled explicitly and via the Now Playing controls instead.
             volumeObserver?.invalidate()
         }
     }
