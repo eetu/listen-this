@@ -260,23 +260,26 @@ struct CloudKitTransferView: View {
             iOSContent(viewModel)
         #else
             // Watch: Compact vertical stack
-            header(viewModel)
-
+            // Only show header when not transferring (to maximize progress display space)
             switch viewModel.state {
             case .idle:
+                header(viewModel)
                 actionCard(viewModel)
 
             case .preparing:
+                header(viewModel)
                 ProgressView("Preparing...")
                     .font(.caption)
 
             case .transferring(let progress):
+                // No header during transfer - maximize space for progress
                 watchProgressView(viewModel, progress)
 
             case .complete:
                 completionCard
 
             case .error:
+                header(viewModel)
                 EmptyView()
             }
         #endif
@@ -515,20 +518,47 @@ struct CloudKitTransferView: View {
         _ progress: ChunkTransferProgress
     ) -> some View {
         VStack(spacing: 16) {
-            // Progress percentage and bar
-            VStack(spacing: 8) {
-                Text("\(progress.progressPercentage)%")
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.blue)
-
-                ProgressView(value: progress.progress)
-                    .progressViewStyle(.linear)
-                    .tint(.blue)
+            // Progress circle with percentage
+            ZStack {
+                Circle()
+                    .stroke(Color.blue.opacity(0.2), lineWidth: 10)
+                    .frame(width: 120, height: 120)
+                
+                Circle()
+                    .trim(from: 0, to: progress.progress)
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .frame(width: 120, height: 120)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.3), value: progress.progress)
+                
+                VStack(spacing: 2) {
+                    Text("\(progress.progressPercentage)%")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                    
+                    if !progress.speedText.isEmpty {
+                        Text(progress.speedText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
             }
 
-            // Transfer details (simplified)
+            // Transfer details
             VStack(spacing: 8) {
+                // Bytes transferred
+                HStack {
+                    Text("Transferred")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(progress.progressText)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                }
+                .font(.subheadline)
+                
+                // Chunks progress
                 HStack {
                     Text("Chunks")
                         .foregroundStyle(.secondary)
@@ -538,15 +568,18 @@ struct CloudKitTransferView: View {
                         .monospacedDigit()
                 }
                 .font(.subheadline)
-
-                HStack {
-                    Text("Transferred")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(progress.progressText)
-                        .fontWeight(.medium)
+                
+                // Estimated time remaining
+                if let timeRemaining = progress.estimatedTimeRemainingText {
+                    HStack {
+                        Text("Remaining")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(timeRemaining)
+                            .fontWeight(.medium)
+                    }
+                    .font(.subheadline)
                 }
-                .font(.subheadline)
             }
 
             Button("Cancel Transfer", role: .destructive) {
@@ -570,24 +603,45 @@ struct CloudKitTransferView: View {
         _ viewModel: CloudKitTransferViewModel,
         _ progress: ChunkTransferProgress
     ) -> some View {
-        VStack(spacing: 8) {
-            Text("\(progress.progressPercentage)%")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .monospacedDigit()
-
-            ProgressView(value: progress.progress)
-                .progressViewStyle(.linear)
-
-            Text("\(progress.completedChunks)/\(progress.totalChunks) chunks")
+        VStack(spacing: 4) {
+            // Larger circular progress for Watch - fills available space
+            ZStack {
+                Circle()
+                    .stroke(Color.blue.opacity(0.3), lineWidth: 6)
+                
+                Circle()
+                    .trim(from: 0, to: progress.progress)
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.3), value: progress.progress)
+                
+                VStack(spacing: 0) {
+                    Text("\(progress.progressPercentage)%")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                    
+                    // Speed inside circle
+                    if !progress.speedText.isEmpty {
+                        Text(progress.speedText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .frame(width: 90, height: 90)
+            
+            // Chunks count below circle
+            Text("\(progress.completedChunks)/\(progress.totalChunks)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
 
             Button("Cancel", role: .destructive) {
                 viewModel.cancel()
                 dismiss()
             }
-            .font(.caption)
+            .font(.caption2)
             .controlSize(.small)
         }
     }

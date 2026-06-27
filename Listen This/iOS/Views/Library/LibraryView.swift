@@ -119,14 +119,22 @@ struct LibraryView: View {
             .tag(book)
             // Leading edge (swipe right) - Common actions (full swipe supported)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                // Transfer to Watch (only for cached books) - primary action
+                // Transfer to Watch - show for cached books when Watch is available
+                // Use stable conditions (isPaired, isWatchAppInstalled, isFileCached) for showing the button
+                // Use dynamic conditions (isOnWatch, isUploadedToCloudKit, hasActiveTransfer) only for disabling
                 if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
+                    let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
+                    let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
+                    let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
+                    let isAlreadyTransferred = isOnWatch || isUploadedToCloudKit || hasActiveTransfer
+                    
                     Button {
                         transferAudiobookId = bookId
                     } label: {
-                        Label("Transfer", systemImage: "applewatch")
+                        Label(isAlreadyTransferred ? "Sent" : "Transfer", systemImage: isAlreadyTransferred ? "checkmark" : "applewatch")
                     }
-                    .tint(.blue)
+                    .tint(isAlreadyTransferred ? .gray : .blue)
+                    .disabled(isAlreadyTransferred)
                 }
 
                 // Download for remote books - primary action for streamable content
@@ -308,13 +316,20 @@ struct LibraryView: View {
     private func contextMenuItems(
         for bookId: UUID, isFileCached: Bool, connectivity: iOSWatchConnectivityManager
     ) -> some View {
-        // Send to Watch (only for cached books)
+        // Send to Watch - show for cached books when Watch is available
         if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
+            let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
+            let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
+            let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
+            let isAlreadyTransferred = isOnWatch || isUploadedToCloudKit || hasActiveTransfer
+            
             Button {
                 transferAudiobookId = bookId
             } label: {
-                Label("Send to Watch", systemImage: "applewatch")
+                Label(isAlreadyTransferred ? "Already on Watch" : "Send to Watch", 
+                      systemImage: isAlreadyTransferred ? "checkmark.circle" : "applewatch")
             }
+            .disabled(isAlreadyTransferred)
         }
 
         // Delete - always show in context menu

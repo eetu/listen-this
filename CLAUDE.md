@@ -130,3 +130,105 @@ Note: Simulator names change with Xcode/iOS versions. Use the commands above to 
 - Generate config: `xcode-build-server config -project "Listen This.xcodeproj" -scheme "Listen This"`
 - Creates `buildServer.json` (not committed to git - contains machine-specific paths)
 - Enables SourceKit LSP in editors like Zed, VS Code, Neovim
+
+## UX Audit Findings (June 2026)
+
+Comprehensive UX review findings organized by priority. Address these when improving the app.
+
+### Critical Priority
+
+1. **Silent Failures in Transfer Operations**
+   - Files: `AutoTransferSheet.swift`, `CloudKitTransferView.swift`
+   - Issue: Network failures during CloudKit transfers may not show user-visible errors
+   - Fix: Add retry UI and clear error states with actionable messages
+
+2. **No Offline Mode Indication**
+   - Files: `LibraryView.swift`, `WatchLibraryView.swift`
+   - Issue: Users don't know when they're offline or what content is available
+   - Fix: Add network status indicator and show which books are cached locally
+
+### High Priority
+
+3. **Touch Targets Below 44pt Minimum**
+   - Files: `PlayerControlsView.swift` (chapter skip buttons), `WatchPlayerView.swift`
+   - Issue: Some buttons are smaller than Apple's 44x44pt minimum
+   - Fix: Increase hitArea even if visual size stays small
+
+4. **Missing Delete Confirmations**
+   - Files: `DeleteAudiobookSheet.swift`, `CloudKitStorageView.swift`
+   - Issue: "Delete from everywhere" and "Clear All CloudKit Data" need stronger confirmation
+   - Fix: Add two-step confirmation or require typing to confirm destructive actions
+
+5. **No Loading States for Long Operations**
+   - Files: `AudiobookshelfBrowserView.swift`, `ImportView.swift`
+   - Issue: Large library fetches show no progress indication
+   - Fix: Add skeleton loaders or progress indicators for operations >1s
+
+6. **Watch App: No Battery Warning for Large Downloads**
+   - Files: `WatchLibraryView.swift`
+   - Issue: Starting a large download on low battery could kill the watch
+   - Fix: Warn if battery <20% before starting CloudKit download
+
+### Medium Priority
+
+7. **Inconsistent Empty States**
+   - Files: Various list views
+   - Issue: Some empty states have actions, others don't
+   - Fix: All empty states should guide users to the next action
+
+8. **No Haptic Feedback on Watch**
+   - Files: `WatchPlayerView.swift`, `WatchTransferStatusView.swift`
+   - Issue: Missing haptic confirmation for button presses
+   - Fix: Add `WKInterfaceDevice.current().play(.click)` for key actions
+
+9. **Chapter List Scrolling Performance**
+   - Files: `PlayerView.swift` (chapter list section)
+   - Issue: Books with 100+ chapters may have scroll lag
+   - Fix: Use `LazyVStack` with proper identifiers
+
+10. **No Pull-to-Refresh on Some Lists**
+    - Files: `CloudKitStorageView.swift`
+    - Issue: Inconsistent refresh patterns across views
+    - Fix: Add `.refreshable` to all data-fetching lists
+
+11. **Transfer Progress Not Visible After Dismissing Sheet**
+    - Files: `AutoTransferSheet.swift`
+    - Issue: If user dismisses transfer sheet, they lose visibility into progress
+    - Fix: Show mini progress indicator in library row during active transfer
+
+### Low Priority
+
+12. **Color Contrast in Dark Mode**
+    - Files: Various views with `.secondary` text
+    - Issue: Some secondary text may not meet WCAG AA contrast ratios
+    - Fix: Audit with accessibility inspector
+
+13. **No VoiceOver Hints for Complex Gestures**
+    - Files: `LibraryView.swift` (swipe actions)
+    - Issue: VoiceOver users may not discover swipe actions
+    - Fix: Add `accessibilityHint` describing available actions
+
+14. **Settings Organization**
+    - Files: `SettingsView.swift`
+    - Issue: Settings could be better grouped as app grows
+    - Fix: Consider grouping by function (Playback, Storage, Sync, About)
+
+15. **No Onboarding for First-Time Users**
+    - Issue: New users don't get guidance on key features
+    - Fix: Consider adding optional walkthrough for iCloud setup, Watch pairing
+
+16. **Sleep Timer UI Discoverability**
+    - Files: `PlayerView.swift`, `SleepTimerSheet.swift`
+    - Issue: Sleep timer button may not be obvious to new users
+    - Fix: Consider adding tooltip on first use
+
+17. **Watch Complications Not Implemented**
+    - Issue: No quick-launch complications for Watch
+    - Fix: Add Now Playing complication for quick access
+
+### SwiftUI List Stability Note
+
+When using observable state in SwiftUI List rows (like tracking transfer status):
+- **DON'T** conditionally show/hide swipe action buttons based on frequently changing state
+- **DO** always show buttons but disable them when action isn't available
+- This prevents `NSInternalInconsistencyException` crashes from collection view update mismatches

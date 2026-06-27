@@ -308,8 +308,22 @@ struct AudiobookRowWithActions: View {
                     onShowDownloadOptions(audiobook)
                 }
             }
+            // Leading edge (swipe right) - positive actions (Download)
+            // Matches iOS pattern where Transfer is on leading edge
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                // Only show download if not cached and no active transfer
+                if !hasActiveTransfer && audiobook.playabilityState != .cached {
+                    Button {
+                        onShowDownloadOptions(audiobook)
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
+                }
+            }
+            // Trailing edge (swipe left) - destructive/cancel actions
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                // State 1: Active transfer - show cancel only
+                // Active transfer - show cancel
                 if hasActiveTransfer {
                     Button(role: .destructive) {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
@@ -318,7 +332,7 @@ struct AudiobookRowWithActions: View {
                     }
                     .tint(.orange)
                 }
-                // State 2: Cached - show remove from watch
+                // Cached - show remove from watch
                 else if audiobook.playabilityState == .cached {
                     Button(role: .destructive) {
                         removeDownload(for: audiobook)
@@ -326,24 +340,6 @@ struct AudiobookRowWithActions: View {
                         Label("Remove", systemImage: "applewatch.slash")
                     }
                     .tint(.red)
-                }
-                // State 3: Streamable - optionally allow download for offline
-                else if audiobook.playabilityState == .streamable {
-                    Button {
-                        onShowDownloadOptions(audiobook)
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .tint(.blue)
-                }
-                // State 4: Requires download - show download option
-                else {
-                    Button {
-                        onShowDownloadOptions(audiobook)
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .tint(.blue)
                 }
             }
             .onAppear {

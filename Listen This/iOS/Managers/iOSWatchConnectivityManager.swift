@@ -6,6 +6,7 @@
 //  Handles file transfers to Apple Watch
 //
 
+import CloudKit
 import Foundation
 import OSLog
 import SwiftData
@@ -27,6 +28,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
     var isWatchAppInstalled = false
     var activeTransfers: [String: WatchTransferProgress] = [:]
     var watchCachedAudiobookIds: Set<String> = []  // Track which audiobooks are cached on Watch
+    var cloudKitUploadedAudiobookIds: Set<String> = []  // Track which audiobooks are uploaded to CloudKit
     var lastError: Error?
 
     // MARK: - Internal Properties
@@ -59,6 +61,8 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
 
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
+        // Sync CloudKit uploaded status on configure (called from LibraryView)
+        syncCloudKitUploadedStatus()
     }
 
     // MARK: - Watch Status
@@ -284,6 +288,64 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
             }
         }
     }
+
+    // MARK: - CloudKit Upload Tracking
+
+    /// Mark an audiobook as uploaded to CloudKit
+    func markCloudKitUploaded(audiobookId: String) {
+        cloudKitUploadedAudiobookIds.insert(audiobookId)
+    }
+
+    /// Clear CloudKit uploaded status for an audiobook
+    func clearCloudKitUploaded(audiobookId: String) {
+        cloudKitUploadedAudiobookIds.remove(audiobookId)
+    }
+
+    /// Check if an audiobook is available on Watch (either via WatchConnectivity or CloudKit)
+    func isAudiobookOnWatch(_ audiobookId: String) -> Bool {
+        watchCachedAudiobookIds.contains(audiobookId) || cloudKitUploadedAudiobookIds.contains(audiobookId)
+    }
+
+    /// Sync CloudKit uploaded audiobook IDs from CloudKit database
+    /// Call this on app launch to restore the set from actual CloudKit state
+    func syncCloudKitUploadedStatus() {
+        Task {
+            do {
+                let container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
+                let database = container.privateCloudDatabase
+
+                // Query for completed uploads
+                let query = CKQuery(
+                    recordType: "AudiobookManifest",
+                    predicate: NSPredicate(format: "isComplete == %@", NSNumber(value: 1))
+                )
+
+                let (matchResults, _) = try await database.records(
+                    matching: query,
+                    inZoneWith: nil,
+                    desiredKeys: ["audiobookId"],
+                    resultsLimit: 500
+                )
+
+                var uploadedIds: Set<String> = []
+
+                for (_, result) in matchResults {
+                    if case .success(let record) = result,
+                       let audiobookIdString = record["audiobookId"] as? String {
+                        uploadedIds.insert(audiobookIdString)
+                    }
+                }
+
+                await MainActor.run {
+                    self.cloudKitUploadedAudiobookIds = uploadedIds
+                    AppLogger.cloudKit.info("Synced \(uploadedIds.count) CloudKit uploaded audiobook IDs")
+                }
+
+            } catch {
+                AppLogger.cloudKit.error("Failed to sync CloudKit uploaded status: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 // MARK: - WCSessionDelegate
@@ -425,6 +487,9 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
         }
 
         watchCachedAudiobookIds = Set(cachedIds)
+        
+        // Also resync CloudKit status since Watch may have downloaded and deleted chunks
+        syncCloudKitUploadedStatus()
     }
 
     /// Request the list of cached audiobooks from Watch
@@ -453,17 +518,30 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
 
             if let error = error {
-                // Update transfer status
+                // Update transfer status to failed
                 if var progress = activeTransfers[audiobookId] {
                     progress.isActive = false
                     activeTransfers[audiobookId] = progress
                 }
 
                 self.lastError = error
-            } else {
-                // Remove from active transfers after a brief delay
+                
+                // Remove failed transfer after showing error briefly
                 Task {
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2 seconds
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3 seconds
+                    activeTransfers.removeValue(forKey: audiobookId)
+                }
+            } else {
+                // Mark as complete (100%) and show completion state
+                if var progress = activeTransfers[audiobookId] {
+                    progress.bytesTransferred = progress.totalBytes
+                    progress.isActive = false
+                    activeTransfers[audiobookId] = progress
+                }
+                
+                // Keep completion state visible for a few seconds
+                Task {
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)  // 4 seconds
                     activeTransfers.removeValue(forKey: audiobookId)
                 }
             }

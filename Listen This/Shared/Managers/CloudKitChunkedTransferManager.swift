@@ -156,8 +156,13 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
                 audiobookId: audiobookId
             )
 
-            activeUploads[audiobookId]?.completedChunks += 1
-            activeUploads[audiobookId]?.bytesTransferred += Int64(data.count)
+            if var progress = activeUploads[audiobookId] {
+                progress.updateProgress(
+                    completedChunks: progress.completedChunks + 1,
+                    bytesTransferred: progress.bytesTransferred + Int64(data.count)
+                )
+                activeUploads[audiobookId] = progress
+            }
         }
 
         try await markManifestComplete(manifest)
@@ -212,8 +217,13 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             try handle.write(contentsOf: data)
             written += Int64(data.count)
 
-            activeDownloads[audiobookId]?.completedChunks += 1
-            activeDownloads[audiobookId]?.bytesTransferred = written
+            if var progress = activeDownloads[audiobookId] {
+                progress.updateProgress(
+                    completedChunks: progress.completedChunks + 1,
+                    bytesTransferred: written
+                )
+                activeDownloads[audiobookId] = progress
+            }
         }
 
         persistCacheEntry()
@@ -694,6 +704,10 @@ struct ChunkTransferProgress: Equatable {
     var completedChunks: Int
     var bytesTransferred: Int64 = 0
     let isUploading: Bool
+    
+    // Speed tracking
+    var startTime: Date = Date()
+    var lastUpdateTime: Date = Date()
 
     var progress: Double {
         guard totalChunks > 0 else { return 0 }
@@ -722,6 +736,56 @@ struct ChunkTransferProgress: Equatable {
         } else {
             return "Downloading chunk \(completedChunks + 1) of \(totalChunks)"
         }
+    }
+    
+    /// Current transfer speed in bytes per second
+    var currentSpeedBytesPerSecond: Double {
+        let elapsed = lastUpdateTime.timeIntervalSince(startTime)
+        guard elapsed > 0 else { return 0 }
+        return Double(bytesTransferred) / elapsed
+    }
+    
+    /// Formatted transfer speed string
+    var speedText: String {
+        let speed = currentSpeedBytesPerSecond
+        guard speed > 0 else { return "" }
+        let speedFormatted = ByteCountFormatter.string(fromByteCount: Int64(speed), countStyle: .file)
+        return "\(speedFormatted)/s"
+    }
+    
+    /// Estimated time remaining in seconds
+    var estimatedTimeRemaining: TimeInterval? {
+        let speed = currentSpeedBytesPerSecond
+        guard speed > 0 else { return nil }
+        let remainingBytes = totalBytes - bytesTransferred
+        return Double(remainingBytes) / speed
+    }
+    
+    /// Formatted estimated time remaining
+    var estimatedTimeRemainingText: String? {
+        guard let remaining = estimatedTimeRemaining, remaining > 0, remaining.isFinite else { return nil }
+        
+        if remaining < 60 {
+            return "< 1 min remaining"
+        } else if remaining < 3600 {
+            let minutes = Int(remaining / 60)
+            return "\(minutes) min remaining"
+        } else {
+            let hours = Int(remaining / 3600)
+            let minutes = Int((remaining.truncatingRemainder(dividingBy: 3600)) / 60)
+            if minutes > 0 {
+                return "\(hours)h \(minutes)m remaining"
+            } else {
+                return "\(hours)h remaining"
+            }
+        }
+    }
+    
+    /// Update progress and refresh timing
+    mutating func updateProgress(completedChunks: Int, bytesTransferred: Int64) {
+        self.completedChunks = completedChunks
+        self.bytesTransferred = bytesTransferred
+        self.lastUpdateTime = Date()
     }
 }
 

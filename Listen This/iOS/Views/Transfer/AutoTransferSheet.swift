@@ -122,6 +122,8 @@ struct AutoTransferSheet: View {
                 #if os(iOS)
                     // iPhone: Upload to CloudKit with progress tracking
                     try await manager.uploadAudiobook(audiobook)
+                    // Mark as uploaded so UI disables transfer button
+                    iOSWatchConnectivityManager.shared.markCloudKitUploaded(audiobookId: audiobook.id.uuidString)
                 #else
                     // Watch: Download from CloudKit with progress tracking
                     _ = try await manager.downloadAudiobook(audiobook)
@@ -234,53 +236,67 @@ struct AutoTransferSheet: View {
             if let manager = cloudKitManager,
                 let progress = manager.activeUploads[audiobook.id]
             {
-                VStack(spacing: 12) {
-                    // Progress bar
-                    ProgressView(value: progress.progress) {
-                        Text(progress.statusText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } currentValueLabel: {
-                        HStack {
-                            Text("\(progress.progressPercentage)%")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(progress.progressText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .progressViewStyle(.linear)
-                }
-                .padding(.horizontal)
+                cloudKitProgressView(progress)
             } else if let manager = cloudKitManager,
                 let progress = manager.activeDownloads[audiobook.id]
             {
                 // Download progress (for Watch)
-                VStack(spacing: 12) {
-                    ProgressView(value: progress.progress) {
-                        Text(progress.statusText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } currentValueLabel: {
-                        HStack {
-                            Text("\(progress.progressPercentage)%")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(progress.progressText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .progressViewStyle(.linear)
-                }
-                .padding(.horizontal)
+                cloudKitProgressView(progress)
             } else {
                 // Generic progress spinner for non-CloudKit transfers
                 ProgressView("Transferring...")
                     .padding()
+            }
+        }
+        .padding()
+    }
+    
+    @ViewBuilder
+    private func cloudKitProgressView(_ progress: ChunkTransferProgress) -> some View {
+        VStack(spacing: 16) {
+            // Circular progress with percentage
+            ZStack {
+                Circle()
+                    .stroke(Color.blue.opacity(0.2), lineWidth: 8)
+                    .frame(width: 100, height: 100)
+                
+                Circle()
+                    .trim(from: 0, to: progress.progress)
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .frame(width: 100, height: 100)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.3), value: progress.progress)
+                
+                VStack(spacing: 2) {
+                    Text("\(progress.progressPercentage)%")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                    
+                    if !progress.speedText.isEmpty {
+                        Text(progress.speedText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            
+            // Transfer details
+            VStack(spacing: 6) {
+                Text(progress.statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Text(progress.progressText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                
+                if let timeRemaining = progress.estimatedTimeRemainingText {
+                    Text(timeRemaining)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding()
