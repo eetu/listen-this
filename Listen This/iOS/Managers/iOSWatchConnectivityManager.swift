@@ -197,11 +197,18 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
                 return
             }
 
-            // Monitor transfer progress
+            // Monitor transfer progress. WCSessionFileTransfer exposes a KVO
+            // `Progress`; read its completedUnitCount each poll so the UI shows
+            // real bytes/speed/ETA instead of being frozen at 0%.
             while transfer.isTransferring {
-                // Update progress
                 if var progress = activeTransfers[audiobookId] {
                     progress.isActive = true
+                    // fractionCompleted is unit-agnostic; scale to our byte total.
+                    let fraction = transfer.progress.fractionCompleted
+                    let completedBytes = Int64(fraction * Double(progress.totalBytes))
+                    if completedBytes > progress.bytesTransferred {
+                        progress.updateProgress(bytesTransferred: completedBytes)
+                    }
                     activeTransfers[audiobookId] = progress
                 }
 
@@ -534,8 +541,7 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             } else {
                 // Mark as complete (100%) and show completion state
                 if var progress = activeTransfers[audiobookId] {
-                    progress.bytesTransferred = progress.totalBytes
-                    progress.isActive = false
+                    progress.markCompleted()
                     activeTransfers[audiobookId] = progress
                 }
                 

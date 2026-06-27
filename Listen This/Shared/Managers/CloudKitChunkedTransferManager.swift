@@ -142,6 +142,9 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             bytesTransferred: min(bytesAlreadyTransferred, fileSize),
             isUploading: true
         )
+        // Ensure the progress entry is never orphaned: clear it on any exit
+        // (success or thrown error) so the UI doesn't show a frozen ring.
+        defer { activeUploads.removeValue(forKey: audiobookId) }
 
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
@@ -166,7 +169,6 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         try await markManifestComplete(manifest)
-        activeUploads.removeValue(forKey: audiobookId)
     }
 
     func cancelTransfer(audiobookId: UUID) {
@@ -204,6 +206,8 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             completedChunks: 0,
             isUploading: false
         )
+        // Ensure the progress entry is never orphaned on a thrown error.
+        defer { activeDownloads.removeValue(forKey: audiobookId) }
 
         var written: Int64 = 0
 
@@ -227,7 +231,6 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         persistCacheEntry()
-        activeDownloads.removeValue(forKey: audiobookId)
 
         // Clean up chunks and manifest from iCloud after successful download
         // This frees up iCloud storage since the file is now on the Watch
@@ -708,6 +711,10 @@ struct ChunkTransferProgress: Equatable {
     // Speed tracking
     var startTime: Date = Date()
     var lastUpdateTime: Date = Date()
+    /// Exponential moving average of recent throughput so the displayed speed
+    /// reflects current conditions and recovers after a stall, rather than being
+    /// dragged down forever by a lifetime average.
+    var smoothedSpeedBytesPerSecond: Double = 0
 
     var progress: Double {
         guard totalChunks > 0 else { return 0 }
@@ -731,15 +738,19 @@ struct ChunkTransferProgress: Equatable {
     }
 
     var statusText: String {
+        // Clamp so we never display "chunk N+1 of N" on the final update.
+        let displayChunk = min(completedChunks + 1, totalChunks)
         if isUploading {
-            return "Uploading chunk \(completedChunks + 1) of \(totalChunks)"
+            return "Uploading chunk \(displayChunk) of \(totalChunks)"
         } else {
-            return "Downloading chunk \(completedChunks + 1) of \(totalChunks)"
+            return "Downloading chunk \(displayChunk) of \(totalChunks)"
         }
     }
-    
-    /// Current transfer speed in bytes per second
+
+    /// Current transfer speed in bytes per second, smoothed over recent activity.
+    /// Falls back to the lifetime average only before the first windowed sample.
     var currentSpeedBytesPerSecond: Double {
+        if smoothedSpeedBytesPerSecond > 0 { return smoothedSpeedBytesPerSecond }
         let elapsed = lastUpdateTime.timeIntervalSince(startTime)
         guard elapsed > 0 else { return 0 }
         return Double(bytesTransferred) / elapsed
@@ -781,11 +792,22 @@ struct ChunkTransferProgress: Equatable {
         }
     }
     
-    /// Update progress and refresh timing
+    /// Update progress and refresh timing. Computes an instantaneous rate from
+    /// the delta since the last update and folds it into a moving average.
     mutating func updateProgress(completedChunks: Int, bytesTransferred: Int64) {
+        let now = Date()
+        let dt = now.timeIntervalSince(lastUpdateTime)
+        let deltaBytes = bytesTransferred - self.bytesTransferred
+        if dt > 0, deltaBytes > 0 {
+            let instantaneous = Double(deltaBytes) / dt
+            let alpha = 0.3
+            smoothedSpeedBytesPerSecond = smoothedSpeedBytesPerSecond > 0
+                ? alpha * instantaneous + (1 - alpha) * smoothedSpeedBytesPerSecond
+                : instantaneous
+        }
         self.completedChunks = completedChunks
         self.bytesTransferred = bytesTransferred
-        self.lastUpdateTime = Date()
+        self.lastUpdateTime = now
     }
 }
 

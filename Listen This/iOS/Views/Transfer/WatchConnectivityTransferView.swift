@@ -284,12 +284,12 @@ struct WatchConnectivityTransferView: View {
                                 .foregroundStyle(.secondary)
                         }
                         
-                        if !transfer.speedText.isEmpty {
+                        if !transfer.averageSpeedText.isEmpty {
                             Divider()
                                 .frame(height: 30)
-                            
+
                             VStack(spacing: 4) {
-                                Text(transfer.speedText)
+                                Text(transfer.averageSpeedText)
                                     .font(.headline)
                                     .monospacedDigit()
                                 Text("Avg Speed")
