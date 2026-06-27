@@ -137,6 +137,10 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         let transfer = session.transferFile(fileURL, metadata: metadata)
         activeFileTransfers.append(transfer)
 
+        AppLogger.watchConnectivity.info(
+            "[Transfer] Started \(audiobook.title, privacy: .public): size=\(fileSize) bytes, reachable=\(session.isReachable)"
+        )
+
         // Observe transfer progress
         observeTransferProgress(transfer, for: audiobook.id.uuidString)
     }
@@ -192,7 +196,14 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
                 }
             }
 
+            AppLogger.watchConnectivity.info(
+                "[Transfer] After wait: isTransferring=\(transfer.isTransferring), waited \(waitCount) ticks"
+            )
+
             if !transfer.isTransferring && waitCount >= 100 {
+                AppLogger.watchConnectivity.error(
+                    "[Transfer] Never started transferring within 10s; removing"
+                )
                 activeTransfers.removeValue(forKey: audiobookId)
                 return
             }
@@ -200,12 +211,21 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
             // Monitor transfer progress. WCSessionFileTransfer exposes a KVO
             // `Progress`; read its completedUnitCount each poll so the UI shows
             // real bytes/speed/ETA instead of being frozen at 0%.
+            var pollCount = 0
             while transfer.isTransferring {
                 if var progress = activeTransfers[audiobookId] {
                     progress.isActive = true
                     // fractionCompleted is unit-agnostic; scale to our byte total.
                     let fraction = transfer.progress.fractionCompleted
                     let completedBytes = Int64(fraction * Double(progress.totalBytes))
+
+                    // DEBUG: surface what the system actually reports each poll so
+                    // we can tell whether sender-side progress ever advances.
+                    AppLogger.watchConnectivity.info(
+                        "[Transfer] poll #\(pollCount): isTransferring=\(transfer.isTransferring), fraction=\(fraction), completedUnit=\(transfer.progress.completedUnitCount), totalUnit=\(transfer.progress.totalUnitCount)"
+                    )
+                    pollCount += 1
+
                     if completedBytes > progress.bytesTransferred {
                         progress.updateProgress(bytesTransferred: completedBytes)
                     }
@@ -523,6 +543,10 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
     ) {
         Task { @MainActor in
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
+
+            AppLogger.watchConnectivity.info(
+                "[Transfer] didFinish: error=\(error?.localizedDescription ?? "none", privacy: .public), finalFraction=\(fileTransfer.progress.fractionCompleted)"
+            )
 
             if let error = error {
                 // Update transfer status to failed
