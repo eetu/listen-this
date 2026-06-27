@@ -122,7 +122,7 @@ struct WatchPlayerView: View {
                 // background (kIOGPUCommandBufferCallbackErrorBackgroundExecution
                 // NotPermitted), and a dark background is better for burn-in and
                 // battery anyway.
-                Color.black.ignoresSafeArea()
+                Color.black
             } else if let data = audiobook.artworkData,
                 let image = UIImage(data: data)
             {
@@ -131,12 +131,19 @@ struct WatchPlayerView: View {
                     .interpolation(.high)
                     .antialiased(true)
                     .scaledToFill()
-                    .ignoresSafeArea()
                     .blur(radius: 5)
                     .opacity(0.5)
                     .drawingGroup()
+            } else {
+                Color.black
             }
         }
+        // Fill the entire screen (including under the top safe area / title)
+        // and clip overflow. Expanding the whole group avoids scaledToFill
+        // sizing to the safe area and leaving a black sliver at the top.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .ignoresSafeArea()
     }
 
     // MARK: - Bottom Toolbar
