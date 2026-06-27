@@ -26,6 +26,10 @@ struct WatchLibraryView: View {
     @State private var cloudKitDownloadAudiobookId: UUID?
     @State private var bluetoothDownloadAudiobookId: UUID?
 
+    // Removal confirmation is owned here (not on the row) so presenting the
+    // alert doesn't tear down the swiped row before it can show.
+    @State private var removeDownloadAudiobookId: UUID?
+
     // Initial sync state
     @State private var isInitialSyncComplete = false
 
@@ -50,6 +54,7 @@ struct WatchLibraryView: View {
                     } label: {
                         Image(systemName: "gear")
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .navigationDestination(isPresented: $showingPlayer) {
@@ -194,6 +199,9 @@ struct WatchLibraryView: View {
                     onShowDownloadOptions: { audiobook in
                         downloadOptionsAudiobookId = audiobook.id
                     },
+                    onRequestRemove: {
+                        removeDownloadAudiobookId = audiobook.id
+                    },
                     modelContext: modelContext
                 )
                 .id(audiobook.id)  // Explicit ID to maintain row identity
@@ -249,6 +257,26 @@ struct WatchLibraryView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Remove Download",
+            isPresented: .init(
+                get: { removeDownloadAudiobookId != nil },
+                set: { if !$0 { removeDownloadAudiobookId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let id = removeDownloadAudiobookId,
+                    let audiobook = audiobooks.first(where: { $0.id == id })
+                {
+                    removeDownload(for: audiobook)
+                }
+                removeDownloadAudiobookId = nil
+            }
+            Button("Cancel", role: .cancel) { removeDownloadAudiobookId = nil }
+        } message: {
+            Text("This will remove the downloaded file from your Watch.")
+        }
     }
 
     // MARK: - Actions
@@ -272,6 +300,7 @@ struct AudiobookRowWithActions: View {
     let audiobook: Audiobook
     let onTap: () -> Void
     let onShowDownloadOptions: (Audiobook) -> Void
+    let onRequestRemove: () -> Void
     let modelContext: ModelContext
 
     @Environment(WatchConnectivityManager.self) private var connectivity
@@ -283,17 +312,27 @@ struct AudiobookRowWithActions: View {
         audiobook: Audiobook,
         onTap: @escaping () -> Void,
         onShowDownloadOptions: @escaping (Audiobook) -> Void,
+        onRequestRemove: @escaping () -> Void,
         modelContext: ModelContext
     ) {
         self.audiobook = audiobook
         self.onTap = onTap
         self.onShowDownloadOptions = onShowDownloadOptions
+        self.onRequestRemove = onRequestRemove
         self.modelContext = modelContext
         self.audiobookId = audiobook.id
     }
 
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
+    }
+
+    /// Whether the book is downloaded locally. Reading `cacheEntry` (a SwiftData
+    /// relationship) registers an observation dependency so the row and its
+    /// swipe buttons refresh when the download is removed; playabilityState
+    /// alone reads the filesystem and isn't tracked, leaving stale button state.
+    var isCached: Bool {
+        audiobook.cacheEntry != nil && audiobook.playabilityState == .cached
     }
 
     var body: some View {
@@ -308,64 +347,65 @@ struct AudiobookRowWithActions: View {
                     onShowDownloadOptions(audiobook)
                 }
             }
-            // Leading edge (swipe right) - positive actions (Download)
-            // Matches iOS pattern where Transfer is on leading edge
+            // Leading edge (swipe right) - positive actions (Download).
+            // Keep the button always present and use dynamic state only to
+            // disable it: changing which swipe buttons exist between updates is
+            // what triggers the List collection-view inconsistency crash.
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                // Only show download if not cached and no active transfer
-                if !hasActiveTransfer && audiobook.playabilityState != .cached {
-                    Button {
-                        onShowDownloadOptions(audiobook)
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .tint(.blue)
+                Button {
+                    onShowDownloadOptions(audiobook)
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle")
                 }
+                .tint(.blue)
+                .disabled(hasActiveTransfer || isCached)
             }
-            // Trailing edge (swipe left) - destructive/cancel actions
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                // Active transfer - show cancel
-                if hasActiveTransfer {
-                    Button(role: .destructive) {
+            // Trailing edge (swipe left) - cancel or remove.
+            // IMPORTANT: do NOT use role: .destructive here. A destructive swipe
+            // action makes the List animate the row's removal when triggered,
+            // but neither action deletes the library row (Remove only clears the
+            // local download), so the data source still returns the same count
+            // and UIKit throws an "invalid number of items" inconsistency. The
+            // red tint conveys the destructive intent without that animation.
+            // allowsFullSwipe is false for the same reason, and removal is
+            // confirmed by the parent to avoid tearing down this row mid-present.
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    if hasActiveTransfer {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
-                    } label: {
-                        Label("Cancel", systemImage: "xmark.circle")
+                    } else if isCached {
+                        onRequestRemove()
                     }
-                    .tint(.orange)
+                } label: {
+                    Label(
+                        hasActiveTransfer ? "Cancel" : "Remove",
+                        systemImage: hasActiveTransfer ? "xmark.circle" : "applewatch.slash"
+                    )
                 }
-                // Cached - show remove from watch
-                else if audiobook.playabilityState == .cached {
-                    Button(role: .destructive) {
-                        removeDownload(for: audiobook)
-                    } label: {
-                        Label("Remove", systemImage: "applewatch.slash")
-                    }
-                    .tint(.red)
-                }
+                .tint(hasActiveTransfer ? .orange : .red)
+                .disabled(!hasActiveTransfer && !isCached)
             }
             .onAppear {
-                // Clean up stale cache entries when view appears
-                if !audiobook.isFileCached && audiobook.cacheEntry != nil {
-                    cleanupStaleCacheEntry()
-                }
+                reconcileCacheState()
             }
+    }
+
+    /// Reconcile the cache entry with the file on disk when the row appears.
+    /// Removes stale entries (no file) and adopts orphaned files (file but no
+    /// entry, e.g. downloaded by an older build) so the row reflects reality.
+    private func reconcileCacheState() {
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        if !audiobook.isFileCached && audiobook.cacheEntry != nil {
+            cacheManager.cleanupStaleCacheEntry(for: audiobook)
+        } else if audiobook.isFileCached && audiobook.cacheEntry == nil {
+            cacheManager.adoptOrphanedCacheFileIfNeeded(for: audiobook)
+        }
     }
 
     /// Clean up CacheEntry if file doesn't exist
     private func cleanupStaleCacheEntry() {
         let cacheManager = AudiobookCacheManager(modelContext: modelContext)
         cacheManager.cleanupStaleCacheEntry(for: audiobook)
-    }
-
-    private func removeDownload(for audiobook: Audiobook) {
-        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-
-        do {
-            try cacheManager.removeCache(for: audiobook)
-            // Update cached audiobook list sent to iPhone
-            connectivity.sendCachedAudiobookList()
-        } catch {
-            AppLogger.cache.error("[WatchLibraryView] Failed to remove cache: \(error)")
-        }
     }
 }
 
@@ -502,7 +542,7 @@ struct DownloadOptionsSheet: View {
                 // Help text
                 if cloudKitAvailability != .fullyUploaded {
                     Text("Fast Download requires uploading from iPhone first")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
@@ -572,7 +612,8 @@ struct DownloadOptionButton: View {
 
                         if isRecommended && isAvailable {
                             Text("Best")
-                                .font(.system(size: 8, weight: .semibold))
+                                .font(.caption2)
+                                .fontWeight(.semibold)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
@@ -582,7 +623,7 @@ struct DownloadOptionButton: View {
                     }
 
                     Text(subtitle)
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
 

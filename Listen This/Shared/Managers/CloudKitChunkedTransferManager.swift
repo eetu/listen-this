@@ -142,6 +142,9 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             bytesTransferred: min(bytesAlreadyTransferred, fileSize),
             isUploading: true
         )
+        // Ensure the progress entry is never orphaned: clear it on any exit
+        // (success or thrown error) so the UI doesn't show a frozen ring.
+        defer { activeUploads.removeValue(forKey: audiobookId) }
 
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
@@ -166,7 +169,6 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         try await markManifestComplete(manifest)
-        activeUploads.removeValue(forKey: audiobookId)
     }
 
     func cancelTransfer(audiobookId: UUID) {
@@ -193,6 +195,17 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             withIntermediateDirectories: true
         )
 
+        // Fail early if there isn't room for the whole file rather than filling
+        // the (limited) Watch disk and dying partway through. Uses
+        // attributesOfFileSystem since volumeAvailableCapacity* is iOS-only.
+        let containingDir = outputURL.deletingLastPathComponent()
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: containingDir.path),
+            let freeSize = (attrs[.systemFreeSize] as? NSNumber)?.int64Value,
+            freeSize < manifest.fileSize
+        {
+            throw ChunkTransferError.insufficientStorage
+        }
+
         FileManager.default.createFile(atPath: path, contents: nil)
         let handle = try FileHandle(forWritingTo: outputURL)
         defer { try? handle.close() }
@@ -204,6 +217,17 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             completedChunks: 0,
             isUploading: false
         )
+        // Ensure the progress entry is never orphaned on a thrown error.
+        defer { activeDownloads.removeValue(forKey: audiobookId) }
+
+        // Track success so a thrown error doesn't leave a corrupt partial file.
+        var completedSuccessfully = false
+        defer {
+            if !completedSuccessfully {
+                try? handle.close()
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
 
         var written: Int64 = 0
 
@@ -226,12 +250,22 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             }
         }
 
-        persistCacheEntry()
-        activeDownloads.removeValue(forKey: audiobookId)
+        // All chunks written — the file is complete, so don't let the cleanup
+        // defer delete it.
+        completedSuccessfully = true
 
-        // Clean up chunks and manifest from iCloud after successful download
-        // This frees up iCloud storage since the file is now on the Watch
+        persistCacheEntry(for: audiobook, at: outputURL)
+
+        // Clean up chunks and manifest from iCloud after successful download to
+        // free iCloud storage - but only once the local file is verified, so an
+        // interrupted or short write can't delete the only cloud copy and lose
+        // the audiobook entirely.
+        let expectedSize = manifest.fileSize
         Task {
+            guard self.verifyDownloadedFile(at: outputURL, expectedSize: expectedSize) else {
+                logger.error("Skipping iCloud cleanup: downloaded file failed verification")
+                return
+            }
             do {
                 try await deleteAudiobookFromCloud(audiobookId: audiobook.id)
             } catch {
@@ -241,6 +275,17 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         return outputURL
+    }
+
+    /// Verify a downloaded file exists and matches the manifest's size before we
+    /// reclaim its iCloud copy.
+    private func verifyDownloadedFile(at url: URL, expectedSize: Int64) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let size = (attrs[.size] as? NSNumber)?.int64Value
+        else {
+            return false
+        }
+        return size == expectedSize
     }
 
     func deleteAudiobookFromCloud(_ audiobook: Audiobook) async throws {
@@ -617,7 +662,21 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         return data
     }
 
-    private func persistCacheEntry() {
+    /// Record a CacheEntry for the downloaded file so the book reads as cached
+    /// (cacheEntry != nil) consistently with the direct-transfer path. Without
+    /// this, a CloudKit/WiFi-downloaded book had its file on disk but no
+    /// cacheEntry, so the library couldn't tell it was already downloaded.
+    private func persistCacheEntry(for audiobook: Audiobook, at url: URL) {
+        if audiobook.cacheEntry == nil {
+            let entry = CacheEntry()
+            entry.audiobook = audiobook
+            audiobook.cacheEntry = entry
+            modelContext.insert(entry)
+        }
+        audiobook.cacheEntry?.filePath = url.path
+        audiobook.cacheEntry?.fileSize =
+            (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        audiobook.cacheEntry?.lastAccessedDate = Date()
         try? modelContext.save()
     }
 
@@ -708,6 +767,10 @@ struct ChunkTransferProgress: Equatable {
     // Speed tracking
     var startTime: Date = Date()
     var lastUpdateTime: Date = Date()
+    /// Exponential moving average of recent throughput so the displayed speed
+    /// reflects current conditions and recovers after a stall, rather than being
+    /// dragged down forever by a lifetime average.
+    var smoothedSpeedBytesPerSecond: Double = 0
 
     var progress: Double {
         guard totalChunks > 0 else { return 0 }
@@ -731,15 +794,19 @@ struct ChunkTransferProgress: Equatable {
     }
 
     var statusText: String {
+        // Clamp so we never display "chunk N+1 of N" on the final update.
+        let displayChunk = min(completedChunks + 1, totalChunks)
         if isUploading {
-            return "Uploading chunk \(completedChunks + 1) of \(totalChunks)"
+            return "Uploading chunk \(displayChunk) of \(totalChunks)"
         } else {
-            return "Downloading chunk \(completedChunks + 1) of \(totalChunks)"
+            return "Downloading chunk \(displayChunk) of \(totalChunks)"
         }
     }
-    
-    /// Current transfer speed in bytes per second
+
+    /// Current transfer speed in bytes per second, smoothed over recent activity.
+    /// Falls back to the lifetime average only before the first windowed sample.
     var currentSpeedBytesPerSecond: Double {
+        if smoothedSpeedBytesPerSecond > 0 { return smoothedSpeedBytesPerSecond }
         let elapsed = lastUpdateTime.timeIntervalSince(startTime)
         guard elapsed > 0 else { return 0 }
         return Double(bytesTransferred) / elapsed
@@ -781,11 +848,22 @@ struct ChunkTransferProgress: Equatable {
         }
     }
     
-    /// Update progress and refresh timing
+    /// Update progress and refresh timing. Computes an instantaneous rate from
+    /// the delta since the last update and folds it into a moving average.
     mutating func updateProgress(completedChunks: Int, bytesTransferred: Int64) {
+        let now = Date()
+        let dt = now.timeIntervalSince(lastUpdateTime)
+        let deltaBytes = bytesTransferred - self.bytesTransferred
+        if dt > 0, deltaBytes > 0 {
+            let instantaneous = Double(deltaBytes) / dt
+            let alpha = 0.3
+            smoothedSpeedBytesPerSecond = smoothedSpeedBytesPerSecond > 0
+                ? alpha * instantaneous + (1 - alpha) * smoothedSpeedBytesPerSecond
+                : instantaneous
+        }
         self.completedChunks = completedChunks
         self.bytesTransferred = bytesTransferred
-        self.lastUpdateTime = Date()
+        self.lastUpdateTime = now
     }
 }
 
@@ -798,6 +876,7 @@ enum ChunkTransferError: LocalizedError {
     case incompleteUpload
     case networkError
     case quotaExceeded
+    case insufficientStorage
     case cloudKitError(String)
     static let alreadyUploaded = ChunkTransferError.incompleteUpload
 
@@ -819,6 +898,8 @@ enum ChunkTransferError: LocalizedError {
             return "Network error during transfer"
         case .quotaExceeded:
             return "iCloud storage is full. Free up space or use Direct Transfer instead."
+        case .insufficientStorage:
+            return "Not enough free space on this device to download the audiobook. Free up space and try again."
         case .cloudKitError(let message):
             return message
         }

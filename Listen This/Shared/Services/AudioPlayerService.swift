@@ -75,6 +75,11 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     private var rateObserver: NSKeyValueObservation?
     private(set) var audiobook: Audiobook?
 
+    /// Throttles the persistent (CloudKit-synced) progress save during
+    /// uninterrupted playback. Pause/seek/rate/background still save immediately.
+    private var lastPlaybackSaveDate: Date?
+    private let playbackSaveInterval: TimeInterval = 30
+
     /// Tracks the timestamp of the last restored/saved playback state
     /// Used to prevent older synced data from overwriting newer local progress
     private var lastKnownPlayedTimestamp: Date?
@@ -649,9 +654,23 @@ final class AudioPlayerService: NSObject, AudioPlayer {
                 self.currentPosition = time.seconds
                 self.updateCurrentChapter()
 
-                if self.isPlaying && Int(time.seconds) % 5 == 0 {
-                    self.updateNowPlayingInfo()
-                    self.savePlaybackState()
+                if self.isPlaying {
+                    // Now Playing info is in-memory and cheap; refresh it often.
+                    if Int(time.seconds) % 5 == 0 {
+                        self.updateNowPlayingInfo()
+                    }
+                    // Throttle the CloudKit-synced save to cut write churn,
+                    // battery use, and the watchOS CloudKit background-scheduler
+                    // log noise. Pause/seek/rate/background save immediately, so
+                    // this only coarsens crash-recovery granularity mid-play.
+                    let now = Date()
+                    let due = self.lastPlaybackSaveDate.map {
+                        now.timeIntervalSince($0) >= self.playbackSaveInterval
+                    } ?? true
+                    if due {
+                        self.lastPlaybackSaveDate = now
+                        self.savePlaybackState()
+                    }
                 }
             }
         }
@@ -845,10 +864,14 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             }()
 
         // Check if CloudKit synced newer data from another device
-        // If the session's lastPlayed is newer than what we loaded,
-        // and we haven't actually played yet (no local changes), don't overwrite
+        // If the session's lastPlayed is newer than what we loaded, adopt it -
+        // but only when we're NOT actively playing here. Adopting (and seeking)
+        // mid-listen would yank the user to a different position, which feels
+        // like a bug. While playing, this device is authoritative and its
+        // progress wins on save below.
         if let knownTimestamp = lastKnownPlayedTimestamp,
-            session.lastPlayed > knownTimestamp
+            session.lastPlayed > knownTimestamp,
+            !isPlaying
         {
             // Remote has newer data - adopt it instead of overwriting
             logger.info(

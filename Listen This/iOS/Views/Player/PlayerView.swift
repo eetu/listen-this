@@ -331,6 +331,7 @@ private struct AirPlayButton: UIViewRepresentable {
         routePickerView.tintColor = UIColor(Color.primary)
         routePickerView.activeTintColor = UIColor(Color.primary)
         routePickerView.prioritizesVideoDevices = false
+        routePickerView.accessibilityLabel = "AirPlay"
 
         return routePickerView
     }

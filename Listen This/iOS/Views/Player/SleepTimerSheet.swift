@@ -16,6 +16,9 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
     @State private var customMinutes: Int = 15
     @State private var hasInitialized = false
 
+    /// Countdown size that grows with Dynamic Type
+    @ScaledMetric(relativeTo: .largeTitle) private var countdownSize: CGFloat = 72
+
     // Presets to show as quick-select buttons (excluding none and end of chapter)
     private let presets: [SleepTimerDefault] = [.minutes5, .minutes10, .minutes15, .minutes30, .minutes45, .minutes60]
 
@@ -155,7 +158,7 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
                         .fontWeight(.semibold)
                 } else {
                     Text(formattedRemaining)
-                        .font(.system(size: 72, weight: .thin, design: .rounded))
+                        .font(.system(size: countdownSize, weight: .thin, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
                     Text("remaining")

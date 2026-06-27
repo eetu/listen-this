@@ -126,15 +126,27 @@ struct LibraryView: View {
                     let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
                     let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
                     let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
-                    let isAlreadyTransferred = isOnWatch || isUploadedToCloudKit || hasActiveTransfer
-                    
+                    let isOnWatchOrCloud = isOnWatch || isUploadedToCloudKit
+
+                    // One button that morphs by state (keeps swipe membership
+                    // stable): Cancel while transferring, Sent (disabled) once on
+                    // the Watch/CloudKit, otherwise Transfer.
+                    let label = hasActiveTransfer ? "Cancel" : (isOnWatchOrCloud ? "Sent" : "Transfer")
+                    let icon = hasActiveTransfer
+                        ? "xmark.circle"
+                        : (isOnWatchOrCloud ? "checkmark" : "applewatch")
+
                     Button {
-                        transferAudiobookId = bookId
+                        if hasActiveTransfer {
+                            connectivity.cancelTransfer(for: bookId.uuidString)
+                        } else {
+                            transferAudiobookId = bookId
+                        }
                     } label: {
-                        Label(isAlreadyTransferred ? "Sent" : "Transfer", systemImage: isAlreadyTransferred ? "checkmark" : "applewatch")
+                        Label(label, systemImage: icon)
                     }
-                    .tint(isAlreadyTransferred ? .gray : .blue)
-                    .disabled(isAlreadyTransferred)
+                    .tint(hasActiveTransfer ? .orange : (isOnWatchOrCloud ? .gray : .blue))
+                    .disabled(!hasActiveTransfer && isOnWatchOrCloud)
                 }
 
                 // Download for remote books - primary action for streamable content
@@ -666,8 +678,9 @@ struct LibraryView: View {
 // MARK: - Skeleton Row Component
 
 struct SkeletonRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Artwork placeholder
@@ -696,9 +709,13 @@ struct SkeletonRow: View {
         }
         .padding(.vertical, 4)
         .opacity(isAnimating ? 0.5 : 1.0)
-        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+            value: isAnimating
+        )
         .onAppear {
-            isAnimating = true
+            // Skip the pulsing animation entirely when Reduce Motion is on.
+            isAnimating = !reduceMotion
         }
     }
 }
@@ -734,6 +751,9 @@ struct LibraryRow: View {
     }
 
     var body: some View {
+        // Reading activeTransfers here observes it, so the spinner badge appears
+        // while a direct Watch transfer is in flight (not just remote downloads).
+        let isWatchTransferring = connectivity.activeTransfers[audiobookId.uuidString] != nil
         AudiobookRowView(
             title: title,
             author: author,
@@ -742,7 +762,7 @@ struct LibraryRow: View {
             currentPosition: currentPosition,
             playabilityState: playabilityState,
             showProgress: true,
-            isTransferring: downloadingBookIds.contains(audiobookId)
+            isTransferring: downloadingBookIds.contains(audiobookId) || isWatchTransferring
         )
     }
 }

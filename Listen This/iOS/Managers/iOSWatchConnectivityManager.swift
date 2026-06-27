@@ -137,7 +137,7 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         let transfer = session.transferFile(fileURL, metadata: metadata)
         activeFileTransfers.append(transfer)
 
-        // Observe transfer progress
+        // Observe transfer lifecycle (active/done)
         observeTransferProgress(transfer, for: audiobook.id.uuidString)
     }
 
@@ -179,7 +179,11 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
 
     private func observeTransferProgress(_ transfer: WCSessionFileTransfer, for audiobookId: String)
     {
-        // Poll for progress (WCSessionFileTransfer doesn't have KVO for progress)
+        // WatchConnectivity does not expose usable byte-level progress on the
+        // sender: WCSessionFileTransfer.progress stays at completedUnitCount 0
+        // (totalUnitCount 100) for the whole transfer and only didFinish signals
+        // completion. So we don't track a percentage here - we just keep the
+        // entry marked active for the indeterminate UI until the transfer ends.
         Task {
             // Wait for transfer to start
             var waitCount = 0
@@ -197,14 +201,8 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
                 return
             }
 
-            // Monitor transfer progress
+            // Keep the entry alive while transferring; didFinish handles completion.
             while transfer.isTransferring {
-                // Update progress
-                if var progress = activeTransfers[audiobookId] {
-                    progress.isActive = true
-                    activeTransfers[audiobookId] = progress
-                }
-
                 try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
 
                 if activeTransfers[audiobookId] == nil {
@@ -534,8 +532,7 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             } else {
                 // Mark as complete (100%) and show completion state
                 if var progress = activeTransfers[audiobookId] {
-                    progress.bytesTransferred = progress.totalBytes
-                    progress.isActive = false
+                    progress.markCompleted()
                     activeTransfers[audiobookId] = progress
                 }
                 

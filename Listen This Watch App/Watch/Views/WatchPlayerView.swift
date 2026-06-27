@@ -14,6 +14,7 @@ struct WatchPlayerView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @Environment(WatchConnectivityManager.self) private var connectivity
 
     @State private var playerService: AudioPlayerService?
@@ -32,6 +33,15 @@ struct WatchPlayerView: View {
 
     var sortedChapters: [Chapter]? {
         audiobook.chapters?.sorted(by: { $0.index < $1.index })
+    }
+
+    /// Index of the chapter currently being played, for highlighting and
+    /// scroll-to-current in the chapter list.
+    var currentChapterIndex: Int? {
+        guard let chapters = sortedChapters, let time = playerService?.currentPosition else {
+            return nil
+        }
+        return chapters.last(where: { $0.startTime <= time })?.index
     }
 
     // MARK: - Body
@@ -75,6 +85,7 @@ struct WatchPlayerView: View {
                     } label: {
                         Image(systemName: "ellipsis")
                     }
+                    .accessibilityLabel("Options")
                 }
             }
         }
@@ -93,7 +104,10 @@ struct WatchPlayerView: View {
             await loadPlayerIfNeeded()
         }
         .onDisappear {
-            Task { await playerService?.pause() }
+            // Don't pause here: presenting a sheet (chapters, options, sleep
+            // timer, speed) or the wrist going down triggers onDisappear, which
+            // would stop playback and breaks background audio. Playback is
+            // controlled explicitly and via the Now Playing controls instead.
             volumeObserver?.invalidate()
         }
     }
@@ -102,7 +116,14 @@ struct WatchPlayerView: View {
 
     private var backgroundArtworkView: some View {
         Group {
-            if let data = audiobook.artworkData,
+            if isLuminanceReduced {
+                // Always-On Display / background: don't render the Metal-backed
+                // blur + drawingGroup. The system rejects GPU submissions in the
+                // background (kIOGPUCommandBufferCallbackErrorBackgroundExecution
+                // NotPermitted), and a dark background is better for burn-in and
+                // battery anyway.
+                Color.black
+            } else if let data = audiobook.artworkData,
                 let image = UIImage(data: data)
             {
                 Image(uiImage: image)
@@ -110,19 +131,26 @@ struct WatchPlayerView: View {
                     .interpolation(.high)
                     .antialiased(true)
                     .scaledToFill()
-                    .ignoresSafeArea()
                     .blur(radius: 5)
                     .opacity(0.5)
                     .drawingGroup()
+            } else {
+                Color.black
             }
         }
+        // Fill the entire screen (including under the top safe area / title)
+        // and clip overflow. Expanding the whole group avoids scaledToFill
+        // sizing to the safe area and leaving a black sliver at the top.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .ignoresSafeArea()
     }
 
     // MARK: - Bottom Toolbar
 
     private var bottomToolbar: some View {
         HStack {
-            if sortedChapters != nil {
+            if let chapters = sortedChapters, !chapters.isEmpty {
                 Button {
                     showingChapterList = true
                 } label: {
@@ -133,6 +161,7 @@ struct WatchPlayerView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Chapters")
             }
         }
     }
@@ -175,23 +204,44 @@ struct WatchPlayerView: View {
     // MARK: - Chapter List
 
     private var chapterListSheet: some View {
-        List(sortedChapters ?? []) { chapter in
-            Button {
-                Task {
-                    await playerService?.seek(to: chapter.startTime)
-                    showingChapterList = false
+        ScrollViewReader { proxy in
+            List(sortedChapters ?? []) { chapter in
+                let isCurrent = chapter.index == currentChapterIndex
+                Button {
+                    Task {
+                        await playerService?.seek(to: chapter.startTime)
+                        showingChapterList = false
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chapter \(chapter.index + 1)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(chapter.title)
+                        }
+                        Spacer()
+                        if isCurrent {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .foregroundStyle(.tint)
+                        }
+                    }
                 }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Chapter \(chapter.index + 1)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(chapter.title)
+                .listRowBackground(
+                    isCurrent ? Color.accentColor.opacity(0.2) : Color.clear
+                )
+                .id(chapter.index)
+            }
+            .navigationTitle("Chapters")
+            .focusable(true)
+            .onAppear {
+                // Jump to the chapter that's playing so the user isn't dropped
+                // at the top of a 100+ chapter list.
+                if let current = currentChapterIndex {
+                    proxy.scrollTo(current, anchor: .center)
                 }
             }
         }
-        .navigationTitle("Chapters")
-        .focusable(true)
     }
 
     // MARK: - Context Menu
@@ -379,16 +429,10 @@ struct VolumeView: WKInterfaceObjectRepresentable {
     func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
         let view = WKInterfaceVolumeControl(origin: .local)
 
-        // Keep the volume control focused to enable digital crown rotation
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak view] timer in
-            if let view = view {
-                view.focus()
-            } else {
-                timer.invalidate()
-            }
-        }
-
-        // Initial focus
+        // Take focus once so the Digital Crown drives volume on the main screen.
+        // We deliberately do NOT pin focus on a repeating timer: that leaked the
+        // timer for the control's lifetime and permanently hijacked the crown,
+        // so sheets like the chapter list could never use it for scrolling.
         DispatchQueue.main.async {
             view.focus()
         }

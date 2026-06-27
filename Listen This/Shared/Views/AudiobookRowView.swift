@@ -9,6 +9,8 @@ import SwiftUI
 
 /// Shared audiobook row view that adapts to platform
 struct AudiobookRowView: View {
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
     let showProgress: Bool
     let isTransferring: Bool
 
@@ -68,6 +70,22 @@ struct AudiobookRowView: View {
         isTransferring || playabilityState != .cached
     }
 
+    /// Single spoken description so VoiceOver reads the row as one element,
+    /// including transfer/playability state and progress that are otherwise
+    /// only conveyed visually.
+    private var accessibilityDescription: String {
+        var parts = ["\(title), by \(author)"]
+        if isTransferring {
+            parts.append("Transferring")
+        } else if playabilityState != .cached {
+            parts.append(playabilityState.statusText)
+        }
+        if showProgress, duration > 0, currentPosition > 0 {
+            parts.append("\(Int((currentPosition / duration) * 100)) percent played")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Artwork thumbnail with status badge overlay
@@ -79,7 +97,7 @@ struct AudiobookRowView: View {
                                 .font(.caption)
                                 .padding(4)
                             #else
-                                .font(.system(size: 10))
+                                .font(.caption2)
                                 .padding(3)
                             #endif
                             .background(.ultraThinMaterial)
@@ -112,6 +130,8 @@ struct AudiobookRowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
     }
 
     @ViewBuilder
@@ -127,7 +147,10 @@ struct AudiobookRowView: View {
                 .frame(width: artworkSize, height: artworkSize)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 #if os(watchOS)
-                .drawingGroup()
+                // Rasterize via Metal for smoother scrolling, but not under
+                // reduced luminance (Always-On Display / background), where GPU
+                // submissions are rejected and would log Metal errors.
+                .drawingGroupIfActive(isLuminanceReduced: isLuminanceReduced)
                 #endif
         } else {
             RoundedRectangle(cornerRadius: cornerRadius)
@@ -154,6 +177,20 @@ struct AudiobookRowView: View {
                 Image(systemName: playabilityState.iconName)
                     .foregroundStyle(playabilityState.color)
             }
+        }
+    }
+}
+
+private extension View {
+    /// Apply drawingGroup() only when the display is at full luminance. Under
+    /// reduced luminance (Always-On Display / background) the system rejects GPU
+    /// submissions, so the Metal-backed rasterization must be skipped.
+    @ViewBuilder
+    func drawingGroupIfActive(isLuminanceReduced: Bool) -> some View {
+        if isLuminanceReduced {
+            self
+        } else {
+            drawingGroup()
         }
     }
 }

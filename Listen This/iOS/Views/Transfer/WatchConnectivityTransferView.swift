@@ -187,76 +187,72 @@ struct WatchConnectivityTransferView: View {
 
     // MARK: - Transfer Progress
 
+    /// A queued transfer hasn't started moving bytes and the Watch is out of
+    /// range — WatchConnectivity will deliver it once the Watch is reachable.
+    private func isQueued(_ transfer: WatchTransferProgress) -> Bool {
+        transfer.isActive && transfer.bytesTransferred == 0 && !connectivity.isReachable
+    }
+
+    /// Formats elapsed time as m:ss or h:mm:ss for the indeterminate indicator.
+    private func elapsedString(from start: Date, to now: Date) -> String {
+        let total = max(0, Int(now.timeIntervalSince(start)))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     private func transferProgressCard(_ transfer: WatchTransferProgress) -> some View {
         VStack(spacing: 16) {
-            if transfer.isActive {
-                // Active transfer with detailed progress
+            if isQueued(transfer) {
+                queuedTransferView
+                cancelTransferButton
+            } else if transfer.isActive {
+                // Active transfer. WatchConnectivity doesn't report byte-level
+                // progress on the sender, so show an honest indeterminate
+                // indicator (with size + elapsed time) rather than a frozen 0%.
                 VStack(spacing: 16) {
-                    // Progress circle with percentage
-                    ZStack {
-                        Circle()
-                            .stroke(Color.blue.opacity(0.2), lineWidth: 8)
-                            .frame(width: 100, height: 100)
-                        
-                        Circle()
-                            .trim(from: 0, to: transfer.progress)
-                            .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                            .frame(width: 100, height: 100)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.easeInOut(duration: 0.3), value: transfer.progress)
-                        
-                        VStack(spacing: 2) {
-                            Text("\(transfer.progressPercentage)%")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .monospacedDigit()
-                            
-                            if !transfer.speedText.isEmpty {
-                                Text(transfer.speedText)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                    
-                    // Transfer details
+                    ProgressView()
+                        .controlSize(.large)
+                        .padding(.top, 4)
+
                     VStack(spacing: 8) {
                         Text("Transferring to Watch")
                             .font(.headline)
-                        
-                        // Bytes transferred
-                        Text(transfer.progressText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        
-                        // Estimated time remaining
-                        if let timeRemaining = transfer.estimatedTimeRemainingText {
-                            Text(timeRemaining)
+
+                        Text(
+                            ByteCountFormatter.string(
+                                fromByteCount: transfer.totalBytes, countStyle: .file)
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
+                        TimelineView(.periodic(from: transfer.startTime, by: 1)) { context in
+                            Text("Elapsed \(elapsedString(from: transfer.startTime, to: context.date))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .monospacedDigit()
                         }
-                        
-                        Text("Keep your Apple Watch nearby")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 4)
+
+                        Text(
+                            "Progress isn't reported during direct transfer. Keep your Apple Watch nearby — large books can take several minutes."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 4)
                     }
                 }
                 .padding()
+                .frame(maxWidth: .infinity)
                 .background(Color.blue.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                
-                // Cancel button
-                Button(role: .destructive) {
-                    connectivity.cancelTransfer(for: audiobook.id.uuidString)
-                } label: {
-                    Label("Cancel Transfer", systemImage: "xmark.circle.fill")
-                }
-                .font(.subheadline)
-                .buttonStyle(.bordered)
-                .tint(.red)
+
+                cancelTransferButton
             } else {
                 // Transfer complete
                 VStack(spacing: 12) {
@@ -284,12 +280,12 @@ struct WatchConnectivityTransferView: View {
                                 .foregroundStyle(.secondary)
                         }
                         
-                        if !transfer.speedText.isEmpty {
+                        if !transfer.averageSpeedText.isEmpty {
                             Divider()
                                 .frame(height: 30)
-                            
+
                             VStack(spacing: 4) {
-                                Text(transfer.speedText)
+                                Text(transfer.averageSpeedText)
                                     .font(.headline)
                                     .monospacedDigit()
                                 Text("Avg Speed")
@@ -305,6 +301,37 @@ struct WatchConnectivityTransferView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    private var queuedTransferView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "applewatch.radiowaves.left.and.right")
+                .font(.system(size: 44))
+                .foregroundStyle(.orange)
+
+            Text("Waiting for Apple Watch")
+                .font(.headline)
+
+            Text("The transfer is queued and will start automatically when your Watch is in range.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var cancelTransferButton: some View {
+        Button(role: .destructive) {
+            connectivity.cancelTransfer(for: audiobook.id.uuidString)
+        } label: {
+            Label("Cancel Transfer", systemImage: "xmark.circle.fill")
+        }
+        .font(.subheadline)
+        .buttonStyle(.bordered)
+        .tint(.red)
     }
 
     // MARK: - Transfer Action

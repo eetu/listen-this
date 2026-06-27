@@ -179,6 +179,7 @@ struct CloudKitTransferView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let audiobook: Audiobook
 
@@ -664,7 +665,7 @@ struct CloudKitTransferView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 64))
                     .foregroundStyle(.green)
-                    .symbolEffect(.bounce, value: true)
+                    .symbolEffect(.bounce, value: reduceMotion ? false : true)
 
                 VStack(spacing: 8) {
                     Text("Transfer Complete")
