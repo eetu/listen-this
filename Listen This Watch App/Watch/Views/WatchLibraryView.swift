@@ -386,11 +386,20 @@ struct AudiobookRowWithActions: View {
                 .disabled(!hasActiveTransfer && !isCached)
             }
             .onAppear {
-                // Clean up stale cache entries when view appears
-                if !audiobook.isFileCached && audiobook.cacheEntry != nil {
-                    cleanupStaleCacheEntry()
-                }
+                reconcileCacheState()
             }
+    }
+
+    /// Reconcile the cache entry with the file on disk when the row appears.
+    /// Removes stale entries (no file) and adopts orphaned files (file but no
+    /// entry, e.g. downloaded by an older build) so the row reflects reality.
+    private func reconcileCacheState() {
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        if !audiobook.isFileCached && audiobook.cacheEntry != nil {
+            cacheManager.cleanupStaleCacheEntry(for: audiobook)
+        } else if audiobook.isFileCached && audiobook.cacheEntry == nil {
+            cacheManager.adoptOrphanedCacheFileIfNeeded(for: audiobook)
+        }
     }
 
     /// Clean up CacheEntry if file doesn't exist

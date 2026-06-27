@@ -316,6 +316,44 @@ final class AudiobookCacheManager: CacheManager {
         }
     }
 
+    /// Inverse of cleanupStaleCacheEntry: if a valid cache file exists at the
+    /// expected path but there's no CacheEntry (e.g. it was downloaded by an
+    /// older build that didn't record one), adopt the file by creating the
+    /// entry. Heals pre-existing downloads on upgrade so they read as cached.
+    /// Returns true if an entry was created.
+    @discardableResult
+    func adoptOrphanedCacheFileIfNeeded(for audiobook: Audiobook) -> Bool {
+        guard audiobook.cacheEntry == nil,
+            let cachePath = audiobook.expectedCachePath
+        else { return false }
+
+        let fileURL = URL(fileURLWithPath: cachePath)
+        guard
+            let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+            let size = (attrs[.size] as? NSNumber)?.int64Value,
+            size > 0
+        else { return false }
+
+        let entry = CacheEntry()
+        entry.audiobook = audiobook
+        audiobook.cacheEntry = entry
+        entry.filePath = fileURL.path
+        entry.fileSize = size
+        entry.lastAccessedDate = Date()
+        modelContext.insert(entry)
+
+        do {
+            try modelContext.save()
+            logger.info("[AudiobookCacheManager] Adopted orphaned cache file for: \(audiobook.title)")
+            return true
+        } catch {
+            logger.error(
+                "[AudiobookCacheManager] Failed to adopt orphaned cache file: \(error)"
+            )
+            return false
+        }
+    }
+
     /// Get all cached audiobook files
     func getAllCachedFiles() -> [URL] {
         let cacheDir = Self.cacheDirectory
