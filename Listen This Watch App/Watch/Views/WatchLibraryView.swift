@@ -311,39 +311,40 @@ struct AudiobookRowWithActions: View {
                     onShowDownloadOptions(audiobook)
                 }
             }
-            // Leading edge (swipe right) - positive actions (Download)
-            // Matches iOS pattern where Transfer is on leading edge
+            // Leading edge (swipe right) - positive actions (Download).
+            // Keep the button always present and use dynamic state only to
+            // disable it: changing which swipe buttons exist between updates is
+            // what triggers the List collection-view inconsistency crash.
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                // Only show download if not cached and no active transfer
-                if !hasActiveTransfer && audiobook.playabilityState != .cached {
-                    Button {
-                        onShowDownloadOptions(audiobook)
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .tint(.blue)
+                Button {
+                    onShowDownloadOptions(audiobook)
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle")
                 }
+                .tint(.blue)
+                .disabled(hasActiveTransfer || audiobook.playabilityState == .cached)
             }
-            // Trailing edge (swipe left) - destructive/cancel actions
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                // Active transfer - show cancel
-                if hasActiveTransfer {
-                    Button(role: .destructive) {
+            // Trailing edge (swipe left) - cancel or remove. allowsFullSwipe is
+            // false because neither action deletes the library row (Remove only
+            // clears the local download); a destructive full swipe would animate
+            // a row deletion the data source never makes, crashing the List.
+            // A single button (label/action vary) keeps membership stable.
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                let isCached = audiobook.playabilityState == .cached
+                Button(role: .destructive) {
+                    if hasActiveTransfer {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
-                    } label: {
-                        Label("Cancel", systemImage: "xmark.circle")
-                    }
-                    .tint(.orange)
-                }
-                // Cached - show remove from watch
-                else if audiobook.playabilityState == .cached {
-                    Button(role: .destructive) {
+                    } else if isCached {
                         showingRemoveConfirmation = true
-                    } label: {
-                        Label("Remove", systemImage: "applewatch.slash")
                     }
-                    .tint(.red)
+                } label: {
+                    Label(
+                        hasActiveTransfer ? "Cancel" : "Remove",
+                        systemImage: hasActiveTransfer ? "xmark.circle" : "applewatch.slash"
+                    )
                 }
+                .tint(hasActiveTransfer ? .orange : .red)
+                .disabled(!hasActiveTransfer && !isCached)
             }
             .alert("Remove Download", isPresented: $showingRemoveConfirmation) {
                 Button("Cancel", role: .cancel) {}
