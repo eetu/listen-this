@@ -277,6 +277,8 @@ struct AudiobookRowWithActions: View {
 
     @Environment(WatchConnectivityManager.self) private var connectivity
 
+    @State private var showingRemoveConfirmation = false
+
     // Capture audiobook ID at initialization
     private let audiobookId: UUID
 
@@ -336,12 +338,18 @@ struct AudiobookRowWithActions: View {
                 // Cached - show remove from watch
                 else if audiobook.playabilityState == .cached {
                     Button(role: .destructive) {
-                        removeDownload(for: audiobook)
+                        showingRemoveConfirmation = true
                     } label: {
                         Label("Remove", systemImage: "applewatch.slash")
                     }
                     .tint(.red)
                 }
+            }
+            .alert("Remove Download", isPresented: $showingRemoveConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Remove", role: .destructive) { removeDownload(for: audiobook) }
+            } message: {
+                Text("This will remove the downloaded file from your Watch.")
             }
             .onAppear {
                 // Clean up stale cache entries when view appears

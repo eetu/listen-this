@@ -230,6 +230,7 @@ struct AudiobookshelfRow: View {
 
     @State private var isAdded = false
     @State private var artworkImage: UIImage?
+    @State private var showingRemoveConfirmation = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -291,13 +292,28 @@ struct AudiobookshelfRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             if isAdded {
-                // Remove from library
-                removeFromLibrary()
+                // Confirm before removing — an accidental row tap should not
+                // silently delete a book from the library (and via CloudKit,
+                // from every device).
+                showingRemoveConfirmation = true
             } else {
                 // Add to library
                 onAdd()
                 isAdded = true
             }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(isAdded ? "Double-tap to remove from library" : "Double-tap to add to library")
+        .confirmationDialog(
+            "Remove from Library?",
+            isPresented: $showingRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { removeFromLibrary() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\"\(metadata.title)\" will be removed from your library on all your devices.")
         }
     }
 
