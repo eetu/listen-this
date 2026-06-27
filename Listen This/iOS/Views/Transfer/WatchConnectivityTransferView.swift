@@ -187,9 +187,18 @@ struct WatchConnectivityTransferView: View {
 
     // MARK: - Transfer Progress
 
+    /// A queued transfer hasn't started moving bytes and the Watch is out of
+    /// range — WatchConnectivity will deliver it once the Watch is reachable.
+    private func isQueued(_ transfer: WatchTransferProgress) -> Bool {
+        transfer.isActive && transfer.bytesTransferred == 0 && !connectivity.isReachable
+    }
+
     private func transferProgressCard(_ transfer: WatchTransferProgress) -> some View {
         VStack(spacing: 16) {
-            if transfer.isActive {
+            if isQueued(transfer) {
+                queuedTransferView
+                cancelTransferButton
+            } else if transfer.isActive {
                 // Active transfer with detailed progress
                 VStack(spacing: 16) {
                     // Progress circle with percentage
@@ -247,16 +256,8 @@ struct WatchConnectivityTransferView: View {
                 .padding()
                 .background(Color.blue.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                
-                // Cancel button
-                Button(role: .destructive) {
-                    connectivity.cancelTransfer(for: audiobook.id.uuidString)
-                } label: {
-                    Label("Cancel Transfer", systemImage: "xmark.circle.fill")
-                }
-                .font(.subheadline)
-                .buttonStyle(.bordered)
-                .tint(.red)
+
+                cancelTransferButton
             } else {
                 // Transfer complete
                 VStack(spacing: 12) {
@@ -305,6 +306,37 @@ struct WatchConnectivityTransferView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    private var queuedTransferView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "applewatch.radiowaves.left.and.right")
+                .font(.system(size: 44))
+                .foregroundStyle(.orange)
+
+            Text("Waiting for Apple Watch")
+                .font(.headline)
+
+            Text("The transfer is queued and will start automatically when your Watch is in range.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var cancelTransferButton: some View {
+        Button(role: .destructive) {
+            connectivity.cancelTransfer(for: audiobook.id.uuidString)
+        } label: {
+            Label("Cancel Transfer", systemImage: "xmark.circle.fill")
+        }
+        .font(.subheadline)
+        .buttonStyle(.bordered)
+        .tint(.red)
     }
 
     // MARK: - Transfer Action

@@ -13,7 +13,6 @@ import SwiftUI
 struct AudiobookshelfWatchSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var settings: AudiobookshelfSettings?
-    @State private var isRefreshing = false
 
     var body: some View {
         Group {
@@ -54,22 +53,13 @@ struct AudiobookshelfWatchSettingsView: View {
 
                         Section {
                             Button {
-                                isRefreshing = true
-                                Task {
-                                    try? await Task.sleep(for: .seconds(0.5))
-                                    loadSettings()
-                                    isRefreshing = false
-                                }
+                                // Re-read the locally synced store. CloudKit syncs
+                                // in the background; there is no manual pull to
+                                // await, so we don't fake a delay.
+                                loadSettings()
                             } label: {
-                                HStack {
-                                    Text("Refresh from iCloud")
-                                    Spacer()
-                                    if isRefreshing {
-                                        ProgressView()
-                                    }
-                                }
+                                Text("Reload Synced Settings")
                             }
-                            .disabled(isRefreshing)
                         }
                     }
                 } else {
@@ -86,22 +76,10 @@ struct AudiobookshelfWatchSettingsView: View {
                         List {
                             Section {
                                 Button {
-                                    isRefreshing = true
-                                    Task {
-                                        try? await Task.sleep(for: .seconds(0.5))
-                                        loadSettings()
-                                        isRefreshing = false
-                                    }
+                                    loadSettings()
                                 } label: {
-                                    HStack {
-                                        Text("Check for Sync")
-                                        Spacer()
-                                        if isRefreshing {
-                                            ProgressView()
-                                        }
-                                    }
+                                    Text("Reload Synced Settings")
                                 }
-                                .disabled(isRefreshing)
                             }
                         }
                     }
@@ -112,7 +90,7 @@ struct AudiobookshelfWatchSettingsView: View {
             }
         }
         .navigationTitle("Audiobookshelf")
-        .onAppear {
+        .task {
             loadSettings()
         }
     }
