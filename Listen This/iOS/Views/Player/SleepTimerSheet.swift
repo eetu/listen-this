@@ -23,22 +23,25 @@ struct SleepTimerSheet<Player: AudioPlayer & Observable>: View {
     private let presets: [SleepTimerDefault] = [.minutes5, .minutes10, .minutes15, .minutes30, .minutes45, .minutes60]
 
     var body: some View {
-        VStack(spacing: 24) {
-            if player.isSleepTimerActive {
-                activeTimerView
-            } else {
-                timerSelectionView
-            }
+        // ScrollView so the action buttons stay reachable within the fixed
+        // presentation detent when content grows under large Dynamic Type.
+        ScrollView {
+            VStack(spacing: 24) {
+                if player.isSleepTimerActive {
+                    activeTimerView
+                } else {
+                    timerSelectionView
+                }
 
-            if !player.isSleepTimerActive {
-                actionButtons
-            } else {
-                cancelButton
+                if !player.isSleepTimerActive {
+                    actionButtons
+                } else {
+                    cancelButton
+                }
             }
-
-            Spacer()
+            .padding(.top)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.top)
         .onAppear {
             guard !hasInitialized else { return }
             hasInitialized = true

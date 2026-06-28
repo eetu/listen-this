@@ -12,6 +12,14 @@ struct WatchProgressBar: View {
     var foregroundColor: Color = .white
     var backgroundColor: Color = Color.white.opacity(0.3)
 
+    /// Clamp to 0...1 and guard against a zero/!finite total so the fill never
+    /// overflows the track (e.g. when playback drifts past a chapter end before
+    /// the chapter index updates) or computes a NaN width.
+    private var fraction: Double {
+        guard total > 0 else { return 0 }
+        return min(max(value / total, 0), 1)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
@@ -23,7 +31,7 @@ struct WatchProgressBar: View {
                 // Foreground progress
                 Capsule()
                     .fill(foregroundColor)
-                    .frame(width: geometry.size.width * (value / total), height: height)
+                    .frame(width: geometry.size.width * fraction, height: height)
             }
         }
         .frame(height: height)

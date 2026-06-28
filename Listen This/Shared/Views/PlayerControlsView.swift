@@ -29,10 +29,15 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     /// Control icon sizes that scale with Dynamic Type
     @ScaledMetric(relativeTo: .title) private var skipIconSize: CGFloat = 30
+    /// Tappable frame around the play/pause glyph, scales with the glyph
+    @ScaledMetric(relativeTo: .largeTitle) private var playButtonSize: CGFloat = 60
     #if os(iOS)
         @ScaledMetric(relativeTo: .largeTitle) private var playIconSize: CGFloat = 60
     #elseif os(watchOS)
         @ScaledMetric(relativeTo: .largeTitle) private var playIconSize: CGFloat = 50
+        /// Volume ring diameter; scales with the play button so the ring and
+        /// glyph grow together instead of the ring being a fixed anchor.
+        @ScaledMetric(relativeTo: .largeTitle) private var volumeRingSize: CGFloat = 80
     #endif
 
     // MARK: - Computed
@@ -52,11 +57,16 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     private var chapterProgress: (elapsed: Double, duration: Double) {
         guard let chapter = currentChapter else {
-            return (player.currentPosition, player.duration)
+            let duration = max(player.duration, 0.01)
+            return (min(max(player.currentPosition, 0), duration), duration)
         }
 
-        let elapsed = max(0, player.currentPosition - chapter.startTime)
-        return (elapsed, max(chapter.duration, 0.01))
+        let duration = max(chapter.duration, 0.01)
+        // Cap elapsed at the chapter duration: at a chapter boundary position can
+        // briefly exceed it before currentChapterIndex updates, which otherwise
+        // overflows the progress bar / pushes the iOS Slider value out of range.
+        let elapsed = min(max(0, player.currentPosition - chapter.startTime), duration)
+        return (elapsed, duration)
     }
 
     // MARK: - Body
@@ -219,17 +229,17 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
             #if os(watchOS)
                 ZStack {
                     // Volume ring
-                    VolumeRing(volume: volume)
+                    VolumeRing(volume: volume, diameter: volumeRingSize)
 
                     // Play/Pause icon
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(playFont)
-                        .frame(width: 60, height: 60)
+                        .frame(width: playButtonSize, height: playButtonSize)
                 }
             #else
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(playFont)
-                    .frame(width: 60, height: 60)
+                    .frame(width: playButtonSize, height: playButtonSize)
             #endif
         }
         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
@@ -270,6 +280,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 #if os(watchOS)
     struct VolumeRing: View {
         let volume: Float
+        var diameter: CGFloat = 80
         @State private var showRing = false
         @State private var hideTask: Task<Void, Never>?
 
@@ -278,7 +289,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                 // Background ring
                 Circle()
                     .stroke(Color.white.opacity(0.2), lineWidth: 3)
-                    .frame(width: 80, height: 80)
+                    .frame(width: diameter, height: diameter)
 
                 // Volume level ring
                 Circle()
@@ -287,7 +298,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
                         Color.white,
                         style: StrokeStyle(lineWidth: 3, lineCap: .round)
                     )
-                    .frame(width: 80, height: 80)
+                    .frame(width: diameter, height: diameter)
                     .rotationEffect(.degrees(-90))
                     .animation(.easeInOut(duration: 0.3), value: volume)
             }

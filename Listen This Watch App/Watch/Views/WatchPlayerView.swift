@@ -47,34 +47,35 @@ struct WatchPlayerView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            backgroundArtworkView
-
-            VStack(spacing: 0) {
-                if audiobook.playabilityState.isPlayable {
-                    if isLoadingPlayer {
-                        loadingSpinner
-                            .padding(.bottom, 12)
-                    } else if let playerService {
-                        PlayerControlsView(
-                            player: playerService,
-                            audiobook: audiobook,
-                            showsChapterSkipButtons: false,
-                            volume: $currentVolume
-                        )
-                    }
-                } else {
-                    downloadPrompt
+        VStack(spacing: 0) {
+            if audiobook.playabilityState.isPlayable {
+                if isLoadingPlayer {
+                    loadingSpinner
                         .padding(.bottom, 12)
+                } else if let playerService {
+                    PlayerControlsView(
+                        player: playerService,
+                        audiobook: audiobook,
+                        showsChapterSkipButtons: false,
+                        volume: $currentVolume
+                    )
                 }
-
-                Spacer()
-
-                bottomToolbar
-                    .padding(.bottom, 4)
+            } else {
+                downloadPrompt
+                    .padding(.bottom, 12)
             }
-            .padding(.horizontal, 8)
+
+            Spacer()
+
+            bottomToolbar
+                .padding(.bottom, 4)
         }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Artwork as a background so it never affects the foreground's size or
+        // centering — otherwise the scaledToFill image (active) vs plain black
+        // (Always-On) shifted the controls horizontally between states.
+        .background { backgroundArtworkView }
         .background(VolumeView().opacity(0))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
