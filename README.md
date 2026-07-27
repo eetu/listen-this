@@ -19,6 +19,8 @@ Listen without your iPhone. Download audiobooks to your Watch for offline playba
 
 Connect to your self-hosted [Audiobookshelf](https://www.audiobookshelf.org/) server to browse and download your library.
 
+The Watch can download from the server directly over WiFi — no iPhone in the loop — as long as it's on a network that can reach the server. Servers on your local network can be plain `http://`; anything reachable from the wider internet needs `https://`.
+
 ## Sync
 
 Your library and playback position sync automatically across all your devices via iCloud. Start listening on your iPhone, continue on your iPad, finish on your Watch.

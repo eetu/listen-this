@@ -13,6 +13,10 @@ struct AudiobookRowView: View {
 
     let showProgress: Bool
     let isTransferring: Bool
+    /// Completion fraction of an in-flight transfer, when it's known. Drives a
+    /// determinate ring over the artwork instead of an indeterminate spinner,
+    /// so a background download is legible at a glance from the library.
+    let transferProgress: Double?
 
     // Pre-captured values to prevent detached object crashes
     private let title: String
@@ -39,7 +43,8 @@ struct AudiobookRowView: View {
         currentPosition: Double,
         playabilityState: AudiobookPlayabilityState,
         showProgress: Bool = true,
-        isTransferring: Bool = false
+        isTransferring: Bool = false,
+        transferProgress: Double? = nil
     ) {
         self.title = title
         self.author = author
@@ -49,13 +54,20 @@ struct AudiobookRowView: View {
         self.playabilityState = playabilityState
         self.showProgress = showProgress
         self.isTransferring = isTransferring
+        self.transferProgress = transferProgress
     }
-    
+
     /// Initialize directly from audiobook (captures values at init time)
     /// Used by watchOS where the detached object issue is less common
-    init(audiobook: Audiobook, showProgress: Bool = true, isTransferring: Bool = false) {
+    init(
+        audiobook: Audiobook,
+        showProgress: Bool = true,
+        isTransferring: Bool = false,
+        transferProgress: Double? = nil
+    ) {
         self.showProgress = showProgress
         self.isTransferring = isTransferring
+        self.transferProgress = transferProgress
         
         // Capture all values at init to resolve faults and avoid accessing detached SwiftData objects
         self.title = audiobook.title
@@ -66,16 +78,29 @@ struct AudiobookRowView: View {
         self.playabilityState = audiobook.playabilityState
     }
 
+    /// The determinate ring already conveys "transferring", so the corner badge
+    /// would only duplicate it.
     private var showStatusIcon: Bool {
-        isTransferring || playabilityState != .cached
+        guard transferProgress == nil else { return false }
+        return isTransferring || playabilityState != .cached
     }
+
+    #if os(iOS)
+        private let ringWidth: CGFloat = 4
+        private let ringInset: CGFloat = 6
+    #else
+        private let ringWidth: CGFloat = 4
+        private let ringInset: CGFloat = 4
+    #endif
 
     /// Single spoken description so VoiceOver reads the row as one element,
     /// including transfer/playability state and progress that are otherwise
     /// only conveyed visually.
     private var accessibilityDescription: String {
         var parts = ["\(title), by \(author)"]
-        if isTransferring {
+        if let transferProgress {
+            parts.append("Downloading, \(Int(transferProgress * 100)) percent")
+        } else if isTransferring {
             parts.append("Transferring")
         } else if playabilityState != .cached {
             parts.append(playabilityState.statusText)
@@ -88,8 +113,13 @@ struct AudiobookRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Artwork thumbnail with status badge overlay
+            // Artwork thumbnail with transfer ring / status badge overlay
             artwork
+                .overlay {
+                    if let transferProgress {
+                        transferRing(transferProgress)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     if showStatusIcon {
                         statusIcon
@@ -161,6 +191,33 @@ struct AudiobookRowView: View {
                         .foregroundStyle(.secondary)
                 }
         }
+    }
+
+    /// Determinate ring drawn over a dimmed thumbnail, so an in-flight download
+    /// reads at a glance from the library list without opening its sheet.
+    private func transferRing(_ fraction: Double) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(.black.opacity(0.5))
+
+            Circle()
+                .stroke(Color.white.opacity(0.3), lineWidth: ringWidth)
+                .padding(ringInset)
+
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(
+                    // Explicitly blue, matching TransferProgressView. The
+                    // accent colour renders invisibly against the dimmed
+                    // artwork on watchOS.
+                    Color.blue,
+                    style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .padding(ringInset)
+                .animation(.easeInOut(duration: 0.3), value: fraction)
+        }
+        .frame(width: artworkSize, height: artworkSize)
     }
 
     @ViewBuilder

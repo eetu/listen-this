@@ -334,6 +334,21 @@ final class AudiobookCacheManager: CacheManager {
             size > 0
         else { return false }
 
+        // Only adopt a file that is actually the whole audiobook. A partial file
+        // left behind by an interrupted transfer would otherwise be promoted to
+        // "Downloaded", and playback would stop dead where the bytes end.
+        // The 1% tolerance absorbs harmless drift between the server's reported
+        // size and the bytes on disk without accepting a real truncation.
+        if audiobook.fileSize > 0 {
+            let minimumAcceptable = Int64(Double(audiobook.fileSize) * 0.99)
+            guard size >= minimumAcceptable else {
+                logger.warning(
+                    "[AudiobookCacheManager] Not adopting partial file for '\(audiobook.title)': \(size) of \(audiobook.fileSize) bytes"
+                )
+                return false
+            }
+        }
+
         let entry = CacheEntry()
         entry.audiobook = audiobook
         audiobook.cacheEntry = entry

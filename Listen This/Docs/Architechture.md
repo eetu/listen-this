@@ -101,6 +101,8 @@ Cross-platform audiobook player for iOS, iPadOS, and watchOS with synchronized p
 - Cellular/WiFi configuration for transfers
 - Sleep timer with presets and end-of-chapter option
 - Audiobookshelf integration (server URL, API key, streaming support)
+- Direct Audiobookshelf download on watchOS via background URLSession
+- App Transport Security exceptions for local-network (private range) servers
 - CloudKit remote change notifications for Watch
 - Settings sync across devices via CloudKit
 - Audio background mode for watchOS streaming
@@ -195,10 +197,20 @@ The app uses three distinct storage layers, each serving a specific purpose:
   - Setting syncs via CloudKit to all devices
   - Dynamic URLSession configuration based on preference
 
+**4. Direct Audiobookshelf Download**
+- Managed by `AudiobookshelfDownloadManager` (shared by iOS and watchOS)
+- Single background `URLSession` transfer straight from the server into the local cache
+- Available on the Watch whenever it can reach the server over WiFi, so an offline
+  copy no longer has to travel iPhone → CloudKit → Watch
+- Guards before starting: server reachability preflight, free space, low battery
+- Resume data is persisted so an interrupted transfer continues rather than restarting
+- Records a `CacheEntry` on completion, which is what makes a book read as downloaded
+
 **Storage Decision Matrix:**
 ```
 iPhone: iCloud Drive (source) → Local Cache (playback) → CloudKit Chunks (upload for Watch)
 Watch:  CloudKit Chunks (download) → Local Cache (playback)
+Watch:  Audiobookshelf server (direct download over WiFi) → Local Cache (playback)
 ```
 
 **Why Three Layers?**
@@ -229,6 +241,16 @@ All models sync via CloudKit Private Database in a single configuration:
   - `Chapter` - chapter information
   - `PlaybackSession` - playback position and state
   - `CacheEntry` - cache metadata (syncs but is optional per-device)
+
+**Model Requirements:**
+
+CloudKit mirroring constrains the model:
+- All relationships must be optional, and the `Deny` delete rule is unsupported.
+- Unique constraints are unsupported, so identity can't be enforced by the store.
+- Entities in one configuration must not relate to entities in another — which
+  is why `CacheEntry` stays in the synced schema despite being device-local
+  data; splitting it out would mean dropping the `Audiobook.cacheEntry`
+  relationship entirely.
 
 **Cache Entry Sync Behavior:**
 
@@ -791,7 +813,9 @@ See `Listen This AppTests/TESTING.md` for complete documentation.
 ### Authentication
 - CloudKit: Automatic Apple ID authentication
 - Jellyfin: API token stored in Keychain
-- AudiobookShelf: API key stored in Keychain
+- AudiobookShelf: API key held in `AudiobookshelfSettings`, synced to the user's
+  own devices through the CloudKit private database (the Watch needs it to talk
+  to the server on its own)
 - No passwords stored locally
 
 ### Data Privacy
@@ -801,7 +825,14 @@ See `Listen This AppTests/TESTING.md` for complete documentation.
 - No data shared with third parties
 
 ### Network Security
-- HTTPS required for all network providers
+- HTTPS required for any server reachable beyond the local network
+- Cleartext HTTP permitted only to local addresses, so a self-hosted server on a
+  home network works without weakening transport security elsewhere. Declared in
+  both app targets' Info.plists as `NSAllowsLocalNetworking` plus
+  `NSExceptionDomains` entries for the private and link-local CIDR ranges
+  (App Transport Security stopped exempting IP literals by default in iOS 17)
+- `ABSServerAddress` classifies a configured address so the UI can warn about an
+  unusable `http://` server rather than letting it fail opaquely
 - Certificate pinning for custom servers (optional)
 - Token refresh handling
 - Secure credential storage

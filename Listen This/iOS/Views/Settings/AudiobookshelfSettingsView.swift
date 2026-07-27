@@ -46,6 +46,18 @@ struct AudiobookshelfSettingsView: View {
                         }
                     }
 
+                if showsCleartextWarning {
+                    Label {
+                        Text(
+                            "This address uses http:// and isn't on your local network, so the system will block it. Use https:// or a local address."
+                        )
+                        .font(.caption)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
                 SecureField("API Key", text: $apiKey)
                     .textContentType(.password)
                     .autocapitalization(.none)
@@ -192,6 +204,12 @@ struct AudiobookshelfSettingsView: View {
             && !apiKey.isEmpty
     }
 
+    /// App Transport Security only permits cleartext to local addresses, so warn
+    /// about an http:// server on a public host before the user hits a failure.
+    private var showsCleartextWarning: Bool {
+        !serverURL.isEmpty && !ABSServerAddress.isCleartextPermitted(serverURL)
+    }
+
     // MARK: - Actions
 
     private func loadSettings() {
@@ -207,10 +225,7 @@ struct AudiobookshelfSettingsView: View {
     private func testConnection() {
         isTestingConnection = true
 
-        let isLocalNetwork = serverURL.hasPrefix("http://192.168.")
-            || serverURL.hasPrefix("http://10.")
-            || serverURL.hasPrefix("http://172.")
-            || serverURL.contains("localhost")
+        let isLocalNetwork = URL(string: serverURL)?.host.map(ABSServerAddress.isLocalHost) ?? false
 
         Task {
             // For local network URLs on first attempt, we retry after failure
@@ -260,7 +275,10 @@ struct AudiobookshelfSettingsView: View {
                     settingsManager.audiobookshelfLastConnectionSuccess = false
 
                     let errorMessage: String
-                    if isLocalNetwork {
+                    if case .cleartextBlocked = AudiobookshelfError.from(error) {
+                        errorMessage =
+                            AudiobookshelfError.cleartextBlocked.localizedDescription
+                    } else if isLocalNetwork {
                         if let urlError = error as? URLError {
                             switch urlError.code {
                             case .timedOut, .cannotConnectToHost, .networkConnectionLost:

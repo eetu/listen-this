@@ -26,6 +26,10 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
     // CRITICAL: Do NOT complete these tasks until hasContentPending == false
     private var wcBackgroundTasks = [WKWatchConnectivityRefreshBackgroundTask]()
 
+    // Audiobookshelf download tasks are held until the background URLSession
+    // reports that it has delivered every event, for the same reason.
+    private var audiobookshelfBackgroundTasks = [WKURLSessionRefreshBackgroundTask]()
+
     override init() {
         super.init()
 
@@ -66,15 +70,31 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
                 wcBackgroundTasks.append(wcTask)
 
             case let urlSessionTask as WKURLSessionRefreshBackgroundTask:
-                // Handle background URLSession refresh for CloudKit chunk downloads
+                // Handle background URLSession refresh
                 AppLogger.general.info(
                     "[ExtensionDelegate] Handling URLSession background task for session: \(urlSessionTask.sessionIdentifier)"
                 )
 
-                // The URLSession with matching identifier will automatically reconnect
-                // and deliver events to its delegate (CloudKitChunkedTransferManager)
-                // We complete the task immediately as the URLSession handles the actual work
-                urlSessionTask.setTaskCompletedWithSnapshot(false)
+                if urlSessionTask.sessionIdentifier
+                    == AudiobookshelfDownloadManager.sessionIdentifier
+                {
+                    // Hold the task: completing it before the session has
+                    // delivered its events can cut a finishing download short.
+                    // Recreating the manager reconnects the session; the handler
+                    // fires from urlSessionDidFinishEvents.
+                    audiobookshelfBackgroundTasks.append(urlSessionTask)
+
+                    Task { @MainActor in
+                        AudiobookshelfDownloadManager.shared.handleBackgroundSessionEvents {
+                            [weak self] in
+                            self?.completeAudiobookshelfBackgroundTasks()
+                        }
+                    }
+                } else {
+                    // CloudKit chunk downloads read from local CKAsset files, so
+                    // there is nothing to wait for here.
+                    urlSessionTask.setTaskCompletedWithSnapshot(false)
+                }
 
             case let snapshotTask as WKSnapshotRefreshBackgroundTask:
                 // Handle snapshot refresh - complete immediately
@@ -133,6 +153,19 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
         }
 
         wcBackgroundTasks.removeAll()
+    }
+
+    /// Complete the held Audiobookshelf download tasks once its background
+    /// URLSession has delivered everything it had queued.
+    private func completeAudiobookshelfBackgroundTasks() {
+        guard !audiobookshelfBackgroundTasks.isEmpty else { return }
+
+        AppLogger.general.info(
+            "[ExtensionDelegate] Audiobookshelf session drained, completing \(self.audiobookshelfBackgroundTasks.count) task(s)"
+        )
+
+        audiobookshelfBackgroundTasks.forEach { $0.setTaskCompletedWithSnapshot(false) }
+        audiobookshelfBackgroundTasks.removeAll()
     }
 
     // MARK: - Application Lifecycle

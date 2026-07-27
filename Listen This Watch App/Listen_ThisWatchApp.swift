@@ -97,6 +97,11 @@ struct Listen_ThisWatchApp: App {
                     // Configure the connectivity manager with model context
                     watchConnectivityManager.configure(modelContext: modelContainer.mainContext)
 
+                    // Re-establish the Audiobookshelf background download session
+                    // so transfers started in a previous launch can finish
+                    AudiobookshelfDownloadManager.shared.configure(
+                        modelContext: modelContainer.mainContext)
+
                     // Check for any ongoing or pending transfers
                     watchConnectivityManager.checkPendingTransfers()
 
@@ -205,6 +210,11 @@ struct Listen_ThisWatchApp: App {
                 // Trigger SwiftData to check for CloudKit changes
                 // Saving the context will cause @Query to re-evaluate with any synced changes
                 try? modelContainer.mainContext.save()
+
+                // Pick up any Audiobookshelf download the system kept running
+                // while we were suspended, so its progress reappears instead of
+                // looking like it never started.
+                await AudiobookshelfDownloadManager.shared.adoptRunningTasks()
 
                 AppLogger.general.info(
                     "[WatchApp] Triggered context refresh after returning from background")
