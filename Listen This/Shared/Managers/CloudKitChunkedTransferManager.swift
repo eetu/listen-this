@@ -218,7 +218,10 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             isUploading: false
         )
         // Ensure the progress entry is never orphaned on a thrown error.
-        defer { activeDownloads.removeValue(forKey: audiobookId) }
+        defer {
+            activeDownloads.removeValue(forKey: audiobookId)
+            TransferProgressCenter.shared.finish(audiobookId)
+        }
 
         // Track success so a thrown error doesn't leave a corrupt partial file.
         var completedSuccessfully = false
@@ -248,24 +251,39 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
                 )
                 activeDownloads[audiobookId] = progress
             }
+
+            // Publish for library rows, which can't observe this manager: it is
+            // created per use and is gone once its sheet is dismissed.
+            TransferProgressCenter.shared.report(
+                audiobookId, bytesTransferred: written, totalBytes: manifest.fileSize)
         }
 
-        // All chunks written — the file is complete, so don't let the cleanup
-        // defer delete it.
+        // Verify BEFORE declaring success. Reaching the end of the chunk loop
+        // only means no chunk threw — a short read leaves a truncated file that
+        // would otherwise be cached and marked "Downloaded", and playback would
+        // simply stop wherever the bytes ran out.
+        try? handle.synchronize()
+
+        guard written == manifest.fileSize,
+            verifyDownloadedFile(at: outputURL, expectedSize: manifest.fileSize)
+        else {
+            logger.error(
+                "Download incomplete for '\(audiobook.title)': wrote \(written) of \(manifest.fileSize) bytes"
+            )
+            // completedSuccessfully stays false, so the defer removes the
+            // partial file rather than leaving it to masquerade as cached.
+            throw ChunkTransferError.incompleteDownload
+        }
+
+        // Verified complete, so don't let the cleanup defer delete it.
         completedSuccessfully = true
 
         persistCacheEntry(for: audiobook, at: outputURL)
 
-        // Clean up chunks and manifest from iCloud after successful download to
-        // free iCloud storage - but only once the local file is verified, so an
-        // interrupted or short write can't delete the only cloud copy and lose
-        // the audiobook entirely.
-        let expectedSize = manifest.fileSize
+        // Clean up chunks and manifest from iCloud now that the local file is
+        // verified, so an interrupted or short write can't delete the only
+        // cloud copy and lose the audiobook entirely.
         Task {
-            guard self.verifyDownloadedFile(at: outputURL, expectedSize: expectedSize) else {
-                logger.error("Skipping iCloud cleanup: downloaded file failed verification")
-                return
-            }
             do {
                 try await deleteAudiobookFromCloud(audiobookId: audiobook.id)
             } catch {
@@ -758,12 +776,20 @@ struct AudiobookManifest {
 
 struct ChunkTransferProgress: Equatable {
     let audiobookId: UUID
-    let totalBytes: Int64
+    /// Mutable because a single-stream download only learns the real size from
+    /// the response's Content-Length, after the transfer has started.
+    var totalBytes: Int64
     let totalChunks: Int
     var completedChunks: Int
     var bytesTransferred: Int64 = 0
     let isUploading: Bool
-    
+
+    /// Single-stream transfers (an Audiobookshelf download is one HTTP response,
+    /// not a chunk sequence) report progress in bytes. Chunked CloudKit
+    /// transfers keep the default and are unaffected.
+    var usesByteProgress: Bool = false
+
+
     // Speed tracking
     var startTime: Date = Date()
     var lastUpdateTime: Date = Date()
@@ -773,6 +799,10 @@ struct ChunkTransferProgress: Equatable {
     var smoothedSpeedBytesPerSecond: Double = 0
 
     var progress: Double {
+        if usesByteProgress {
+            guard totalBytes > 0 else { return 0 }
+            return min(1, Double(bytesTransferred) / Double(totalBytes))
+        }
         guard totalChunks > 0 else { return 0 }
         return Double(completedChunks) / Double(totalChunks)
     }
@@ -794,6 +824,9 @@ struct ChunkTransferProgress: Equatable {
     }
 
     var statusText: String {
+        if usesByteProgress {
+            return isUploading ? "Uploading" : "Downloading"
+        }
         // Clamp so we never display "chunk N+1 of N" on the final update.
         let displayChunk = min(completedChunks + 1, totalChunks)
         if isUploading {
@@ -808,7 +841,11 @@ struct ChunkTransferProgress: Equatable {
     var currentSpeedBytesPerSecond: Double {
         if smoothedSpeedBytesPerSecond > 0 { return smoothedSpeedBytesPerSecond }
         let elapsed = lastUpdateTime.timeIntervalSince(startTime)
-        guard elapsed > 0 else { return 0 }
+        // The lifetime average needs a real window too. Early in a transfer
+        // `elapsed` can be a fraction of a millisecond, and dividing by it
+        // yields the same absurd gigabytes-per-second the smoothing guards
+        // against. Report nothing until the number would mean something.
+        guard elapsed >= Self.minimumSampleInterval else { return 0 }
         return Double(bytesTransferred) / elapsed
     }
     
@@ -850,17 +887,33 @@ struct ChunkTransferProgress: Equatable {
     
     /// Update progress and refresh timing. Computes an instantaneous rate from
     /// the delta since the last update and folds it into a moving average.
+    /// Time constant of the speed average, in seconds.
+    private static let speedTimeConstant: Double = 3
+
+    /// Samples closer together than this can't produce a trustworthy rate —
+    /// dividing by a near-zero interval is what yields absurd readings.
+    private static let minimumSampleInterval: Double = 0.05
+
     mutating func updateProgress(completedChunks: Int, bytesTransferred: Int64) {
         let now = Date()
         let dt = now.timeIntervalSince(lastUpdateTime)
         let deltaBytes = bytesTransferred - self.bytesTransferred
-        if dt > 0, deltaBytes > 0 {
+
+        if dt >= Self.minimumSampleInterval, deltaBytes > 0 {
             let instantaneous = Double(deltaBytes) / dt
-            let alpha = 0.3
-            smoothedSpeedBytesPerSecond = smoothedSpeedBytesPerSecond > 0
-                ? alpha * instantaneous + (1 - alpha) * smoothedSpeedBytesPerSecond
+
+            // Weight by how much time the sample covers rather than using a
+            // fixed alpha. Sample spacing ranges from half a second (a byte
+            // stream) to tens of seconds (a 100 MB chunk); a fixed weight is
+            // either too jumpy for one or too sluggish for the other.
+            let weight = 1 - exp(-dt / Self.speedTimeConstant)
+
+            smoothedSpeedBytesPerSecond =
+                smoothedSpeedBytesPerSecond > 0
+                ? weight * instantaneous + (1 - weight) * smoothedSpeedBytesPerSecond
                 : instantaneous
         }
+
         self.completedChunks = completedChunks
         self.bytesTransferred = bytesTransferred
         self.lastUpdateTime = now
@@ -874,6 +927,7 @@ enum ChunkTransferError: LocalizedError {
     case writeFailed
     case chunkNotFound
     case incompleteUpload
+    case incompleteDownload
     case networkError
     case quotaExceeded
     case insufficientStorage
@@ -894,6 +948,8 @@ enum ChunkTransferError: LocalizedError {
             return "Chunk data not found in CloudKit"
         case .incompleteUpload:
             return "Upload is incomplete, try again"
+        case .incompleteDownload:
+            return "The download finished short of the full audiobook and was discarded. Try again."
         case .networkError:
             return "Network error during transfer"
         case .quotaExceeded:

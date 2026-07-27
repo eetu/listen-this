@@ -393,17 +393,7 @@ struct LibraryView: View {
             // Get download URL based on source type
             switch audiobook.sourceType {
             case "audiobookshelf":
-                guard let serverURL = URL(string: SettingsManager.shared.audiobookshelfServerURL)
-                else {
-                    AppLogger.import.error("Missing Audiobookshelf server URL")
-                    return
-                }
-
-                let settings = SettingsManager.shared
-
-                let provider = AudiobookshelfProvider()
-                try await provider.authenticateWithAPIKey(
-                    serverURL: serverURL, apiKey: settings.audiobookshelfAPIKey)
+                let provider = try await AudiobookshelfProvider.authenticatedFromSettings()
                 downloadURL = try await provider.getStreamURL(identifier: identifier)
 
             case "jellyfin":

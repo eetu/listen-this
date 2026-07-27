@@ -97,6 +97,8 @@ enum AudiobookshelfError: Error, LocalizedError {
     case libraryNotFound
     case itemNotFound
     case noToken
+    case serverUnreachable
+    case cleartextBlocked
 
     var errorDescription: String? {
         switch self {
@@ -114,7 +116,124 @@ enum AudiobookshelfError: Error, LocalizedError {
             return "Item not found"
         case .noToken:
             return "No authentication token available"
+        case .serverUnreachable:
+            return "Can't reach your Audiobookshelf server. Join the same network as the server and try again."
+        case .cleartextBlocked:
+            return
+                "Your server address uses http:// and isn't on your local network. Use https:// or a local address."
         }
+    }
+
+    /// Translate a URL loading error into an actionable Audiobookshelf error.
+    ///
+    /// Without this, a server that is simply on another network and a server
+    /// blocked by App Transport Security both surface as an opaque
+    /// "The operation couldn't be completed" string.
+    static func from(_ error: Error) -> AudiobookshelfError {
+        if let audiobookshelfError = error as? AudiobookshelfError {
+            return audiobookshelfError
+        }
+
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return .networkError(error)
+        }
+
+        switch nsError.code {
+        case NSURLErrorAppTransportSecurityRequiresSecureConnection:
+            return .cleartextBlocked
+        case NSURLErrorCannotConnectToHost,
+            NSURLErrorCannotFindHost,
+            NSURLErrorDNSLookupFailed,
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet,
+            NSURLErrorTimedOut:
+            return .serverUnreachable
+        default:
+            return .networkError(error)
+        }
+    }
+}
+
+// MARK: - Server Address Classification
+
+/// Classifies Audiobookshelf server addresses against the App Transport
+/// Security exceptions declared in the app's Info.plist.
+///
+/// Both app targets allow cleartext HTTP only to the private/link-local ranges,
+/// `.local` names and single-label host names. Anything else must use HTTPS, so
+/// the UI can warn about an unusable address before the user hits a failure.
+///
+/// `nonisolated` because these are pure string checks called from background
+/// contexts (the download session's delegate queue) as well as from views; the
+/// targets otherwise default to `MainActor` isolation.
+nonisolated enum ABSServerAddress {
+
+    /// Whether a request to this address is permitted by our ATS configuration.
+    static func isCleartextPermitted(_ url: URL) -> Bool {
+        // HTTPS is never a cleartext load.
+        guard url.scheme?.lowercased() == "http" else { return true }
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        return isLocalHost(host)
+    }
+
+    /// Same check against a raw settings string; an unparseable address can't be
+    /// judged, so it isn't flagged.
+    static func isCleartextPermitted(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString), url.host != nil else { return true }
+        return isCleartextPermitted(url)
+    }
+
+    /// Local for ATS purposes: `.local`, a single-label name, loopback, or an
+    /// address inside a private/link-local range.
+    static func isLocalHost(_ host: String) -> Bool {
+        // Strip IPv6 literal brackets, e.g. "[fe80::1]".
+        let bare = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+
+        if bare == "localhost" || bare.hasSuffix(".local") { return true }
+
+        if let octets = ipv4Octets(bare) {
+            return isPrivateIPv4(octets)
+        }
+
+        if bare.contains(":") {
+            return isPrivateIPv6(bare)
+        }
+
+        // Unqualified (single-label) host names are local per NSAllowsLocalNetworking.
+        return !bare.contains(".")
+    }
+
+    private static func ipv4Octets(_ host: String) -> [UInt8]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+
+        var octets: [UInt8] = []
+        for part in parts {
+            guard let value = UInt8(part) else { return nil }
+            octets.append(value)
+        }
+        return octets
+    }
+
+    /// 10/8, 172.16/12, 192.168/16, 169.254/16 and 127/8.
+    private static func isPrivateIPv4(_ octets: [UInt8]) -> Bool {
+        switch (octets[0], octets[1]) {
+        case (10, _), (127, _), (192, 168), (169, 254):
+            return true
+        case (172, 16...31):
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Loopback, unique-local (fc00::/7) and link-local (fe80::/10).
+    private static func isPrivateIPv6(_ host: String) -> Bool {
+        if host == "::1" { return true }
+        let prefix = host.prefix(4).lowercased()
+        return prefix.hasPrefix("fc") || prefix.hasPrefix("fd") || prefix.hasPrefix("fe8")
+            || prefix.hasPrefix("fe9") || prefix.hasPrefix("fea") || prefix.hasPrefix("feb")
     }
 }
 
@@ -700,5 +819,84 @@ final class AudiobookshelfProvider: ContentSource {
             addedDate: addedDate,
             artworkURL: artworkURL
         )
+    }
+}
+
+// MARK: - Settings-Backed Construction
+
+extension AudiobookshelfProvider {
+
+    /// Build a provider authenticated with the CloudKit-synced server settings.
+    ///
+    /// Settings are entered on iPhone and reach every device (including the
+    /// Watch) through `AudiobookshelfSettings`, so both platforms authenticate
+    /// exactly the same way.
+    static func authenticatedFromSettings() async throws -> AudiobookshelfProvider {
+        let settings = SettingsManager.shared
+
+        guard let serverURL = URL(string: settings.audiobookshelfServerURL),
+            serverURL.host != nil
+        else {
+            throw AudiobookshelfError.invalidServerURL
+        }
+
+        guard ABSServerAddress.isCleartextPermitted(serverURL) else {
+            throw AudiobookshelfError.cleartextBlocked
+        }
+
+        let apiKey = settings.audiobookshelfAPIKey
+        guard !apiKey.isEmpty else {
+            throw AudiobookshelfError.authenticationFailed
+        }
+
+        let provider = AudiobookshelfProvider()
+        do {
+            try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: apiKey)
+        } catch {
+            throw AudiobookshelfError.from(error)
+        }
+        return provider
+    }
+
+    /// Cheap liveness probe used before starting a long transfer, so an
+    /// unreachable LAN server fails in seconds instead of hanging on a
+    /// background session that waits for connectivity.
+    static func reachabilityCheck(timeout: TimeInterval = 5) async throws {
+        let settings = SettingsManager.shared
+
+        guard let serverURL = URL(string: settings.audiobookshelfServerURL),
+            serverURL.host != nil
+        else {
+            throw AudiobookshelfError.invalidServerURL
+        }
+
+        guard ABSServerAddress.isCleartextPermitted(serverURL) else {
+            throw AudiobookshelfError.cleartextBlocked
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        configuration.waitsForConnectivity = false
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        var request = URLRequest(
+            url: serverURL.appendingPathComponent("api").appendingPathComponent("me")
+        )
+        request.setValue(
+            "Bearer \(settings.audiobookshelfAPIKey)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AudiobookshelfError.invalidResponse
+            }
+            guard httpResponse.statusCode == 200 else {
+                throw AudiobookshelfError.authenticationFailed
+            }
+        } catch {
+            throw AudiobookshelfError.from(error)
+        }
     }
 }

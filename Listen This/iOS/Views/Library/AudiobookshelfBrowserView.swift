@@ -85,18 +85,16 @@ struct AudiobookshelfBrowserView: View {
 
         Task {
             do {
-                // Authenticate
-                let settings = SettingsManager.shared
-                guard let serverURL = URL(string: settings.audiobookshelfServerURL) else {
-                    throw AudiobookshelfError.invalidServerURL
-                }
-
-                try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: settings.audiobookshelfAPIKey)
+                // Authenticate with the CloudKit-synced server settings
+                let authenticated = try await AudiobookshelfProvider.authenticatedFromSettings()
 
                 // Fetch library
-                let items = try await provider.fetchLibrary()
+                let items = try await authenticated.fetchLibrary()
 
                 await MainActor.run {
+                    // Keep the authenticated provider around: rows reuse it for
+                    // artwork and chapter fetches after the list appears.
+                    provider = authenticated
                     audiobooks = items
                     isLoading = false
                 }

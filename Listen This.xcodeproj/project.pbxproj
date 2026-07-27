@@ -88,6 +88,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Shared/Managers/AudiobookCacheManager.swift,
+				Shared/Managers/AudiobookshelfDownloadManager.swift,
 				Shared/Managers/CloudKitChunkedTransferManager.swift,
 				Shared/Mocks.swift,
 				Shared/Models/Audiobook.swift,
@@ -107,6 +108,7 @@
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
+				Shared/Services/TransferProgressCenter.swift,
 				Shared/Utilities/AppLogger.swift,
 				Shared/Utilities/MetadataExtractor.swift,
 				"Shared/Utilities/UIImage+DominantColor.swift",
@@ -114,6 +116,7 @@
 				Shared/Views/ChapterTitleView.swift,
 				Shared/Views/CloudKitTransferView.swift,
 				Shared/Views/PlayerControlsView.swift,
+				Shared/Views/TransferProgressView.swift,
 				Shared/Views/WatchProgressBar.swift,
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
@@ -124,6 +127,7 @@
 				iOS/Models/WatchTransferProgress.swift,
 				iOS/Protocols/iOSWatchConnectivity.swift,
 				Shared/Managers/AudiobookCacheManager.swift,
+				Shared/Managers/AudiobookshelfDownloadManager.swift,
 				Shared/Managers/CloudKitChunkedTransferManager.swift,
 				Shared/Mocks.swift,
 				Shared/Models/Audiobook.swift,
@@ -143,6 +147,7 @@
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
+				Shared/Services/TransferProgressCenter.swift,
 				Shared/Utilities/AppLogger.swift,
 				Shared/Utilities/MetadataExtractor.swift,
 				"Shared/Utilities/UIImage+DominantColor.swift",

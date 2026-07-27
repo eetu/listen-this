@@ -25,6 +25,7 @@ struct WatchLibraryView: View {
     @State private var downloadOptionsAudiobookId: UUID?
     @State private var cloudKitDownloadAudiobookId: UUID?
     @State private var bluetoothDownloadAudiobookId: UUID?
+    @State private var audiobookshelfDownloadAudiobookId: UUID?
 
     // Removal confirmation is owned here (not on the row) so presenting the
     // alert doesn't tear down the swiped row before it can show.
@@ -225,8 +226,26 @@ struct WatchLibraryView: View {
                     onSelectBluetooth: {
                         bluetoothDownloadAudiobookId = id
                         downloadOptionsAudiobookId = nil
+                    },
+                    onSelectAudiobookshelf: {
+                        audiobookshelfDownloadAudiobookId = id
+                        downloadOptionsAudiobookId = nil
                     }
                 )
+            }
+        }
+        .sheet(
+            isPresented: .init(
+                get: { audiobookshelfDownloadAudiobookId != nil },
+                set: { if !$0 { audiobookshelfDownloadAudiobookId = nil } }
+            )
+        ) {
+            if let id = audiobookshelfDownloadAudiobookId,
+                let audiobook = audiobooks.first(where: { $0.id == id })
+            {
+                NavigationStack {
+                    AudiobookshelfDownloadView(audiobook: audiobook)
+                }
             }
         }
         .sheet(
@@ -323,7 +342,17 @@ struct AudiobookRowWithActions: View {
         self.audiobookId = audiobook.id
     }
 
+    /// True for any in-flight transfer, whichever route it's using — including
+    /// an Audiobookshelf download that's still running after its sheet was
+    /// dismissed, so the row keeps showing it.
     var hasActiveTransfer: Bool {
+        connectivity.activeTransfers[audiobookId.uuidString] != nil
+            || AudiobookshelfDownloadManager.shared.activeDownloads[audiobookId] != nil
+    }
+
+    /// Only WatchConnectivity transfers are cancelled from the row's swipe
+    /// action; an Audiobookshelf download is cancelled from its own sheet.
+    var hasCancellableTransfer: Bool {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
     }
 
@@ -371,19 +400,19 @@ struct AudiobookRowWithActions: View {
             // confirmed by the parent to avoid tearing down this row mid-present.
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button {
-                    if hasActiveTransfer {
+                    if hasCancellableTransfer {
                         connectivity.cancelTransfer(audiobookId: audiobook.id)
                     } else if isCached {
                         onRequestRemove()
                     }
                 } label: {
                     Label(
-                        hasActiveTransfer ? "Cancel" : "Remove",
-                        systemImage: hasActiveTransfer ? "xmark.circle" : "applewatch.slash"
+                        hasCancellableTransfer ? "Cancel" : "Remove",
+                        systemImage: hasCancellableTransfer ? "xmark.circle" : "applewatch.slash"
                     )
                 }
-                .tint(hasActiveTransfer ? .orange : .red)
-                .disabled(!hasActiveTransfer && !isCached)
+                .tint(hasCancellableTransfer ? .orange : .red)
+                .disabled(!hasCancellableTransfer && !isCached)
             }
             .onAppear {
                 reconcileCacheState()
@@ -419,13 +448,29 @@ struct AudiobookRow: View {
 
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
+            || AudiobookshelfDownloadManager.shared.activeDownloads[audiobook.id] != nil
+    }
+
+    /// How far along the transfer is, whichever route is carrying it. Direct
+    /// iPhone transfers report bytes rather than publishing to the centre.
+    var transferFraction: Double? {
+        if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
+            return fraction
+        }
+        if let transfer = connectivity.activeTransfers[audiobook.id.uuidString],
+            transfer.totalBytes > 0
+        {
+            return Double(transfer.bytesTransferred) / Double(transfer.totalBytes)
+        }
+        return nil
     }
 
     var body: some View {
         AudiobookRowView(
             audiobook: audiobook,
             showProgress: false,
-            isTransferring: hasActiveTransfer
+            isTransferring: hasActiveTransfer,
+            transferProgress: transferFraction
         )
         .sheet(isPresented: $showingTransferSheet) {
             NavigationStack {
@@ -473,6 +518,7 @@ struct DownloadOptionsSheet: View {
     let audiobook: Audiobook
     let onSelectCloudKit: () -> Void
     let onSelectBluetooth: () -> Void
+    let onSelectAudiobookshelf: () -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Environment(WatchConnectivityManager.self) private var connectivity
@@ -480,8 +526,20 @@ struct DownloadOptionsSheet: View {
     @State private var cloudKitAvailability: ChunkAvailability = .notUploaded
     @State private var isCheckingAvailability = true
 
+    /// Audiobookshelf books can be fetched straight from the server, but only
+    /// when the server settings have synced from the iPhone.
+    private var canDownloadFromAudiobookshelf: Bool {
+        audiobook.isAudiobookshelfBook
+            && SettingsManager.shared.audiobookshelfEnabled
+            && SettingsManager.shared.audiobookshelfIsConfigured
+    }
+
     /// Determine which method to recommend based on conditions
     private var recommendedMethod: RecommendedTransferMethod {
+        // Straight from the server needs neither the phone nor iCloud storage
+        if canDownloadFromAudiobookshelf {
+            return .audiobookshelf
+        }
         // If already uploaded to CloudKit, that's fastest
         if cloudKitAvailability == .fullyUploaded {
             return .wifi
@@ -495,6 +553,14 @@ struct DownloadOptionsSheet: View {
     }
 
     var body: some View {
+        // Scrollable: three options plus a header don't fit a watch screen, and
+        // without this the last one is silently clipped.
+        ScrollView {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 12) {
             // Header
             VStack(spacing: 4) {
@@ -519,10 +585,22 @@ struct DownloadOptionsSheet: View {
                 ProgressView()
                     .padding()
             } else {
+                // Straight from the Audiobookshelf server (no iPhone involved)
+                if canDownloadFromAudiobookshelf {
+                    DownloadOptionButton(
+                        icon: "server.rack",
+                        title: "Audiobookshelf",
+                        subtitle: "Direct from your server",
+                        isAvailable: true,
+                        isRecommended: recommendedMethod == .audiobookshelf,
+                        action: onSelectAudiobookshelf
+                    )
+                }
+
                 // WiFi option (CloudKit)
                 DownloadOptionButton(
                     icon: "wifi",
-                    title: "Fast Download",
+                    title: "iCloud",
                     subtitle: wifiOptionSubtitle,
                     isAvailable: cloudKitAvailability == .fullyUploaded,
                     isRecommended: recommendedMethod == .wifi,
@@ -532,15 +610,16 @@ struct DownloadOptionsSheet: View {
                 // Direct transfer option (Bluetooth/WatchConnectivity)
                 DownloadOptionButton(
                     icon: "iphone",
-                    title: "Direct Transfer",
+                    title: "From iPhone",
                     subtitle: directOptionSubtitle,
                     isAvailable: true,
                     isRecommended: recommendedMethod == .direct,
                     action: onSelectBluetooth
                 )
 
-                // Help text
-                if cloudKitAvailability != .fullyUploaded {
+                // Help text. Pointless when the book can come straight from the
+                // server — that path doesn't involve the iPhone at all.
+                if cloudKitAvailability != .fullyUploaded && !canDownloadFromAudiobookshelf {
                     Text("Fast Download requires uploading from iPhone first")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -555,22 +634,25 @@ struct DownloadOptionsSheet: View {
         }
     }
 
+    // Subtitles say what the choice actually does, not just whether it's
+    // available — "Via WiFi" doesn't tell you where the file comes from.
+
     private var wifiOptionSubtitle: String {
         switch cloudKitAvailability {
         case .fullyUploaded:
-            return "Via WiFi"
+            return "Copy your iPhone uploaded"
         case .partiallyUploaded:
-            return "Upload incomplete"
+            return "iPhone upload unfinished"
         case .notUploaded:
-            return "Not uploaded yet"
+            return "Upload from iPhone first"
         }
     }
 
     private var directOptionSubtitle: String {
         if connectivity.isReachable {
-            return "iPhone nearby"
+            return "Bluetooth, iPhone nearby"
         } else {
-            return "Bring iPhone closer"
+            return "Bluetooth, move iPhone closer"
         }
     }
 
@@ -583,9 +665,10 @@ struct DownloadOptionsSheet: View {
 
 /// Which transfer method is recommended
 private enum RecommendedTransferMethod {
-    case wifi      // CloudKit - already uploaded
-    case direct    // WatchConnectivity - iPhone nearby
-    case none      // No clear recommendation
+    case audiobookshelf  // Direct from the source server over WiFi
+    case wifi            // CloudKit - already uploaded
+    case direct          // WatchConnectivity - iPhone nearby
+    case none            // No clear recommendation
 }
 
 struct DownloadOptionButton: View {
@@ -598,43 +681,46 @@ struct DownloadOptionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            // Titles and subtitles wrap rather than truncate: on a watch there
+            // isn't room for them on one line, and "Direct Transf…" tells the
+            // user nothing about what they're choosing. No chevron either — it
+            // costs horizontal space the text needs, and the whole row is
+            // already a button.
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: icon)
                     .font(.title3)
                     .foregroundStyle(isAvailable ? .blue : .gray)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(title)
-                            .font(.footnote)
-                            .fontWeight(.semibold)
-
-                        if isRecommended && isAvailable {
-                            Text("Best")
-                                .font(.caption2)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.green)
-                                .clipShape(Capsule())
-                        }
-                    }
+                    Text(title)
+                        .font(.footnote)
+                        .fontWeight(.semibold)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
 
                     Text(subtitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+
+                    if isRecommended && isAvailable {
+                        Text("Best")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                            .padding(.top, 2)
+                    }
                 }
 
-                Spacer()
-
-                if isAvailable {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(buttonBackground)

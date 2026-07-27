@@ -36,6 +36,9 @@ enum AppLogger {
     /// User settings
     static let settings = Logger(subsystem: subsystem, category: "Settings")
 
+    /// Audiobookshelf server downloads
+    static let audiobookshelf = Logger(subsystem: subsystem, category: "Audiobookshelf")
+
     /// General app logging
     static let general = Logger(subsystem: subsystem, category: "General")
 }

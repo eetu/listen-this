@@ -476,61 +476,22 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     // MARK: - Audiobookshelf Helpers
 
     private func getAuthenticatedAudiobookshelfProvider() async throws -> AudiobookshelfProvider {
-        let provider = AudiobookshelfProvider()
-
-        let settings = SettingsManager.shared
-        let serverURLString = settings.audiobookshelfServerURL
-        logger.debug("Attempting to create URL from server URL: '\(serverURLString)'")
-
-        guard let serverURL = URL(string: serverURLString) else {
-            logger.error("Invalid server URL: '\(serverURLString)'")
-            throw AudiobookshelfError.invalidServerURL
+        do {
+            return try await AudiobookshelfProvider.authenticatedFromSettings()
+        } catch {
+            logger.error(
+                "Audiobookshelf authentication failed: \(error.localizedDescription)")
+            throw error
         }
-
-        // Load API key from settings (synced via CloudKit)
-        let apiKey = SettingsManager.shared.audiobookshelfAPIKey
-        guard !apiKey.isEmpty else {
-            logger.error("API key is empty")
-            throw AudiobookshelfError.authenticationFailed
-        }
-
-        try await provider.authenticateWithAPIKey(serverURL: serverURL, apiKey: apiKey)
-        return provider
     }
 
+    /// Auto-download mode routes through the shared download manager so it gets
+    /// the same background session, resume handling and — crucially — the
+    /// `CacheEntry` record that makes the book read as downloaded in the library.
     private func downloadAudiobookshelfBook(_ audiobook: Audiobook) async throws -> URL {
-        guard let identifier = audiobook.sourceIdentifier else {
-            throw AudiobookError.fileNotFound
-        }
-
-        guard let cachePath = audiobook.expectedCachePath else {
-            throw AudiobookError.fileNotFound
-        }
-
-        let provider = try await getAuthenticatedAudiobookshelfProvider()
-        let downloadURL = try await provider.getDownloadURL(identifier: identifier)
-
-        logger.info("Downloading Audiobookshelf book to: \(cachePath)")
-
-        // Create cache directory if needed
-        let cacheDir = (cachePath as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(
-            atPath: cacheDir,
-            withIntermediateDirectories: true
-        )
-
-        // Download file
-        let (tempURL, _) = try await URLSession.shared.download(from: downloadURL)
-
-        // Move to cache location
-        let destinationURL = URL(fileURLWithPath: cachePath)
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-
-        logger.info("Download complete: \(cachePath)")
-        return destinationURL
+        let manager = AudiobookshelfDownloadManager.shared
+        manager.configure(modelContext: modelContext)
+        return try await manager.download(audiobook)
     }
 
     // MARK: - Playback Controls
