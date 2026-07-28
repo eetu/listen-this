@@ -111,6 +111,40 @@ final class Audiobook {
         return storageDir.appendingPathComponent(filename).path
     }
 
+    /// Directory for bytes from an interrupted transfer.
+    ///
+    /// Deliberately *outside* the Audiobooks cache directory: anything sitting
+    /// at `expectedCachePath` is treated as a complete, playable download, so a
+    /// partial parked there would show as "Downloaded" and play silence past
+    /// the point the bytes stop. Keeping partials separate makes that
+    /// impossible. The orphan sweep also only scans the cache directory, so a
+    /// resumable partial isn't deleted out from under a retry.
+    static var partialsDirectoryURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("AudiobookPartials")
+    }
+
+    /// Where an interrupted transfer parks its bytes for a later retry.
+    var partialFileURL: URL? {
+        guard let filename else { return nil }
+        return Self.partialsDirectoryURL.appendingPathComponent("\(filename).partial")
+    }
+
+    /// Size of a resumable partial download, if one exists.
+    var partialDownloadSize: Int64? {
+        guard let url = partialFileURL,
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let size = (attributes[.size] as? NSNumber)?.int64Value,
+            size > 0
+        else { return nil }
+        return size
+    }
+
+    /// Whether a previous transfer left bytes a retry could continue from.
+    var hasPartialDownload: Bool {
+        partialDownloadSize != nil
+    }
+
     /// Check if file is cached locally (computed on-demand)
     var isFileCached: Bool {
         guard let cachePath = expectedCachePath else { return false }

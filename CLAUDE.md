@@ -232,3 +232,31 @@ When using observable state in SwiftUI List rows (like tracking transfer status)
 - **DON'T** conditionally show/hide swipe action buttons based on frequently changing state
 - **DO** always show buttons but disable them when action isn't available
 - This prevents `NSInternalInconsistencyException` crashes from collection view update mismatches
+
+### Sheet Dismissal
+
+Toolbar placements are **semantic, not positional** — declare what the button
+means and let the system position it per platform:
+
+- `.confirmationAction` for a "Done" that just closes and abandons nothing
+- `.cancellationAction` for a "Cancel" that abandons work in progress
+
+If a sheet's dismiss changes meaning with state (leaving a running transfer
+doesn't stop it), switch the placement along with the label.
+
+**watchOS exception:** keep the dismiss in `.cancellationAction` regardless.
+`.confirmationAction` renders top-right, where the system clock lives, and
+overlaps the navigation title — verified in the simulator. Only the label
+carries the meaning there.
+
+Every navigation sheet needs *some* toolbar dismiss. Without one, watchOS falls
+back to a default "X" (inconsistent with the rest of the app) and iOS leaves no
+visible way out at all.
+
+### State That Can't Be Trusted
+
+Don't gate an action on whether a file exists on the *other* device. The iPhone
+can't know reliably whether the Watch still has a book — three transfer routes,
+intermittent connectivity, and the Watch can delete its copy at any time. A
+stale "already sent" disables the button and leaves the user stuck, while a
+redundant transfer costs seconds. Show state if it's useful; don't block on it.

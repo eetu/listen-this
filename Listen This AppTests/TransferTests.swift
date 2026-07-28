@@ -639,16 +639,22 @@ struct CloudKitUploadStateTests {
 
         let audiobook = createTestAudiobook(title: "Cancel Test", fileSize: 50_000_000)
 
-        // Start upload and immediately cancel
-        Task {
+        let upload = Task {
             try? await manager.uploadAudiobook(audiobook)
         }
 
-        // Cancel immediately
-        manager.cancelTransfer(audiobookId: audiobook.id)
+        // Wait until the upload has actually registered before cancelling.
+        // Cancelling first cancels nothing — the task hasn't run yet — and the
+        // upload then completes, which made this test's result depend on
+        // whether it happened to finish inside the sleep below.
+        var spins = 0
+        while manager.activeUploads[audiobook.id] == nil, spins < 1_000 {
+            await Task.yield()
+            spins += 1
+        }
 
-        // Give it a moment for cancellation to process
-        try await Task.sleep(nanoseconds: 200_000_000)
+        manager.cancelTransfer(audiobookId: audiobook.id)
+        _ = await upload.value
 
         // Status should be not uploaded (partial uploads not tracked in mock)
         let status = await manager.checkCloudKitChunks(for: audiobook)

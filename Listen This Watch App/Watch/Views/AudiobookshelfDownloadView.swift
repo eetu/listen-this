@@ -44,9 +44,13 @@ struct AudiobookshelfDownloadView: View {
         }
         .navigationTitle("Download")
         .toolbar {
+            // Leading on watchOS regardless of meaning. `.confirmationAction`
+            // puts the button top-right, where the system clock lives, and it
+            // overlaps the navigation title — verified in the simulator. The
+            // label still carries the semantics: leaving mid-download doesn't
+            // stop it (that's the red button on the progress view), so it reads
+            // "Done" rather than "Cancel".
             ToolbarItem(placement: .cancellationAction) {
-                // "Done" while a transfer is running: leaving this screen must
-                // not stop the download. Only the red Cancel below does that.
                 Button(isTransferring || state == .complete ? "Done" : "Cancel") {
                     dismiss()
                 }
