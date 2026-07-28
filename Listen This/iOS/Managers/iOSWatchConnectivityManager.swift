@@ -307,42 +307,97 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
     /// Sync CloudKit uploaded audiobook IDs from CloudKit database
     /// Call this on app launch to restore the set from actual CloudKit state
     func syncCloudKitUploadedStatus() {
-        Task {
-            do {
-                let container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
-                let database = container.privateCloudDatabase
+        Task { await refreshCloudKitUploadedStatus() }
+    }
 
-                // Query for completed uploads
-                let query = CKQuery(
-                    recordType: "AudiobookManifest",
-                    predicate: NSPredicate(format: "isComplete == %@", NSNumber(value: 1))
-                )
+    /// Refresh the uploaded set from CloudKit and return it.
+    @discardableResult
+    private func refreshCloudKitUploadedStatus() async -> Set<String> {
+        do {
+            let uploadedIds = try await Self.fetchCloudKitUploadedIds()
+            cloudKitUploadedAudiobookIds = uploadedIds
+            AppLogger.cloudKit.info(
+                "Synced \(uploadedIds.count) CloudKit uploaded audiobook IDs")
+            return uploadedIds
+        } catch {
+            AppLogger.cloudKit.error(
+                "Failed to sync CloudKit uploaded status: \(error.localizedDescription)")
+            return cloudKitUploadedAudiobookIds
+        }
+    }
 
-                let (matchResults, _) = try await database.records(
-                    matching: query,
-                    inZoneWith: nil,
-                    desiredKeys: ["audiobookId"],
-                    resultsLimit: 500
-                )
+    private static func fetchCloudKitUploadedIds() async throws -> Set<String> {
+        let container = CKContainer(identifier: "iCloud.com.anarkisti.Listen-This")
+        let database = container.privateCloudDatabase
 
-                var uploadedIds: Set<String> = []
+        // Query for completed uploads
+        let query = CKQuery(
+            recordType: "AudiobookManifest",
+            predicate: NSPredicate(format: "isComplete == %@", NSNumber(value: 1))
+        )
 
-                for (_, result) in matchResults {
-                    if case .success(let record) = result,
-                       let audiobookIdString = record["audiobookId"] as? String {
-                        uploadedIds.insert(audiobookIdString)
-                    }
-                }
+        let (matchResults, _) = try await database.records(
+            matching: query,
+            inZoneWith: nil,
+            desiredKeys: ["audiobookId"],
+            resultsLimit: 500
+        )
 
-                await MainActor.run {
-                    self.cloudKitUploadedAudiobookIds = uploadedIds
-                    AppLogger.cloudKit.info("Synced \(uploadedIds.count) CloudKit uploaded audiobook IDs")
-                }
+        var uploadedIds: Set<String> = []
 
-            } catch {
-                AppLogger.cloudKit.error("Failed to sync CloudKit uploaded status: \(error.localizedDescription)")
+        for (_, result) in matchResults {
+            if case .success(let record) = result,
+                let audiobookIdString = record["audiobookId"] as? String
+            {
+                uploadedIds.insert(audiobookIdString)
             }
         }
+
+        return uploadedIds
+    }
+
+    /// Delete staged chunks for books the Watch already has.
+    ///
+    /// Chunks are a staging area, not storage: they're normally deleted once the
+    /// Watch downloads them. But if the book reached the Watch some other way —
+    /// straight from Audiobookshelf, or over Bluetooth — nothing ever cleared
+    /// them, and they sat in the user's iCloud account indefinitely. Once the
+    /// Watch reports the book as cached, the staged copy is provably redundant.
+    ///
+    /// The audiobook itself is never at risk: the chunks are a copy of a file
+    /// the iPhone (or iCloud Drive) still holds and can re-upload.
+    private func reclaimRedundantChunks(uploadedIds: Set<String>) async {
+        guard let modelContext else { return }
+
+        let redundant = CloudKitChunkedTransferManager.redundantStagedChunkIds(
+            staged: uploadedIds,
+            cachedOnWatch: watchCachedAudiobookIds,
+            transferring: Set(activeTransfers.keys)
+        )
+
+        guard !redundant.isEmpty else { return }
+
+        let transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
+        var reclaimed: Set<String> = []
+
+        for audiobookIdString in redundant {
+            guard let audiobookId = UUID(uuidString: audiobookIdString) else { continue }
+
+            do {
+                try await transferManager.deleteAudiobookFromCloud(audiobookId: audiobookId)
+                reclaimed.insert(audiobookIdString)
+                AppLogger.cloudKit.info(
+                    "Reclaimed staged chunks for \(audiobookIdString): already on Watch")
+            } catch {
+                // Leave it for the next report rather than treating a transient
+                // CloudKit error as permanent.
+                AppLogger.cloudKit.warning(
+                    "Couldn't reclaim staged chunks for \(audiobookIdString): \(error.localizedDescription)"
+                )
+            }
+        }
+
+        cloudKitUploadedAudiobookIds.subtract(reclaimed)
     }
 }
 
@@ -361,6 +416,16 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             } else {
                 updateWatchStatus()
                 checkOutstandingTransfers()
+
+                // Apply whatever the Watch last told us before asking again.
+                // The context persists across both apps being closed, so this
+                // is the state that's correct even when the Watch is out of
+                // range right now — without it, a download removed on the
+                // Watch would keep reading as sent until they next connect.
+                let context = session.receivedApplicationContext
+                if !context.isEmpty {
+                    handleMessage(context)
+                }
 
                 // Request cached book list from Watch after activation
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -405,6 +470,23 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
         Task { @MainActor in
             handleMessage(message)
             replyHandler(["status": "received"])
+        }
+    }
+
+    /// Application context is what the Watch falls back to when this app isn't
+    /// reachable — which is the normal case while the user is using the Watch.
+    ///
+    /// Without this the Watch's "here's what I actually have cached" update was
+    /// written and silently dropped, so removing a download on the Watch left
+    /// the iPhone showing the book as sent. The system persists the latest
+    /// context and delivers it on activation, so it survives both apps being
+    /// closed.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveApplicationContext applicationContext: [String: Any]
+    ) {
+        Task { @MainActor in
+            handleMessage(applicationContext)
         }
     }
 
@@ -485,9 +567,14 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
         }
 
         watchCachedAudiobookIds = Set(cachedIds)
-        
-        // Also resync CloudKit status since Watch may have downloaded and deleted chunks
-        syncCloudKitUploadedStatus()
+
+        Task {
+            // Resync first: the Watch may have downloaded and already deleted
+            // the chunks itself, and the fresh set is what tells us what's
+            // genuinely still staged.
+            let uploaded = await refreshCloudKitUploadedStatus()
+            await reclaimRedundantChunks(uploadedIds: uploaded)
+        }
     }
 
     /// Request the list of cached audiobooks from Watch

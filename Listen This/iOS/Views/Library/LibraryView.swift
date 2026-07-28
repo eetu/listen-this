@@ -123,18 +123,18 @@ struct LibraryView: View {
                 // Use stable conditions (isPaired, isWatchAppInstalled, isFileCached) for showing the button
                 // Use dynamic conditions (isOnWatch, isUploadedToCloudKit, hasActiveTransfer) only for disabling
                 if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
-                    let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
-                    let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
                     let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
-                    let isOnWatchOrCloud = isOnWatch || isUploadedToCloudKit
 
-                    // One button that morphs by state (keeps swipe membership
-                    // stable): Cancel while transferring, Sent (disabled) once on
-                    // the Watch/CloudKit, otherwise Transfer.
-                    let label = hasActiveTransfer ? "Cancel" : (isOnWatchOrCloud ? "Sent" : "Transfer")
-                    let icon = hasActiveTransfer
-                        ? "xmark.circle"
-                        : (isOnWatchOrCloud ? "checkmark" : "applewatch")
+                    // Deliberately no "already sent" state. Whether a book is
+                    // still on the Watch can't be known reliably from here —
+                    // three transfer routes, intermittent connectivity, and the
+                    // Watch can delete its copy at any time — and getting it
+                    // wrong used to *disable* this button, leaving no way to
+                    // re-send. Transferring again is cheap and idempotent, so
+                    // the action stays available and only an in-flight transfer
+                    // changes it.
+                    let label = hasActiveTransfer ? "Cancel" : "Transfer"
+                    let icon = hasActiveTransfer ? "xmark.circle" : "applewatch"
 
                     Button {
                         if hasActiveTransfer {
@@ -145,8 +145,7 @@ struct LibraryView: View {
                     } label: {
                         Label(label, systemImage: icon)
                     }
-                    .tint(hasActiveTransfer ? .orange : (isOnWatchOrCloud ? .gray : .blue))
-                    .disabled(!hasActiveTransfer && isOnWatchOrCloud)
+                    .tint(hasActiveTransfer ? .orange : .blue)
                 }
 
                 // Download for remote books - primary action for streamable content
@@ -330,18 +329,16 @@ struct LibraryView: View {
     ) -> some View {
         // Send to Watch - show for cached books when Watch is available
         if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
-            let isOnWatch = connectivity.watchCachedAudiobookIds.contains(bookId.uuidString)
-            let isUploadedToCloudKit = connectivity.cloudKitUploadedAudiobookIds.contains(bookId.uuidString)
             let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
-            let isAlreadyTransferred = isOnWatch || isUploadedToCloudKit || hasActiveTransfer
-            
+
+            // As with the swipe action: no "already on Watch" state, because it
+            // can't be known reliably and being wrong blocked re-sending.
             Button {
                 transferAudiobookId = bookId
             } label: {
-                Label(isAlreadyTransferred ? "Already on Watch" : "Send to Watch", 
-                      systemImage: isAlreadyTransferred ? "checkmark.circle" : "applewatch")
+                Label("Send to Watch", systemImage: "applewatch")
             }
-            .disabled(isAlreadyTransferred)
+            .disabled(hasActiveTransfer)
         }
 
         // Delete - always show in context menu

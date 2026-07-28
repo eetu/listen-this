@@ -25,10 +25,6 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
     private let iCloudRelativePath: String?
     private let sourceIdentifier: String?
     
-    private var isOnWatch: Bool {
-        connectivity.watchCachedAudiobookIds.contains(audiobookId.uuidString)
-    }
-    
     private var hasICloudPath: Bool {
         iCloudRelativePath != nil
     }
@@ -99,15 +95,13 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                                     .font(.headline)
 
                                 if hasICloudPath {
-                                    if isOnWatch {
-                                        Text("Removes from iCloud, iPhone, and Apple Watch")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Text("Removes from iCloud and all synced devices")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    // Stated unconditionally: whether the book
+                                    // is on the Watch right now can't be known
+                                    // reliably from here, and the delete
+                                    // reaches every device either way.
+                                    Text("Removes from iCloud, iPhone, and Apple Watch")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 } else if sourceIdentifier != nil {
                                     // Remote source (Audiobookshelf, Jellyfin, etc.)
                                     Text(
@@ -127,13 +121,6 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                     .disabled(isDeleting)
                 } header: {
                     Text("Delete \"\(audiobookTitle)\"?")
-                } footer: {
-                    if isOnWatch {
-                        Text(
-                            "Audiobook is also on your Apple Watch. Deleting everywhere will remove it from Watch too."
-                        )
-                        .font(.caption2)
-                    }
                 }
 
                 Section {
