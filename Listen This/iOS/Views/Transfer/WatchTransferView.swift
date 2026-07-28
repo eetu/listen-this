@@ -37,7 +37,7 @@ struct WatchTransferView: View {
             .navigationTitle("Transfer to Watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
                     }

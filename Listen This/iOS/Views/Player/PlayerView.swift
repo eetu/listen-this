@@ -416,7 +416,7 @@ private struct PlayerChaptersSheet<Player: AudioPlayer & Observable>: View {
             }
             .navigationTitle("Chapters")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }

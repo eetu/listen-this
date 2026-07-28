@@ -67,7 +67,7 @@ struct AudiobookshelfBrowserView: View {
             .navigationTitle("Audiobookshelf")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
                     }

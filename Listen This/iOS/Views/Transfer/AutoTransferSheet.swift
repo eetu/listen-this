@@ -57,10 +57,9 @@ struct AutoTransferSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal)
                     } else if case .error = selectedMethod {
-                        Button("Cancel") {
-                            dismiss()
-                        }
-                        .foregroundStyle(.secondary)
+                        // Dismissal lives in the toolbar; a second Cancel here
+                        // would just be the same action twice on one screen.
+                        EmptyView()
                     } else {
                         Button {
                             Task {
@@ -76,11 +75,6 @@ struct AutoTransferSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .padding(.horizontal)
-
-                        Button("Cancel") {
-                            dismiss()
-                        }
-                        .foregroundStyle(.secondary)
                     }
                 }
             } else {
@@ -89,6 +83,25 @@ struct AutoTransferSheet: View {
         }
         .navigationTitle("Transfer to Watch")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Without a toolbar dismiss this sheet had no visible way out at
+            // all while transferring — only an interactive swipe.
+            //
+            // The placements are semantic rather than positional, so the button
+            // is declared by what it means and the system positions it: before
+            // starting, leaving abandons the transfer (a cancellation); once
+            // running, the transfer continues regardless, so leaving is just an
+            // acknowledgement (a confirmation).
+            if isTransferring {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            } else {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
         .alert("Transfer Failed", isPresented: $showError) {
             Button("OK", role: .cancel) {
                 transferError = nil

@@ -42,6 +42,18 @@ struct WatchTransferStatusView: View {
         }
         .navigationTitle(hasActiveTransfer ? audiobook.title : "Download")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Without an explicit item watchOS falls back to its default "X",
+            // which read differently from the other two download sheets.
+            // Leading placement: `.confirmationAction` collides with the clock
+            // and the title on watchOS. The transfer is driven by the iPhone
+            // and keeps running either way, so the label reads "Done".
+            ToolbarItem(placement: .cancellationAction) {
+                Button(hasActiveTransfer || audiobook.isFileCached ? "Done" : "Cancel") {
+                    dismiss()
+                }
+            }
+        }
     }
 
     // MARK: - Audiobook Info (only shown when not transferring)
