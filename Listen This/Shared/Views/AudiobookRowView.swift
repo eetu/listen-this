@@ -13,6 +13,9 @@ struct AudiobookRowView: View {
 
     let showProgress: Bool
     let isTransferring: Bool
+    /// Bytes from an interrupted transfer are on disk, but the book isn't
+    /// playable yet.
+    let hasPartialDownload: Bool
     /// Completion fraction of an in-flight transfer, when it's known. Drives a
     /// determinate ring over the artwork instead of an indeterminate spinner,
     /// so a background download is legible at a glance from the library.
@@ -44,7 +47,8 @@ struct AudiobookRowView: View {
         playabilityState: AudiobookPlayabilityState,
         showProgress: Bool = true,
         isTransferring: Bool = false,
-        transferProgress: Double? = nil
+        transferProgress: Double? = nil,
+        hasPartialDownload: Bool = false
     ) {
         self.title = title
         self.author = author
@@ -55,20 +59,27 @@ struct AudiobookRowView: View {
         self.showProgress = showProgress
         self.isTransferring = isTransferring
         self.transferProgress = transferProgress
+        self.hasPartialDownload = hasPartialDownload
     }
 
     /// Initialize directly from audiobook (captures values at init time)
     /// Used by watchOS where the detached object issue is less common
+    /// - Parameter hasPartialDownload: overrides the on-disk check when the
+    ///   caller knows about resumable state the model can't see — an
+    ///   interrupted Audiobookshelf transfer keeps its bytes inside URLSession's
+    ///   resume data rather than in a partial file.
     init(
         audiobook: Audiobook,
         showProgress: Bool = true,
         isTransferring: Bool = false,
-        transferProgress: Double? = nil
+        transferProgress: Double? = nil,
+        hasPartialDownload: Bool? = nil
     ) {
         self.showProgress = showProgress
         self.isTransferring = isTransferring
         self.transferProgress = transferProgress
-        
+        self.hasPartialDownload = hasPartialDownload ?? audiobook.hasPartialDownload
+
         // Capture all values at init to resolve faults and avoid accessing detached SwiftData objects
         self.title = audiobook.title
         self.author = audiobook.author
@@ -82,7 +93,7 @@ struct AudiobookRowView: View {
     /// would only duplicate it.
     private var showStatusIcon: Bool {
         guard transferProgress == nil else { return false }
-        return isTransferring || playabilityState != .cached
+        return isTransferring || hasPartialDownload || playabilityState != .cached
     }
 
     #if os(iOS)
@@ -102,6 +113,8 @@ struct AudiobookRowView: View {
             parts.append("Downloading, \(Int(transferProgress * 100)) percent")
         } else if isTransferring {
             parts.append("Transferring")
+        } else if hasPartialDownload {
+            parts.append("Partly downloaded")
         } else if playabilityState != .cached {
             parts.append(playabilityState.statusText)
         }
@@ -229,11 +242,14 @@ struct AudiobookRowView: View {
                 #else
                     .controlSize(.mini)
                 #endif
-        } else {
-            if playabilityState != .cached {
-                Image(systemName: playabilityState.iconName)
-                    .foregroundStyle(playabilityState.color)
-            }
+        } else if hasPartialDownload {
+            // Distinct from both "downloaded" and "not downloaded": bytes are
+            // on disk, but the book isn't playable until the rest arrives.
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(.orange)
+        } else if playabilityState != .cached {
+            Image(systemName: playabilityState.iconName)
+                .foregroundStyle(playabilityState.color)
         }
     }
 }

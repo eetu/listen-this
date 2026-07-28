@@ -10,7 +10,11 @@ import OSLog
 
 /// Centralized logger for the Listen This app
 /// Use subsystem-specific loggers for different components
-enum AppLogger {
+///
+/// `nonisolated` because `Logger` is thread-safe and these are used from
+/// background contexts (URLSession delegate queues) as well as the main actor;
+/// the app targets otherwise default to `MainActor` isolation.
+nonisolated enum AppLogger {
 
     /// Subsystem identifier for all app loggers
     private static let subsystem = "com.anarkisti.Listen-This"

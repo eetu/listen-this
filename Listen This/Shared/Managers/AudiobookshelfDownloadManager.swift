@@ -108,6 +108,9 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
         let expectedBytes: Int64
         var movedURL: URL?
         var failure: TaskFailure?
+        /// Set when the user explicitly cancelled, so the delegate keeps no
+        /// resume data for a transfer they chose to abandon.
+        var userCancelled = false
         /// When progress was last published to the UI, so the flood of
         /// `didWriteData` callbacks can be sampled rather than forwarded.
         var lastProgressUpdate: Date?
@@ -156,6 +159,7 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
         _ = session
+        Self.discardStaleResumeData()
         Task { await adoptRunningTasks() }
     }
 
@@ -324,19 +328,28 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
 
     // MARK: - Cancel
 
+    /// Abandon a download and reclaim its bytes.
+    ///
+    /// "Cancel" means stop, not pause — leaving the sheet already keeps a
+    /// transfer running, so retaining several hundred megabytes here would
+    /// contradict the button. Plain `cancel()` (rather than
+    /// `cancel(byProducingResumeData:)`) is what actually frees the space:
+    /// resume data only *references* a partial file, so keeping the blob keeps
+    /// the bytes, and deleting only the blob would orphan them where nothing
+    /// can reclaim them. Interruptions the user didn't choose still resume.
     func cancel(audiobookId: UUID) {
         guard let task = tasks[audiobookId] else { return }
 
         logger.info("Cancelling Audiobookshelf download for \(audiobookId)")
 
-        task.cancel { resumeData in
-            guard let resumeData else { return }
-            Self.storeResumeData(resumeData, for: audiobookId)
-        }
+        records.withLock { $0[audiobookId.uuidString]?.userCancelled = true }
+        Self.discardResumeData(for: audiobookId)
+        task.cancel()
 
         // The delegate's didCompleteWithError finishes the continuation; clear
         // the visible progress immediately so the UI reacts to the tap.
         activeDownloads.removeValue(forKey: audiobookId)
+        TransferProgressCenter.shared.finish(audiobookId)
     }
 
     // MARK: - Completion
@@ -393,6 +406,13 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
                     warnIfDuplicated(audiobook, in: modelContext)
                 }
                 logger.info("Audiobookshelf download complete: \(url.lastPathComponent)")
+
+                // Keep the iPhone's picture of what's on the Watch accurate;
+                // it drives whether "Transfer" is offered over there.
+                #if os(watchOS)
+                    WatchConnectivityManager.shared.sendCachedAudiobookList()
+                #endif
+
                 continuation?.resume(returning: url)
             } catch {
                 logger.error("Failed to record download: \(error.localizedDescription)")
@@ -535,6 +555,34 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
         try? FileManager.default.removeItem(at: resumeDataURL(for: audiobookId))
     }
 
+    /// How long an unclaimed partial transfer is worth keeping.
+    nonisolated static let resumeDataLifetime: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Drop resume data nobody came back for. Retained partials are invisible
+    /// in the UI, so without an expiry they could accumulate on a device with
+    /// very little room to spare.
+    nonisolated static func discardStaleResumeData(now: Date = Date()) {
+        guard
+            let files = try? FileManager.default.contentsOfDirectory(
+                at: resumeDataDirectory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+        else { return }
+
+        for file in files {
+            guard
+                let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate,
+                now.timeIntervalSince(modified) > resumeDataLifetime
+            else { continue }
+
+            try? FileManager.default.removeItem(at: file)
+            AppLogger.audiobookshelf.info(
+                "Discarded stale resume data: \(file.lastPathComponent)")
+        }
+    }
+
     // MARK: - URLSessionDownloadDelegate
 
     nonisolated func urlSession(
@@ -614,21 +662,32 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
             return
         }
 
-        // A body that arrived short of what the server promised must not become
-        // a "downloaded" book — playback would just stop where the bytes end.
-        // Only checked on a fresh 200: a resumed transfer answers 206 whose
-        // Content-Length covers the remaining range, not the whole file.
-        if let http = downloadTask.response as? HTTPURLResponse,
-            http.statusCode == 200,
-            http.expectedContentLength > 0,
-            let received = Self.fileSize(at: location),
-            received < http.expectedContentLength
-        {
-            records.withLock {
-                $0[key]?.failure = .truncated(
-                    received: received, expected: http.expectedContentLength)
+        // A body that arrived short must not become a "downloaded" book —
+        // playback would just stop where the bytes end.
+        if let received = Self.fileSize(at: location) {
+            let http = downloadTask.response as? HTTPURLResponse
+
+            // A fresh 200 declares the whole body, so it can be checked
+            // exactly. A resumed transfer answers 206, whose Content-Length
+            // covers only the remaining range — checking against that would
+            // pass anything, so fall back to the size the library already
+            // knows, allowing 1% for metadata drift.
+            let expected: Int64
+            let minimumAcceptable: Int64
+            if let http, http.statusCode == 200, http.expectedContentLength > 0 {
+                expected = http.expectedContentLength
+                minimumAcceptable = expected
+            } else {
+                expected = record.expectedBytes
+                minimumAcceptable = Int64(Double(record.expectedBytes) * 0.99)
             }
-            return
+
+            if minimumAcceptable > 0, received < minimumAcceptable {
+                records.withLock {
+                    $0[key]?.failure = .truncated(received: received, expected: expected)
+                }
+                return
+            }
         }
 
         // The temporary file is deleted as soon as this method returns, so the
@@ -663,8 +722,11 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
         if let error {
             let nsError = error as NSError
 
-            // Both cancels and mid-flight failures can hand back resume data.
-            if let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+            // Keep resume data only for interruptions the user didn't choose.
+            if record.userCancelled {
+                Self.discardResumeData(for: audiobookId)
+            } else if let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+            {
                 Self.storeResumeData(resumeData, for: audiobookId)
             }
 

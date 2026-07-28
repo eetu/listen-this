@@ -28,7 +28,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
 
     // MARK: - Configuration
 
-    static let chunkSize = 100 * 1024 * 1024
+    nonisolated static let chunkSize = 100 * 1024 * 1024
     private let maxRetryCount = 3
     private let retryBaseDelay: UInt64 = 500_000_000
 
@@ -56,6 +56,21 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
 
     var activeUploads: [UUID: ChunkTransferProgress] = [:]
     var activeDownloads: [UUID: ChunkTransferProgress] = [:]
+
+    /// Downloads the user has asked to stop. Checked between chunks — clearing
+    /// the progress dictionary alone only hid the transfer, it kept running to
+    /// completion and cached the book regardless.
+    private var cancelledDownloads: Set<UUID> = []
+
+    /// How a chunked download ended, which decides the fate of the partial file.
+    private enum DownloadOutcome {
+        case completed
+        case cancelled
+        /// Stopped by something the user didn't choose; keep it for resuming.
+        case interrupted
+        /// Finished but doesn't match the manifest, so it can never be played.
+        case unusable
+    }
 
     // MARK: - Init
 
@@ -172,8 +187,45 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     }
 
     func cancelTransfer(audiobookId: UUID) {
+        // Record the intent as well as clearing the UI state: the download loop
+        // checks this between chunks and stops, then discards the partial.
+        cancelledDownloads.insert(audiobookId)
         activeUploads.removeValue(forKey: audiobookId)
         activeDownloads.removeValue(forKey: audiobookId)
+        TransferProgressCenter.shared.finish(audiobookId)
+    }
+
+    /// Which staged uploads are provably redundant and safe to reclaim.
+    ///
+    /// Chunks are a staging area: once the Watch has the book, whichever route
+    /// delivered it, the staged copy serves no purpose and is only consuming the
+    /// user's iCloud storage. Anything mid-transfer is excluded — those chunks
+    /// may still be being read.
+    nonisolated static func redundantStagedChunkIds(
+        staged: Set<String>,
+        cachedOnWatch: Set<String>,
+        transferring: Set<String>
+    ) -> Set<String> {
+        staged.intersection(cachedOnWatch).subtracting(transferring)
+    }
+
+    /// How many whole chunks of a previous attempt are already on disk.
+    ///
+    /// Returns 0 when there is nothing to resume, or when the partial isn't an
+    /// exact multiple of the chunk size — a short tail means the file was
+    /// written by something other than a clean chunk boundary, and resuming
+    /// from it would silently corrupt the audiobook.
+    nonisolated static func resumableChunkCount(at url: URL, chunkCount: Int) -> Int {
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let size = (attributes[.size] as? NSNumber)?.int64Value,
+            size > 0,
+            size % Int64(chunkSize) == 0
+        else { return 0 }
+
+        let chunks = Int(size / Int64(chunkSize))
+        // A file already at or past full length isn't a resume candidate.
+        return chunks < chunkCount ? chunks : 0
     }
 
     // MARK: - Download
@@ -183,6 +235,12 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         defer { endBackgroundExecution() }
 
         let audiobookId = audiobook.id
+
+        // Clear any leftover cancellation intent before starting. A cancel
+        // arriving when nothing was running would otherwise sit in the set and
+        // abort this attempt on its first chunk.
+        cancelledDownloads.remove(audiobookId)
+
         let manifest = try await fetchManifest(audiobookId: audiobookId)
 
         guard let path = audiobook.expectedCachePath else {
@@ -206,35 +264,76 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             throw ChunkTransferError.insufficientStorage
         }
 
-        FileManager.default.createFile(atPath: path, contents: nil)
-        let handle = try FileHandle(forWritingTo: outputURL)
+        // Assemble into a partial file, never at the cache path. A file sitting
+        // at expectedCachePath counts as a complete download, so building in
+        // place would show an interrupted transfer as "Downloaded" and play
+        // silence past the missing bytes.
+        guard let partialURL = audiobook.partialFileURL else {
+            throw ChunkTransferError.fileNotAvailable
+        }
+        try FileManager.default.createDirectory(
+            at: partialURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        // Pick up where an interrupted attempt left off. Chunks are written in
+        // order and every chunk but the last is exactly chunkSize, so a partial
+        // file that is a whole number of chunks tells us how many landed — no
+        // extra bookkeeping to persist or fall out of sync.
+        let resumeFrom = Self.resumableChunkCount(
+            at: partialURL, chunkCount: manifest.chunkCount)
+
+        if resumeFrom == 0 {
+            FileManager.default.createFile(atPath: partialURL.path, contents: nil)
+        } else {
+            logger.info(
+                "Resuming chunked download of '\(audiobook.title)' from chunk \(resumeFrom) of \(manifest.chunkCount)"
+            )
+        }
+
+        let handle = try FileHandle(forWritingTo: partialURL)
         defer { try? handle.close() }
+        try handle.seekToEnd()
+
+        var written = Int64(resumeFrom) * Int64(Self.chunkSize)
 
         activeDownloads[audiobookId] = ChunkTransferProgress(
             audiobookId: audiobookId,
             totalBytes: manifest.fileSize,
             totalChunks: manifest.chunkCount,
-            completedChunks: 0,
+            completedChunks: resumeFrom,
+            bytesTransferred: written,
             isUploading: false
         )
-        // Ensure the progress entry is never orphaned on a thrown error.
+
+        // How the attempt ended decides what happens to the bytes on disk.
+        var outcome = DownloadOutcome.interrupted
         defer {
+            try? handle.close()
             activeDownloads.removeValue(forKey: audiobookId)
             TransferProgressCenter.shared.finish(audiobookId)
-        }
+            cancelledDownloads.remove(audiobookId)
 
-        // Track success so a thrown error doesn't leave a corrupt partial file.
-        var completedSuccessfully = false
-        defer {
-            if !completedSuccessfully {
-                try? handle.close()
-                try? FileManager.default.removeItem(at: outputURL)
+            switch outcome {
+            case .completed:
+                break
+            case .cancelled, .unusable:
+                // Cancelled means abandoned, and an unusable file is provably
+                // wrong — in both cases give the space back rather than leave
+                // bytes the user can neither see nor play.
+                try? FileManager.default.removeItem(at: partialURL)
+            case .interrupted:
+                // Keep it: the next attempt resumes from here.
+                break
             }
         }
 
-        var written: Int64 = 0
+        for index in resumeFrom..<manifest.chunkCount {
+            guard !cancelledDownloads.contains(audiobookId) else {
+                outcome = .cancelled
+                throw ChunkTransferError.cancelled
+            }
 
-        for index in 0..<manifest.chunkCount {
             let data = try await downloadChunkWithRetry(
                 chunkIndex: index,
                 manifestRecordId: manifest.recordId,
@@ -265,18 +364,27 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         try? handle.synchronize()
 
         guard written == manifest.fileSize,
-            verifyDownloadedFile(at: outputURL, expectedSize: manifest.fileSize)
+            verifyDownloadedFile(at: partialURL, expectedSize: manifest.fileSize)
         else {
             logger.error(
                 "Download incomplete for '\(audiobook.title)': wrote \(written) of \(manifest.fileSize) bytes"
             )
-            // completedSuccessfully stays false, so the defer removes the
-            // partial file rather than leaving it to masquerade as cached.
+            // Provably wrong rather than merely unfinished, so the defer
+            // removes it instead of offering it to the next attempt.
+            outcome = .unusable
             throw ChunkTransferError.incompleteDownload
         }
 
-        // Verified complete, so don't let the cleanup defer delete it.
-        completedSuccessfully = true
+        // Verified, so promote it to the cache path. Nothing incomplete ever
+        // occupies that path, which is what the rest of the app reads as
+        // "this book is downloaded".
+        try? handle.close()
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+        }
+        try FileManager.default.moveItem(at: partialURL, to: outputURL)
+
+        outcome = .completed
 
         persistCacheEntry(for: audiobook, at: outputURL)
 
@@ -696,6 +804,12 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
         audiobook.cacheEntry?.lastAccessedDate = Date()
         try? modelContext.save()
+
+        // Keep the iPhone's picture of what's on the Watch accurate; it drives
+        // whether "Transfer" is offered over there.
+        #if os(watchOS)
+            WatchConnectivityManager.shared.sendCachedAudiobookList()
+        #endif
     }
 
     // MARK: - Chunk Availability Check
@@ -928,6 +1042,7 @@ enum ChunkTransferError: LocalizedError {
     case chunkNotFound
     case incompleteUpload
     case incompleteDownload
+    case cancelled
     case networkError
     case quotaExceeded
     case insufficientStorage
@@ -950,6 +1065,8 @@ enum ChunkTransferError: LocalizedError {
             return "Upload is incomplete, try again"
         case .incompleteDownload:
             return "The download finished short of the full audiobook and was discarded. Try again."
+        case .cancelled:
+            return "Download cancelled."
         case .networkError:
             return "Network error during transfer"
         case .quotaExceeded:

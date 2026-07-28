@@ -5,6 +5,7 @@
 
 import AVFoundation
 import MediaPlayer
+import OSLog
 import SwiftData
 import SwiftUI
 import WatchKit
@@ -407,12 +408,20 @@ struct WatchPlayerView: View {
     }
 
     private func removeDownload() {
-        if let entry = audiobook.cacheEntry {
-            try? FileManager.default.removeItem(atPath: entry.filePath)
-            modelContext.delete(entry)
+        // Go through the cache manager rather than deleting by hand: it also
+        // clears the file at the expected cache path when that differs from the
+        // recorded one, and orders the SwiftData changes to avoid the
+        // relationship crash documented there.
+        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+        do {
+            try cacheManager.removeCache(for: audiobook)
+        } catch {
+            AppLogger.cache.error("[WatchPlayerView] Failed to remove cache: \(error)")
         }
-        audiobook.cacheEntry = nil
-        try? modelContext.save()
+
+        // Tell the iPhone what the Watch actually has now, or it keeps showing
+        // the book as sent.
+        connectivity.sendCachedAudiobookList()
     }
 
     private func formatTime(_ seconds: Double) -> String {

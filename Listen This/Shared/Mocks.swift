@@ -119,6 +119,13 @@ final class MockCloudKitTransferManager: CloudKitTransferManager {
                 try await Task.sleep(nanoseconds: networkDelayNanoseconds)
             }
 
+            // Re-check after the work as well: checking only beforehand makes a
+            // single-chunk transfer impossible to cancel, since the one check
+            // happens before the one suspension point.
+            guard activeUploads[audiobookId] != nil else {
+                throw ChunkTransferError.incompleteUpload
+            }
+
             progress.completedChunks = i
             progress.bytesTransferred = Int64(i) * bytesPerChunk
             activeUploads[audiobookId] = progress

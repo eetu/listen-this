@@ -484,6 +484,60 @@ final class AudiobookCacheManager: CacheManager {
             logger.info("[AudiobookCacheManager] No orphaned caches found")
         }
 
+        let (partialCount, partialBytes) = cleanupStalePartials(audiobooks: audiobooks)
+
+        return (removedCount + partialCount, freedSpace + partialBytes)
+    }
+
+    /// How long an unfinished transfer's bytes are worth keeping for a retry.
+    static let partialLifetime: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Reclaim partial downloads nobody came back for.
+    ///
+    /// Partials live outside the cache directory so they can't be mistaken for
+    /// finished books, which also puts them out of reach of the orphan sweep
+    /// above — without this they would accumulate invisibly.
+    @discardableResult
+    func cleanupStalePartials(audiobooks: [Audiobook], now: Date = Date()) -> (
+        removedCount: Int, freedSpace: Int64
+    ) {
+        let directory = Audiobook.partialsDirectoryURL
+
+        guard
+            let files = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        else { return (0, 0) }
+
+        // A partial whose book has left the library can go immediately; the
+        // rest are kept until they're clearly abandoned.
+        let liveNames = Set(audiobooks.compactMap { $0.partialFileURL?.lastPathComponent })
+
+        var removedCount = 0
+        var freedSpace: Int64 = 0
+
+        for file in files {
+            let values = try? file.resourceValues(forKeys: [
+                .contentModificationDateKey, .fileSizeKey,
+            ])
+
+            let isOrphaned = !liveNames.contains(file.lastPathComponent)
+            let isStale =
+                values?.contentModificationDate.map { now.timeIntervalSince($0) > Self.partialLifetime }
+                ?? false
+
+            guard isOrphaned || isStale else { continue }
+
+            freedSpace += Int64(values?.fileSize ?? 0)
+            try? FileManager.default.removeItem(at: file)
+            removedCount += 1
+            logger.info(
+                "[AudiobookCacheManager] Removed \(isOrphaned ? "orphaned" : "stale") partial: \(file.lastPathComponent)"
+            )
+        }
+
         return (removedCount, freedSpace)
     }
 

@@ -93,7 +93,9 @@ final class CloudKitTransferViewModel {
             // Watch: Check if chunks exist before allowing download
             switch availability {
             case .fullyUploaded:
-                actionButtonTitle = "Download"
+                // Say "Resume" when a previous attempt left bytes behind, so
+                // the button matches what will actually happen.
+                actionButtonTitle = audiobook.hasPartialDownload ? "Resume" : "Download"
                 isActionDisabled = false
 
             case .partiallyUploaded:
@@ -163,6 +165,9 @@ final class CloudKitTransferViewModel {
 
             state = .complete
 
+        } catch ChunkTransferError.cancelled {
+            // The user asked for this; don't report it back to them as a failure.
+            state = .idle
         } catch {
             state = .error("Download failed: \(error.localizedDescription)")
         }
@@ -180,6 +185,10 @@ struct CloudKitTransferView: View {
     let audiobook: Audiobook
 
     @State private var viewModel: CloudKitTransferViewModel?
+
+    private var isTransferring: Bool {
+        viewModel?.activeProgress != nil
+    }
 
     #if os(iOS)
         private let mode: CloudKitTransferViewModel.TransferMode = .upload
@@ -215,11 +224,32 @@ struct CloudKitTransferView: View {
             .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button(viewModel?.state == .complete ? "Done" : "Cancel") {
-                    dismiss()
+            // Leaving before the transfer starts abandons it (a cancellation);
+            // once running or complete it only dismisses, so it's an
+            // acknowledgement. Stopping a running transfer is the red button
+            // on the progress view.
+            //
+            // iOS honours that distinction with placement. watchOS can't:
+            // `.confirmationAction` lands top-right, sharing space with the
+            // system clock and overlapping the title, so the dismiss stays
+            // leading there and only the label carries the meaning.
+            #if os(watchOS)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(isTransferring || viewModel?.state == .complete ? "Done" : "Cancel") {
+                        dismiss()
+                    }
                 }
-            }
+            #else
+                if isTransferring || viewModel?.state == .complete {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                } else {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+            #endif
         }
         .alert("Transfer Error", isPresented: errorBinding) {
             Button("OK") {}

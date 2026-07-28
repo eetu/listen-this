@@ -451,6 +451,14 @@ struct AudiobookRow: View {
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobook.id] != nil
     }
 
+    /// Bytes from an interrupted transfer that a retry could continue from,
+    /// whether they sit in a partial file (chunked) or inside URLSession's
+    /// resume data (Audiobookshelf).
+    var hasResumableDownload: Bool {
+        audiobook.hasPartialDownload
+            || AudiobookshelfDownloadManager.shared.hasResumeData(for: audiobook.id)
+    }
+
     /// How far along the transfer is, whichever route is carrying it. Direct
     /// iPhone transfers report bytes rather than publishing to the centre.
     var transferFraction: Double? {
@@ -470,7 +478,8 @@ struct AudiobookRow: View {
             audiobook: audiobook,
             showProgress: false,
             isTransferring: hasActiveTransfer,
-            transferProgress: transferFraction
+            transferProgress: transferFraction,
+            hasPartialDownload: hasResumableDownload
         )
         .sheet(isPresented: $showingTransferSheet) {
             NavigationStack {
@@ -536,13 +545,18 @@ struct DownloadOptionsSheet: View {
 
     /// Determine which method to recommend based on conditions
     private var recommendedMethod: RecommendedTransferMethod {
-        // Straight from the server needs neither the phone nor iCloud storage
-        if canDownloadFromAudiobookshelf {
-            return .audiobookshelf
-        }
-        // If already uploaded to CloudKit, that's fastest
+        // Chunks already sitting in iCloud win, even for an Audiobookshelf
+        // book. Using them is the only thing that reclaims that storage —
+        // they're deleted after a successful download — so recommending the
+        // server instead would leave the uploaded copy in the user's iCloud
+        // account indefinitely.
         if cloudKitAvailability == .fullyUploaded {
             return .wifi
+        }
+        // Otherwise straight from the server: needs neither the phone nor
+        // iCloud storage.
+        if canDownloadFromAudiobookshelf {
+            return .audiobookshelf
         }
         // If iPhone is nearby, direct transfer works without needing iCloud storage
         if connectivity.isReachable {
@@ -640,7 +654,9 @@ struct DownloadOptionsSheet: View {
     private var wifiOptionSubtitle: String {
         switch cloudKitAvailability {
         case .fullyUploaded:
-            return "Copy your iPhone uploaded"
+            // Says why this one is preferred: it's waiting, and using it is
+            // what clears it out of iCloud again.
+            return "Waiting in iCloud, frees the space"
         case .partiallyUploaded:
             return "iPhone upload unfinished"
         case .notUploaded:
