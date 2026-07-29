@@ -41,29 +41,43 @@ The project targets modern OS versions and should use current Swift features:
 
 ```
 Listen This/
-├── Shared/           # Shared code between iOS and watchOS
-│   ├── Models/       # SwiftData models (Audiobook, Chapter, PlaybackSession)
-│   ├── Services/     # Business logic (AudioPlayerService, CacheManager)
-│   ├── Managers/     # CloudKit, WatchConnectivity managers
+├── Shared/           # Compiled into iOS, watchOS AND the widget extension
+│   ├── Models/       # SwiftData: Audiobook, Chapter, PlaybackSession,
+│   │                 #   CacheEntry, UserSettings, AudiobookshelfSettings
+│   ├── Services/     # AudioPlayerService, AudiobookLibraryService,
+│   │                 #   TransferProgressCenter, CacheSettings
+│   ├── Managers/     # AudiobookCacheManager, CloudKitChunkedTransferManager,
+│   │                 #   AudiobookshelfDownloadManager
+│   ├── Providers/    # ContentSource protocol + iCloudDrive, Audiobookshelf
+│   ├── Protocols/    # AudioPlayer, CacheManager, CloudKitTransferManager
+│   ├── Views/        # Cross-platform views (AudiobookRowView,
+│   │                 #   PlayerControlsView, TransferProgressView, ...)
+│   ├── Utilities/    # AppLogger, MetadataExtractor, UIImage+DominantColor
+│   ├── Preview/      # SwiftUI preview helpers
 │   └── Mocks.swift   # Mock implementations for tests and previews
-├── iOS/              # iOS-specific code
-│   ├── Views/        # SwiftUI views
-│   └── Managers/     # iOS-specific managers
-├── Docs/             # Architecture documentation
-└── Preview/          # SwiftUI preview helpers
+├── iOS/              # iOS-only
+│   ├── Views/        # Library, Player, Import, Settings, Transfer
+│   ├── Managers/     # iOSWatchConnectivityManager
+│   ├── Models/       # WatchTransferProgress
+│   └── Protocols/    # iOSWatchConnectivity
+└── Docs/             # ARCHITECHTURE.md
 
 Listen This Watch App/
-└── Watch/            # watchOS-specific code
+└── Watch/
+    ├── Views/        # WatchLibraryView, WatchPlayerView,
+    │                 #   WatchTransferStatusView, AudiobookshelfDownloadView
+    └── Managers/     # WatchConnectivityManager, WatchExtensionDelegate
 
-Listen This AppTests/
-├── TestHelpers.swift      # Shared test utilities
-├── TransferTests.swift    # CloudKit & Watch transfer tests
-├── CacheTests.swift       # Cache manager tests
-├── ModelTests.swift       # SwiftData model tests
-├── ConcurrencyTests.swift # Thread safety tests
-├── PlaybackSyncTests.swift # Cross-device sync tests
-└── TESTING.md             # Testing documentation
+Listen This Widgets/  # Widget extension (reads the shared models)
+
+Listen This AppTests/ # Swift Testing; TESTING.md documents the suites
 ```
+
+**Target membership matters.** The project uses file-system-synchronized
+groups, so a new file under `Shared/` is picked up by the **iOS target only**.
+To use it from the Watch or the tests, tick it into those targets in Xcode's
+File Inspector — otherwise the Watch build fails with "cannot find type in
+scope". This appears in `project.pbxproj` as `membershipExceptions`.
 
 ## Key Patterns
 

@@ -16,6 +16,11 @@ This document outlines the testing strategy for the Listen This audiobook app, c
 | **ModelTests.swift** | SwiftData model relationships and queries |
 | **ConcurrencyTests.swift** | Thread safety, error recovery, and performance |
 | **PlaybackSyncTests.swift** | Cross-device playback state synchronization |
+| **AudiobookshelfDownloadTests.swift** | Server address classification, error mapping, byte-based progress, download bookkeeping |
+| **PartialDownloadTests.swift** | A partial transfer must never present itself as a download |
+| **CancelAndResumeTests.swift** | Chunk resume offsets, partial visibility, staged-chunk reclamation, resume-data expiry |
+| **TransferMethodSelectorTests.swift** | Transfer method selection thresholds and display names |
+| **DominantColorTests.swift** | Artwork colour extraction |
 
 ### Mock Implementations
 
