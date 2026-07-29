@@ -145,6 +145,26 @@ Note: Simulator names change with Xcode/iOS versions. Use the commands above to 
 - Creates `buildServer.json` (not committed to git - contains machine-specific paths)
 - Enables SourceKit LSP in editors like Zed, VS Code, Neovim
 
+### Release Builds (Xcode Cloud)
+
+**Pushing a tag triggers the app build.** That build runs in **Xcode Cloud**,
+configured in Xcode / App Store Connect — *not* in this repo, so nothing about
+it appears under `.github/workflows/`. GitHub Actions here only runs the test
+suite (`tests.yml`) and publishes the marketing site (`pages.yml`).
+
+Consequences worth remembering:
+
+- A tag is not just a bookmark. It is how a distributable build gets produced,
+  so a fix that needs to reach a build needs a tag — even when the marketing
+  version doesn't change.
+- Git tags and App Store versions don't map one-to-one. `v1.2.0`, `v1.2.1` and
+  `v1.2.2` all carry `MARKETING_VERSION = 1.2.0`; the tag marks a build, the
+  marketing version marks a submission.
+- Before tagging, check whether `CURRENT_PROJECT_VERSION` needs bumping. App
+  Store Connect rejects a re-upload of a build number it already holds, so if
+  an earlier tag's build was archived there, the next tag needs a new build
+  number even for the same marketing version.
+
 ## UX Audit Findings (June 2026)
 
 Comprehensive UX review findings organized by priority. Address these when improving the app.
