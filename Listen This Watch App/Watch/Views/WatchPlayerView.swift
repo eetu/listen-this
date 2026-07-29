@@ -76,7 +76,12 @@ struct WatchPlayerView: View {
         // Artwork as a background so it never affects the foreground's size or
         // centering — otherwise the scaledToFill image (active) vs plain black
         // (Always-On) shifted the controls horizontally between states.
-        .background { backgroundArtworkView }
+        //
+        // containerBackground rather than background: it's the watchOS API for
+        // filling the whole navigation container, including behind the title
+        // and out to the screen edges. A plain background is laid out to the
+        // safe area, which left the bottom of the screen black.
+        .containerBackground(for: .navigation) { backgroundArtworkView }
         .background(VolumeView().opacity(0))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -128,24 +133,27 @@ struct WatchPlayerView: View {
             } else if let data = audiobook.artworkData,
                 let image = UIImage(data: data)
             {
-                Image(uiImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .antialiased(true)
-                    .scaledToFill()
-                    .blur(radius: 5)
-                    .opacity(0.5)
-                    .drawingGroup()
+                // Color.clear takes the container's full size, so the image is
+                // sized by the container rather than by its own dimensions.
+                // Applying scaledToFill directly let the image lay itself out
+                // square, leaving a black band along the bottom of the screen.
+                // No drawingGroup: it rasterises to the layout bounds and
+                // clips the fill overflow, which defeats scaledToFill.
+                Color.clear
+                    .overlay {
+                        Image(uiImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                            .antialiased(true)
+                            .scaledToFill()
+                            .blur(radius: 5)
+                            .opacity(0.5)
+                    }
+                    .clipped()
             } else {
                 Color.black
             }
         }
-        // Fill the entire screen (including under the top safe area / title)
-        // and clip overflow. Expanding the whole group avoids scaledToFill
-        // sizing to the safe area and leaving a black sliver at the top.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .ignoresSafeArea()
     }
 
     // MARK: - Bottom Toolbar
@@ -173,7 +181,10 @@ struct WatchPlayerView: View {
     private var loadingSpinner: some View {
         VStack(spacing: 8) {
             ProgressView()
-            Text("Loading…")
+            // Distinguish opening the player from the separate download
+            // indicator watchOS shows in the status bar during a background
+            // transfer — otherwise the two read as one duplicated spinner.
+            Text(audiobook.isFileCached ? "Loading…" : "Connecting…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
