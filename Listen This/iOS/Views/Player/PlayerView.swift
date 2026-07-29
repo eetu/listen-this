@@ -446,9 +446,13 @@ private struct PlayerSpeedSheet<Player: AudioPlayer & Observable>: View {
             }
             .padding(.horizontal)
 
+            // Range matches AudioPlayerService's clamp and the Watch's preset
+            // list. At 2.5 the slider let you drag past what the player would
+            // accept: the rate stopped at 2.0 while this sheet's label — which
+            // reads local state, not the player — kept counting up to 2.50x.
             Slider(
                 value: $selectedSpeed,
-                in: 0.5...2.5,
+                in: 0.5...2.0,
                 step: 0.05
             )
             .onChange(of: selectedSpeed) { _, newValue in
