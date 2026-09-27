@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "2620"
+   LastUpgradeVersion = "2700"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -73,7 +73,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C2B59A632EEFD84300090C62"
             BuildableName = "Listen This Watch App.app"
-            BlueprintName = "Listen This Watch App"
             ReferencedContainer = "container:Listen This.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -90,7 +89,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C2B59A632EEFD84300090C62"
             BuildableName = "Listen This Watch App.app"
-            BlueprintName = "Listen This Watch App"
             ReferencedContainer = "container:Listen This.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

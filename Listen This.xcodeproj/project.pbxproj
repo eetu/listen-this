@@ -256,6 +256,7 @@
 				C2F172CF2F138F0400B3CA6C /* Listen This Widgets */,
 				C2F172CA2F138F0400B3CA6C /* Frameworks */,
 				C25538962EEFD37200874394 /* Products */,
+				C299FA003069633C0038A98A /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -268,6 +269,14 @@
 				C2F172C92F138F0400B3CA6C /* Listen This WidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C299FA003069633C0038A98A /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		C2A3BCA92EF34A03007303F0 /* Products */ = {
@@ -390,7 +399,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					C25538942EEFD37200874394 = {
 						CreatedOnToolsVersion = 26.2;
@@ -643,6 +652,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -700,6 +710,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
