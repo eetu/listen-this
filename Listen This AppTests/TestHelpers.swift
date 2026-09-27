@@ -15,7 +15,10 @@ import SwiftData
 /// Create in-memory model container for testing
 @MainActor
 func createTestContainer() throws -> ModelContainer {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    // No CloudKit: the default (.automatic) starts mirroring for the host app's
+    // container, and tearing that down mid-setup crashes parallel tests with
+    // "No eligible connection available".
+    let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     return try ModelContainer(
         for: Audiobook.self, Chapter.self, CacheEntry.self,
         configurations: config
@@ -25,7 +28,10 @@ func createTestContainer() throws -> ModelContainer {
 /// Create in-memory model container with PlaybackSession support
 @MainActor
 func createTestContainerWithPlayback() throws -> ModelContainer {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    // No CloudKit: the default (.automatic) starts mirroring for the host app's
+    // container, and tearing that down mid-setup crashes parallel tests with
+    // "No eligible connection available".
+    let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     return try ModelContainer(
         for: Audiobook.self, Chapter.self, CacheEntry.self, PlaybackSession.self,
         configurations: config
