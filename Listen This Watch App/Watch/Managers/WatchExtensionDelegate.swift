@@ -13,7 +13,7 @@ internal import os
 
 /// Extension delegate that handles background tasks for file transfers
 /// Critical for receiving files when app is not in foreground
-class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
+class WatchExtensionDelegate: NSObject, WKApplicationDelegate {
 
     // MARK: - Background Task Handling
 
@@ -84,9 +84,8 @@ class WatchExtensionDelegate: NSObject, WKExtensionDelegate {
                     // fires from urlSessionDidFinishEvents.
                     audiobookshelfBackgroundTasks.append(urlSessionTask)
 
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         AudiobookshelfDownloadManager.shared.handleBackgroundSessionEvents {
-                            [weak self] in
                             self?.completeAudiobookshelfBackgroundTasks()
                         }
                     }

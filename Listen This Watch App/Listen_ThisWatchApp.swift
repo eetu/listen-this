@@ -15,7 +15,7 @@ typealias WatchManager = WatchConnectivityManager
 
 @main
 struct Listen_ThisWatchApp: App {
-    @WKExtensionDelegateAdaptor(WatchExtensionDelegate.self) var extensionDelegate
+    @WKApplicationDelegateAdaptor(WatchExtensionDelegate.self) var extensionDelegate
     @State private var watchConnectivityManager: WatchManager = .shared
     @State private var transferCheckTimer: Timer?
     @State private var cleanupTimer: Timer?
