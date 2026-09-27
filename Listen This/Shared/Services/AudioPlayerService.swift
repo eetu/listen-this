@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import CoreData
 import Foundation
 import MediaPlayer
 import OSLog
@@ -104,6 +105,9 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     /// Used to prevent older synced data from overwriting newer local progress
     private var lastKnownPlayedTimestamp: Date?
 
+    /// Debounces follow-up checks after CloudKit imports, which arrive in bursts.
+    private var remoteChangeTask: Task<Void, Never>?
+
     var isPlaying = false
     var currentPosition: Double = 0
     var duration: Double = 0
@@ -182,6 +186,33 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             name: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance()
         )
+
+        nc.addObserver(
+            self,
+            selector: #selector(handleRemoteStoreChange),
+            name: .NSPersistentStoreRemoteChange,
+            object: nil
+        )
+    }
+
+    /// Keeps a paused player following progress made on another device, so its
+    /// scrubber shows the real position instead of catching up only on play.
+    /// Posted off the main thread, hence nonisolated.
+    @objc nonisolated private func handleRemoteStoreChange(_ notification: Notification) {
+        Task { @MainActor in
+            self.scheduleRemoteProgressCheck()
+        }
+    }
+
+    private func scheduleRemoteProgressCheck() {
+        remoteChangeTask?.cancel()
+        remoteChangeTask = Task { [weak self] in
+            // Let the import settle and the context merge before reading.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled, let self, self.adoptRemoteStateIfNewer() else { return }
+            await self.seekPlayer(to: self.currentPosition)
+            self.updateNowPlayingInfo()
+        }
     }
 
     // MARK: - Loading
