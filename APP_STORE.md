@@ -31,22 +31,18 @@ Connect to your self-hosted Audiobookshelf server to stream your library or down
 
 Your library and playback position sync automatically across all your devices via iCloud. Start listening on your iPhone, continue on your iPad, finish on your Watch.
 
-## What's New (1.2.0)
+## What's New (1.3.0)
 
 Paste into the "What's New in This Version" field:
 
 **New**
-- Apple Watch can download books directly from your Audiobookshelf server over WiFi, without the iPhone
-- Download progress now appears on Watch library rows
-- Partly downloaded books are marked and resume where they stopped instead of starting over
+- Sort your Audiobookshelf library by recently added, title, author or duration — tap again to reverse the order
+- A paused iPhone, iPad or Watch now follows along while you listen on another device
 
 **Fixed**
-- Audiobookshelf servers on a local network using http:// couldn't be reached at all — on iPhone or Watch
-- A download interrupted partway could show as complete and play silence past a certain point
-- Cancelling a download to Watch didn't stop it — the book finished downloading and was saved anyway
-- Removing a download on Watch left the iPhone showing it as sent, with no way to send it again
-- The Transfer to Watch screen had no way to close it while a transfer was running
-- Temporary iCloud files were left behind when a book reached the Watch by another route
+- Playback position could jump back to an older spot when switching between iPhone, iPad and Watch
+- Pausing could save another device's position instead of where you stopped
+- Play and pause could briefly freeze the app
 
 ## Keywords
 audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audiobookshelf
