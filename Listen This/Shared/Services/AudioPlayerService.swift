@@ -499,6 +499,12 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     func play() async {
         guard let player else { return }
 
+        // The book may have stayed loaded while another device moved on. Pick up
+        // that progress before resuming, or the first save below overwrites it.
+        if adoptRemoteStateIfNewer() {
+            await seekPlayer(to: currentPosition)
+        }
+
         do {
             try activateAudioSession()
             player.rate = Float(playbackRate)
@@ -530,11 +536,20 @@ final class AudioPlayerService: NSObject, AudioPlayer {
 
     @discardableResult
     func seek(to position: Double) async -> Double {
+        let clamped = await seekPlayer(to: position)
+        savePlaybackState()
+        return clamped
+    }
+
+    /// Moves the player without persisting. Used when applying a stored position,
+    /// where saving would stamp it with a fresh `lastPlayed` and let it win over
+    /// newer progress from another device.
+    @discardableResult
+    private func seekPlayer(to position: Double) async -> Double {
         let clamped = max(0, min(duration, position))
         await player?.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
         currentPosition = clamped
         updateCurrentChapter()
-        savePlaybackState()
         return clamped
     }
 
@@ -809,11 +824,38 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
 
         lastKnownPlayedTimestamp = session.lastPlayed
-        Task { await seek(to: currentPosition) }
+        Task { await seekPlayer(to: currentPosition) }
+    }
+
+    /// Adopts the stored session if CloudKit synced newer progress from another
+    /// device since we last read or wrote it. Only when NOT actively playing here:
+    /// adopting mid-listen would yank the user to a different position. While
+    /// playing, this device is authoritative. Returns whether state was adopted;
+    /// the caller moves the player.
+    private func adoptRemoteStateIfNewer() -> Bool {
+        guard let session = audiobook?.playbackSession,
+            let knownTimestamp = lastKnownPlayedTimestamp,
+            session.lastPlayed > knownTimestamp,
+            !isPlaying
+        else { return false }
+
+        logger.info(
+            "Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state"
+        )
+        currentPosition = session.currentPosition
+        currentChapterIndex = session.currentChapter
+        playbackRate = session.playbackRate
+        lastKnownPlayedTimestamp = session.lastPlayed
+        return true
     }
 
     private func savePlaybackState() {
         guard let audiobook else { return }
+
+        if adoptRemoteStateIfNewer() {
+            Task { await seekPlayer(to: currentPosition) }
+            return
+        }
 
         let session =
             audiobook.playbackSession
@@ -823,28 +865,6 @@ final class AudioPlayerService: NSObject, AudioPlayer {
                 modelContext.insert(s)
                 return s
             }()
-
-        // Check if CloudKit synced newer data from another device
-        // If the session's lastPlayed is newer than what we loaded, adopt it -
-        // but only when we're NOT actively playing here. Adopting (and seeking)
-        // mid-listen would yank the user to a different position, which feels
-        // like a bug. While playing, this device is authoritative and its
-        // progress wins on save below.
-        if let knownTimestamp = lastKnownPlayedTimestamp,
-            session.lastPlayed > knownTimestamp,
-            !isPlaying
-        {
-            // Remote has newer data - adopt it instead of overwriting
-            logger.info(
-                "Detected newer remote progress (\(session.lastPlayed) > \(knownTimestamp)), adopting remote state"
-            )
-            currentPosition = session.currentPosition
-            currentChapterIndex = session.currentChapter
-            playbackRate = session.playbackRate
-            lastKnownPlayedTimestamp = session.lastPlayed
-            Task { await seek(to: currentPosition) }
-            return
-        }
 
         session.currentPosition = currentPosition
         session.currentChapter = currentChapterIndex
