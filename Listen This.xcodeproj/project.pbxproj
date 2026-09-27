@@ -66,7 +66,6 @@
 		C25538952EEFD37200874394 /* Listen This.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C270F6192EF889E8008500DF /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Listen This AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Transfer.xcodeproj; sourceTree = "<group>"; };
 		C2B59A642EEFD84300090C62 /* Listen This Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2EE209C2EEFDAC60008D70C /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		C2EE209D2EEFDAC60008D70C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -256,7 +255,6 @@
 				C2F172CF2F138F0400B3CA6C /* Listen This Widgets */,
 				C2F172CA2F138F0400B3CA6C /* Frameworks */,
 				C25538962EEFD37200874394 /* Products */,
-				C299FA003069633C0038A98A /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -267,21 +265,6 @@
 				C2B59A642EEFD84300090C62 /* Listen This Watch App.app */,
 				C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */,
 				C2F172C92F138F0400B3CA6C /* Listen This WidgetsExtension.appex */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		C299FA003069633C0038A98A /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */,
-			);
-			name = "Recovered References";
-			sourceTree = "<group>";
-		};
-		C2A3BCA92EF34A03007303F0 /* Products */ = {
-			isa = PBXGroup;
-			children = (
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -428,12 +411,6 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C25538962EEFD37200874394 /* Products */;
 			projectDirPath = "";
-			projectReferences = (
-				{
-					ProductGroup = C2A3BCA92EF34A03007303F0 /* Products */;
-					ProjectRef = C2A3BCA62EF34A03007303F0 /* Transfer.xcodeproj */;
-				},
-			);
 			projectRoot = "";
 			targets = (
 				C25538942EEFD37200874394 /* Listen This */,
