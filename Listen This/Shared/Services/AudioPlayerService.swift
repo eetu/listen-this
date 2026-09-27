@@ -38,17 +38,37 @@ final class AudioPlayerService: NSObject, AudioPlayer {
             )
         }
 
-        static func activate() throws {
-            try AVAudioSession.sharedInstance().setActive(true)
+        /// `setActive` can block long enough to hang the UI, so it runs off the
+        /// main thread. A serial queue keeps calls in request order: a quick
+        /// pause-then-play must not deactivate after the reactivation.
+        /// (The async `activate`/`deactivate` APIs need iOS 27 / watchOS 27.)
+        private static let queue = DispatchQueue(label: "AudioPlayerService.audioSession")
+
+        static func activate() async throws {
+            try await withCheckedThrowingContinuation { continuation in
+                queue.async {
+                    do {
+                        try AVAudioSession.sharedInstance().setActive(true)
+                        continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         }
 
-        static func deactivate() {
-            do {
-                try AVAudioSession.sharedInstance()
-                    .setActive(false, options: .notifyOthersOnDeactivation)
-            } catch {
-                AppLogger.player.error(
-                    "Failed to deactivate audio session: \(error.localizedDescription)")
+        static func deactivate() async {
+            await withCheckedContinuation { continuation in
+                queue.async {
+                    do {
+                        try AVAudioSession.sharedInstance()
+                            .setActive(false, options: .notifyOthersOnDeactivation)
+                    } catch {
+                        AppLogger.player.error(
+                            "Failed to deactivate audio session: \(error.localizedDescription)")
+                    }
+                    continuation.resume()
+                }
             }
         }
     }
@@ -136,12 +156,12 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
     }
 
-    private func activateAudioSession() throws {
-        try AudioSessionController.activate()
+    private func activateAudioSession() async throws {
+        try await AudioSessionController.activate()
     }
 
-    private func deactivateAudioSession() {
-        AudioSessionController.deactivate()
+    private func deactivateAudioSession() async {
+        await AudioSessionController.deactivate()
     }
 
     // MARK: - Notifications
@@ -506,7 +526,7 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
 
         do {
-            try activateAudioSession()
+            try await activateAudioSession()
             player.rate = Float(playbackRate)
             isPlaying = true
             updateLastPlayed()
@@ -531,7 +551,7 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         isPlaying = false
         savePlaybackState()
         updateNowPlayingInfo()
-        deactivateAudioSession()
+        await deactivateAudioSession()
     }
 
     @discardableResult
