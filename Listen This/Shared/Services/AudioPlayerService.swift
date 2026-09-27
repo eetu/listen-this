@@ -578,9 +578,15 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     }
 
     func pause() async {
+        let wasPlaying = isPlaying
         player?.pause()
+        // Save while still marked as playing: this device was the one listening,
+        // so its position must win instead of being swapped for another device's.
+        // An already idle player (e.g. an interruption) has nothing new to save.
+        if wasPlaying {
+            savePlaybackState()
+        }
         isPlaying = false
-        savePlaybackState()
         updateNowPlayingInfo()
         await deactivateAudioSession()
     }
