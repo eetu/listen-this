@@ -504,8 +504,20 @@ Remaining work, in rough priority order:
 - Siri shortcuts
 - Localization (currently English only, with no string catalog)
 
-Known issues and smaller UX items are tracked in the UX audit section of
-`CLAUDE.md`.
+Smaller UX items are tracked in the UX audit section of `CLAUDE.md`.
+
+### Known Issues
+
+- **Playing the same book on two devices at once.** Each device saves its
+  position while playing, so the stored position flips between them and
+  whichever pauses last wins. A paused device follows the one playing, and a
+  playing device is never moved, so the normal hand-off (pause here, resume
+  there) is unaffected. Treated as a corner case. A possible fix is a passive
+  "Also playing on iPad" notice with a jump option, which needs a new optional
+  `PlaybackSession` field and a CloudKit production schema deploy.
+- **Sync is not instant.** Position reaches other devices via CloudKit, which
+  can take from seconds to a couple of minutes, and a playing device saves every
+  30 seconds, so a paused device can trail the one playing by up to that much.
 
 
 ## Key Technical Decisions
@@ -753,10 +765,10 @@ See `Listen This AppTests/TESTING.md` for complete documentation.
 - Reduces initial load time and memory usage
 
 **Playback Position Throttling**
-- Throttle position updates to every 5 seconds during playback
+- Throttle position saves to every 30 seconds during playback
+- Pause, seek and speed changes save immediately
 - Prevents excessive CloudKit writes
 - Reduces battery usage and network traffic
-- Only saves when actively playing (not paused)
 
 ---
 
