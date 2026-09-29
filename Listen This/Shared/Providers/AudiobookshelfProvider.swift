@@ -99,13 +99,14 @@ enum AudiobookshelfError: Error, LocalizedError {
     case noToken
     case serverUnreachable
     case cleartextBlocked
+    case notAudiobookshelfServer
 
     var errorDescription: String? {
         switch self {
         case .invalidServerURL:
             return "Invalid server URL"
         case .authenticationFailed:
-            return "Authentication failed. Check your username and password."
+            return "Authentication failed. Check your API key."
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
         case .invalidResponse:
@@ -121,6 +122,9 @@ enum AudiobookshelfError: Error, LocalizedError {
         case .cleartextBlocked:
             return
                 "Your server address uses http:// and isn't on your local network. Use https:// or a local address."
+        case .notAudiobookshelfServer:
+            return
+                "No Audiobookshelf server answered at this address. Check the address and port."
         }
     }
 
@@ -283,6 +287,26 @@ final class AudiobookshelfProvider: ContentSource {
     }()
 
     // MARK: - Authentication
+
+    /// Confirms a server speaking the Audiobookshelf API answers at this address
+    /// before any credential is sent. `/ping` needs no authentication, so a
+    /// mistyped or half-typed address (a router, a printer) never receives the
+    /// API key.
+    ///
+    /// Any JSON object counts: Audiobookshelf replies `{"success":true}`, but
+    /// compatible servers word it differently (e.g. `{"ok":true,...}`). A device
+    /// that isn't an API server typically answers 404 or an HTML page.
+    func verifyServer(at serverURL: URL) async throws {
+        let pingURL = serverURL.appendingPathComponent("ping")
+        let (data, response) = try await session.data(from: pingURL)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+            httpResponse.statusCode == 200,
+            (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
+        else {
+            throw AudiobookshelfError.notAudiobookshelfServer
+        }
+    }
 
     /// Authenticate using API key (recommended)
     func authenticateWithAPIKey(serverURL: URL, apiKey: String) async throws {

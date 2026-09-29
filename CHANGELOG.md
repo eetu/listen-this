@@ -14,6 +14,9 @@ Connect's "What's New in This Version" field.
 - The server address no longer needs `http://` or `https://`; it's added for you
 - Editing the server address or API key keeps the working setup until the new one connects
 - A Remove Server button clears the Audiobookshelf setup from all your devices
+- Opening Audiobookshelf settings checks that the server is reachable, without switching anything off when you're away from it
+- The API key is only sent once an Audiobookshelf server answers at the address, so a mistyped address never receives it
+- A note shows when a local http:// server receives the API key unencrypted
 
 ### Fixed
 - The first connection to a home-network server failed until tested again after allowing Local Network access

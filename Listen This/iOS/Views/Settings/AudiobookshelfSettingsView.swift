@@ -23,6 +23,16 @@ struct AudiobookshelfSettingsView: View {
     @State private var testFailure: String?
     @State private var testTask: Task<Void, Never>?
 
+    /// Whether the saved server answers right now. Display only: a LAN-only
+    /// server is unreachable away from home, which must not switch anything off.
+    @State private var savedServerStatus: SavedServerStatus?
+
+    private enum SavedServerStatus: Equatable {
+        case checking
+        case reachable
+        case unreachable(String)
+    }
+
     @State private var showingRemoveConfirmation: Bool = false
 
     @State private var isAPIKeyVisible: Bool = false
@@ -38,7 +48,9 @@ struct AudiobookshelfSettingsView: View {
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .onChange(of: serverURL) {
-                        scheduleConnectionTest(after: .milliseconds(800))
+                        // Longer than the key's delay so a pause mid-address
+                        // (e.g. "192.168.1.1" of "…1.12") is less likely tested.
+                        scheduleConnectionTest(after: .milliseconds(1500))
                     }
 
                 if showsCleartextWarning {
@@ -50,6 +62,16 @@ struct AudiobookshelfSettingsView: View {
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
+                    }
+                } else if usesLocalCleartext {
+                    Label {
+                        Text(
+                            "Your API key is sent unencrypted on your network. Use https:// if your server supports it."
+                        )
+                        .font(.caption)
+                    } icon: {
+                        Image(systemName: "lock.open")
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -134,8 +156,11 @@ struct AudiobookshelfSettingsView: View {
             // The first request to a local server triggers the system's Local
             // Network prompt and fails while it is showing. Answering the prompt
             // makes the app active again, so retry a failed test then.
-            if phase == .active, testFailure != nil {
+            guard phase == .active else { return }
+            if testFailure != nil {
                 scheduleConnectionTest(after: .milliseconds(300))
+            } else if isConnected && !hasUnsavedEdits {
+                checkSavedServer()
             }
         }
         .onDisappear {
@@ -217,12 +242,41 @@ struct AudiobookshelfSettingsView: View {
                 scheduleConnectionTest(after: .zero)
             }
         } else if isConnected && !hasUnsavedEdits {
-            Label {
-                Text("Connected")
-                    .foregroundStyle(.secondary)
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+            switch savedServerStatus {
+            case .checking, nil:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Checking connection…")
+                        .foregroundStyle(.secondary)
+                }
+            case .reachable:
+                Label {
+                    Text("Connected")
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            case .unreachable(let message):
+                Label {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Server not reachable right now")
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                        Text(
+                            "Audiobookshelf stays set up and works again once the server is reachable, for example back on your home network."
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+
+                Button("Check Again") {
+                    checkSavedServer()
+                }
             }
         }
     }
@@ -256,6 +310,11 @@ struct AudiobookshelfSettingsView: View {
         return !ABSServerAddress.isCleartextPermitted(normalizedURL)
     }
 
+    /// A permitted http:// address still carries the API key in the clear.
+    private var usesLocalCleartext: Bool {
+        normalizedURL?.scheme?.lowercased() == "http" && !showsCleartextWarning
+    }
+
     // MARK: - Actions
 
     private func loadSettings() {
@@ -276,6 +335,11 @@ struct AudiobookshelfSettingsView: View {
         else {
             isTestingConnection = false
             testFailure = nil
+            // Fields match the saved setup (opening the screen, or an edit
+            // undone): check that one is still reachable instead.
+            if isConnected && !hasUnsavedEdits {
+                checkSavedServer()
+            }
             return
         }
 
@@ -286,11 +350,37 @@ struct AudiobookshelfSettingsView: View {
         }
     }
 
+    /// Re-checks the saved configuration. Only updates what this screen shows;
+    /// never disables the integration or writes (CloudKit-synced) settings.
+    private func checkSavedServer() {
+        guard let url = URL(string: settingsManager.audiobookshelfServerURL) else { return }
+        let key = settingsManager.audiobookshelfAPIKey
+
+        testTask?.cancel()
+        savedServerStatus = .checking
+        testTask = Task {
+            do {
+                let provider = AudiobookshelfProvider()
+                try await provider.verifyServer(at: url)
+                guard !Task.isCancelled else { return }
+                try await provider.authenticateWithAPIKey(serverURL: url, apiKey: key)
+                guard !Task.isCancelled else { return }
+                savedServerStatus = .reachable
+            } catch {
+                guard !Task.isCancelled else { return }
+                savedServerStatus = .unreachable(failureMessage(for: error, url: url))
+            }
+        }
+    }
+
     private func testConnection(url: URL, apiKey: String) async {
         isTestingConnection = true
 
         do {
             let provider = AudiobookshelfProvider()
+            // Only send the key once an Audiobookshelf server has answered.
+            try await provider.verifyServer(at: url)
+            guard !Task.isCancelled else { return }
             try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
             guard !Task.isCancelled else { return }
 
@@ -301,6 +391,7 @@ struct AudiobookshelfSettingsView: View {
             settingsManager.audiobookshelfLastConnectionSuccess = true
             settingsManager.audiobookshelfEnabled = true
             testFailure = nil
+            savedServerStatus = .reachable
         } catch {
             // A newer test replaced this one; let it report instead.
             guard !Task.isCancelled else { return }
@@ -339,6 +430,7 @@ struct AudiobookshelfSettingsView: View {
         testTask?.cancel()
         isTestingConnection = false
         testFailure = nil
+        savedServerStatus = nil
 
         settingsManager.audiobookshelfEnabled = false
         settingsManager.audiobookshelfServerURL = ""
