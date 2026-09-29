@@ -4,10 +4,14 @@ User-facing changes, newest first. Each heading is an App Store version. Git
 tags mark Xcode Cloud builds and don't map one-to-one: several tags can share a
 version (see the tags listed under each release).
 
-The **Added** and **Fixed** lists are written to paste straight into App Store
-Connect's "What's New in This Version" field.
+Each version's lists are written to paste straight into App Store Connect's
+"What's New in This Version" field.
 
 ## Unreleased
+
+## 1.3.1 — 2026-09-29
+
+Tags: `v1.3.1` (build 6)
 
 ### Changed
 - Audiobookshelf setup tests the connection automatically as you type — no button and no Enable switch; it turns on once the connection works
