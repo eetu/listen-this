@@ -62,6 +62,33 @@ struct ABSServerAddressTests {
     func unparseableAddressNotFlagged() {
         #expect(ABSServerAddress.isCleartextPermitted("not a url"))
     }
+
+    @Test(
+        "A missing scheme gets http:// locally and https:// publicly",
+        arguments: [
+            ("192.168.1.5:13378", "http://192.168.1.5:13378"),
+            ("nas.local", "http://nas.local"),
+            ("audiobookshelf:13378", "http://audiobookshelf:13378"),
+            ("abs.example.com", "https://abs.example.com"),
+            ("  abs.example.com/  ", "https://abs.example.com"),
+        ]
+    )
+    func addsSchemeWhenMissing(input: String, expected: String) {
+        #expect(ABSServerAddress.normalizedURL(from: input)?.absoluteString == expected)
+    }
+
+    @Test(
+        "A typed scheme is kept as is",
+        arguments: ["http://abs.example.com", "https://192.168.1.5:13378"]
+    )
+    func keepsTypedScheme(input: String) {
+        #expect(ABSServerAddress.normalizedURL(from: input)?.absoluteString == input)
+    }
+
+    @Test("Input without a usable host is rejected", arguments: ["", "   ", "http://", "ftp://nas.local"])
+    func rejectsUnusableInput(input: String) {
+        #expect(ABSServerAddress.normalizedURL(from: input) == nil)
+    }
 }
 
 // MARK: - Error Mapping

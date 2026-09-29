@@ -10,6 +10,7 @@ import SwiftUI
 
 struct AudiobookshelfSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var settingsManager = SettingsManager.shared
 
     // Local state for editing
@@ -20,30 +21,21 @@ struct AudiobookshelfSettingsView: View {
 
     // Connection test state
     @State private var isTestingConnection: Bool = false
-    @State private var testResult: TestResult?
-    @State private var showTestResult: Bool = false
-    @State private var hasAttemptedLocalNetworkConnection: Bool = false
-
-    enum TestResult {
-        case failure(String)
-    }
+    @State private var testFailure: String?
+    @State private var testTask: Task<Void, Never>?
 
     var body: some View {
         Form {
             // MARK: - Server Configuration
             Section {
-                TextField("Server URL", text: $serverURL)
+                TextField("Server Address", text: $serverURL)
                     .textContentType(.URL)
                     .autocapitalization(.none)
+                    .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .disabled(isEnabled)
-                    .onChange(of: serverURL) { _, newValue in
-                        // Auto-fix http to https if needed (but allow http for local testing)
-                        if newValue.hasPrefix("http://") || newValue.hasPrefix("https://") {
-                            // URL looks good
-                        } else if !newValue.isEmpty && !newValue.hasPrefix("http") {
-                            serverURL = "http://" + newValue
-                        }
+                    .onChange(of: serverURL) {
+                        scheduleConnectionTest(after: .milliseconds(800))
                     }
 
                 if showsCleartextWarning {
@@ -64,28 +56,18 @@ struct AudiobookshelfSettingsView: View {
                     .disabled(isEnabled)
                     .onChange(of: apiKey) { _, newValue in
                         settingsManager.audiobookshelfAPIKey = newValue
+                        scheduleConnectionTest(after: .milliseconds(800))
                     }
 
                 if !isEnabled {
-                    Button {
-                        testConnection()
-                    } label: {
-                        HStack {
-                            if isTestingConnection {
-                                ProgressView()
-                                    .padding(.trailing, 4)
-                            }
-                            Text(isTestingConnection ? "Testing..." : "Test Connection")
-                        }
-                    }
-                    .disabled(serverURL.isEmpty || apiKey.isEmpty || isTestingConnection)
+                    connectionTestStatus
                 }
 
             } header: {
                 Text("Server")
             } footer: {
                 Text(
-                    "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server URL (e.g., http://192.168.1.123:13378) and the API key."
+                    "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server address (e.g., 192.168.1.123:13378 or https://abs.example.com) and the API key. The connection is tested automatically."
                 )
             }
 
@@ -106,36 +88,12 @@ struct AudiobookshelfSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                } else if !canEnable && settingsManager.audiobookshelfLastConnectionTest != nil {
-                    // Show last test result only when not enabled
-                    HStack {
-                        Image(
-                            systemName: settingsManager.audiobookshelfLastConnectionSuccess
-                                ? "checkmark.circle.fill" : "xmark.circle.fill"
-                        )
-                        .foregroundStyle(
-                            settingsManager.audiobookshelfLastConnectionSuccess ? .green : .red)
-
-                        Text(
-                            settingsManager.audiobookshelfLastConnectionSuccess
-                                ? "Test successful" : "Test failed"
-                        )
-                        .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        if let lastTest = settingsManager.audiobookshelfLastConnectionTest {
-                            Text(lastTest, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
                 }
             } header: {
                 Text("Status")
             } footer: {
                 if !canEnable && !isEnabled {
-                    Text("Test connection successfully before enabling.")
+                    Text("Available once the connection test succeeds.")
                 }
             }
 
@@ -183,31 +141,76 @@ struct AudiobookshelfSettingsView: View {
         }
         .navigationTitle("Audiobookshelf")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Connection Failed", isPresented: $showTestResult) {
-            Button("OK") {
-                showTestResult = false
-            }
-        } message: {
-            if case .failure(let message) = testResult {
-                Text(message)
-            }
-        }
         .onAppear {
             loadSettings()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // The first request to a local server triggers the system's Local
+            // Network prompt and fails while it is showing. Answering the prompt
+            // makes the app active again, so retry a failed test then.
+            if phase == .active, testFailure != nil {
+                scheduleConnectionTest(after: .milliseconds(300))
+            }
+        }
+        .onDisappear {
+            testTask?.cancel()
+        }
+    }
+
+    // MARK: - Connection Test Status
+
+    @ViewBuilder
+    private var connectionTestStatus: some View {
+        if isTestingConnection {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Testing connection…")
+                    .foregroundStyle(.secondary)
+            }
+        } else if let testFailure {
+            Label {
+                Text(testFailure)
+                    .font(.caption)
+            } icon: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            }
+
+            Button("Test Again") {
+                scheduleConnectionTest(after: .zero)
+            }
+        } else if canEnable {
+            Label {
+                Text("Connection successful")
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
         }
     }
 
     // MARK: - Computed Properties
 
+    /// The typed address with a scheme filled in when missing.
+    private var normalizedURL: URL? {
+        ABSServerAddress.normalizedURL(from: serverURL)
+    }
+
+    /// Enabling needs a successful test of the address currently in the field,
+    /// not of whatever was tested before the user edited it.
     private var canEnable: Bool {
-        settingsManager.audiobookshelfLastConnectionSuccess && !serverURL.isEmpty
+        guard let normalizedURL else { return false }
+        return settingsManager.audiobookshelfLastConnectionSuccess
+            && settingsManager.audiobookshelfServerURL == normalizedURL.absoluteString
             && !apiKey.isEmpty
     }
 
     /// App Transport Security only permits cleartext to local addresses, so warn
     /// about an http:// server on a public host before the user hits a failure.
     private var showsCleartextWarning: Bool {
-        !serverURL.isEmpty && !ABSServerAddress.isCleartextPermitted(serverURL)
+        guard let normalizedURL else { return false }
+        return !ABSServerAddress.isCleartextPermitted(normalizedURL)
     }
 
     // MARK: - Actions
@@ -222,96 +225,73 @@ struct AudiobookshelfSettingsView: View {
             "Loaded settings - API key: \(apiKey.isEmpty ? "empty" : "\(apiKey.count) chars")")
     }
 
-    private func testConnection() {
+    /// Starts a connection test once input settles, replacing any pending one.
+    private func scheduleConnectionTest(after delay: Duration) {
+        testTask?.cancel()
+        guard !isEnabled, let url = normalizedURL, !apiKey.isEmpty else {
+            isTestingConnection = false
+            testFailure = nil
+            return
+        }
+
+        testTask = Task {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await testConnection(url: url)
+        }
+    }
+
+    private func testConnection(url: URL) async {
         isTestingConnection = true
 
-        let isLocalNetwork = URL(string: serverURL)?.host.map(ABSServerAddress.isLocalHost) ?? false
+        do {
+            let provider = AudiobookshelfProvider()
+            try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
+            guard !Task.isCancelled else { return }
 
-        Task {
-            // For local network URLs on first attempt, we retry after failure
-            // because iOS blocks the request while showing the permission dialog
-            let maxAttempts = (isLocalNetwork && !hasAttemptedLocalNetworkConnection) ? 2 : 1
+            settingsManager.audiobookshelfServerURL = url.absoluteString
+            settingsManager.audiobookshelfLastConnectionTest = Date()
+            settingsManager.audiobookshelfLastConnectionSuccess = true
+            testFailure = nil
+        } catch {
+            // A newer test replaced this one; let it report instead.
+            guard !Task.isCancelled else { return }
 
-            for attempt in 1...maxAttempts {
-                let startTime = Date()
+            settingsManager.audiobookshelfLastConnectionTest = Date()
+            settingsManager.audiobookshelfLastConnectionSuccess = false
+            testFailure = failureMessage(for: error, url: url)
+        }
 
-                do {
-                    guard let url = URL(string: serverURL) else {
-                        throw AudiobookshelfError.invalidServerURL
-                    }
+        isTestingConnection = false
+    }
 
-                    let provider = AudiobookshelfProvider()
-                    try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
+    private func failureMessage(for error: Error, url: URL) -> String {
+        if case .cleartextBlocked = AudiobookshelfError.from(error) {
+            return AudiobookshelfError.cleartextBlocked.localizedDescription
+        }
 
-                    // Save settings
-                    settingsManager.audiobookshelfServerURL = serverURL
-                    settingsManager.audiobookshelfLastConnectionTest = Date()
-                    settingsManager.audiobookshelfLastConnectionSuccess = true
+        let isLocalNetwork = url.host.map(ABSServerAddress.isLocalHost) ?? false
+        guard isLocalNetwork, let urlError = error as? URLError else {
+            return error.localizedDescription
+        }
 
-                    await MainActor.run {
-                        hasAttemptedLocalNetworkConnection = true
-                        // Success is shown via the UI status indicator - no alert needed
-                        isTestingConnection = false
-                    }
-                    return // Success, exit the function
-
-                } catch {
-                    let elapsed = Date().timeIntervalSince(startTime)
-
-                    // If this is the first attempt on local network and it failed quickly with a network error,
-                    // the permission dialog was likely shown. Retry automatically.
-                    // A quick failure (< 2 seconds) suggests the request was blocked by the permission dialog.
-                    if attempt < maxAttempts,
-                       let urlError = error as? URLError,
-                       [.timedOut, .cannotConnectToHost, .networkConnectionLost].contains(urlError.code),
-                       elapsed < 2.0
-                    {
-                        // Wait a moment for the system to settle after permission grant, then retry
-                        try? await Task.sleep(for: .seconds(1))
-                        continue
-                    }
-
-                    settingsManager.audiobookshelfLastConnectionTest = Date()
-                    settingsManager.audiobookshelfLastConnectionSuccess = false
-
-                    let errorMessage: String
-                    if case .cleartextBlocked = AudiobookshelfError.from(error) {
-                        errorMessage =
-                            AudiobookshelfError.cleartextBlocked.localizedDescription
-                    } else if isLocalNetwork {
-                        if let urlError = error as? URLError {
-                            switch urlError.code {
-                            case .timedOut, .cannotConnectToHost, .networkConnectionLost:
-                                errorMessage =
-                                    "Cannot connect to server. Please check:\n\n1. Local Network permission is enabled in Settings → Listen This → Local Network\n\n2. The server is running and reachable\n\n3. The URL and port are correct"
-                            case .notConnectedToInternet:
-                                errorMessage = "No internet connection. Please check your WiFi settings."
-                            default:
-                                errorMessage = error.localizedDescription
-                            }
-                        } else {
-                            errorMessage = error.localizedDescription
-                        }
-                    } else {
-                        errorMessage = error.localizedDescription
-                    }
-
-                    await MainActor.run {
-                        hasAttemptedLocalNetworkConnection = true
-                        testResult = .failure(errorMessage)
-                        showTestResult = true
-                        isTestingConnection = false
-                    }
-                    return
-                }
-            }
+        switch urlError.code {
+        case .timedOut, .cannotConnectToHost, .networkConnectionLost:
+            return
+                "Can't reach the server. Check that Local Network access is allowed (Settings → Listen This → Local Network), that the server is running, and that the address and port are correct."
+        case .notConnectedToInternet:
+            return "No network connection. Check your WiFi settings."
+        default:
+            return error.localizedDescription
         }
     }
 
     private func resetConfiguration() {
+        testTask?.cancel()
         isEnabled = false
         serverURL = ""
         apiKey = ""
+        testFailure = nil
 
         settingsManager.audiobookshelfEnabled = false
         settingsManager.audiobookshelfServerURL = ""

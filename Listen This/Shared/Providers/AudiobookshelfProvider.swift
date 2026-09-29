@@ -169,6 +169,28 @@ enum AudiobookshelfError: Error, LocalizedError {
 /// targets otherwise default to `MainActor` isolation.
 nonisolated enum ABSServerAddress {
 
+    /// Turns what the user typed into a full server URL. The scheme is optional:
+    /// without one, a local address gets `http://` (how a home server is usually
+    /// reached) and anything else `https://`, the only option ATS allows there.
+    /// Returns nil when there is no usable host.
+    static func normalizedURL(from input: String) -> URL? {
+        var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        if !text.contains("://") {
+            guard let host = URLComponents(string: "http://" + text)?.host, !host.isEmpty
+            else { return nil }
+            text = (isLocalHost(host.lowercased()) ? "http://" : "https://") + text
+        }
+        while text.hasSuffix("/") && !text.hasSuffix("://") { text.removeLast() }
+
+        guard let url = URL(string: text),
+            let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+            let host = url.host, !host.isEmpty
+        else { return nil }
+        return url
+    }
+
     /// Whether a request to this address is permitted by our ATS configuration.
     static func isCleartextPermitted(_ url: URL) -> Bool {
         // HTTPS is never a cleartext load.
