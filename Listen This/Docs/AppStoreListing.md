@@ -1,4 +1,7 @@
-# App Store Submission
+# App Store Listing
+
+The text as submitted to App Store Connect. Update it here when the store
+listing changes, so the repository keeps the source.
 
 ## App Name
 Listen This
@@ -31,18 +34,10 @@ Connect to your self-hosted Audiobookshelf server to stream your library or down
 
 Your library and playback position sync automatically across all your devices via iCloud. Start listening on your iPhone, continue on your iPad, finish on your Watch.
 
-## What's New (1.3.0)
+## What's New
 
-Paste into the "What's New in This Version" field:
-
-**New**
-- Sort your Audiobookshelf library by recently added, title, author or duration — tap again to reverse the order
-- A paused iPhone, iPad or Watch now follows along while you listen on another device
-
-**Fixed**
-- Playback position could jump back to an older spot when switching between iPhone, iPad and Watch
-- Pausing could save another device's position instead of where you stopped
-- Play and pause could briefly freeze the app
+Release notes live in `CHANGELOG.md` at the repository root; paste a version's
+Added and Fixed lists into the "What's New in This Version" field.
 
 ## Keywords
 audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audiobookshelf
@@ -52,7 +47,7 @@ audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audioboo
 - Secondary: Entertainment
 
 ## Screenshots
-See `Screenshots/` folder:
+See the `Screenshots/` folder at the repository root:
 - iPhone: Library, Player, Import, Settings
 - iPad: Player with split view
 - Apple Watch: Library, Player

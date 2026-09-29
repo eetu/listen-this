@@ -9,6 +9,8 @@ Listen This is a cross-platform M4B audiobook player for iOS, iPadOS, and watchO
 - `README.md` - Project status and features
 - `Listen This/Docs/Architechture.md` - System architecture
 - `Listen This AppTests/TESTING.md` - Testing guide
+- `CHANGELOG.md` - User-facing changes per App Store version (source for "What's New")
+- `Listen This/Docs/AppStoreListing.md` - App Store name, description, keywords
 
 ## Code Guidelines
 
@@ -163,7 +165,10 @@ Consequences worth remembering:
 - Before tagging, check whether `CURRENT_PROJECT_VERSION` needs bumping. App
   Store Connect rejects a re-upload of a build number it already holds, so if
   an earlier tag's build was archived there, the next tag needs a new build
-  number even for the same marketing version.
+  number even for the same marketing version. Xcode Cloud does not set it.
+- Record user-facing changes under **Unreleased** in `CHANGELOG.md` as they
+  land; when tagging a new App Store version, rename that section to the
+  version and date and list the tag.
 
 ## UX Audit Findings (June 2026)
 
