@@ -9,20 +9,21 @@ import OSLog
 import SwiftUI
 
 struct AudiobookshelfSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var settingsManager = SettingsManager.shared
 
-    // Local state for editing
+    // Local state for editing. Saved to settings only after a successful test,
+    // so a half-typed change never breaks the working configuration.
     @State private var serverURL: String = ""
     @State private var apiKey: String = ""
-    @State private var isEnabled: Bool = false
     @State private var playbackMode: AudiobookshelfPlaybackMode = .manualDownload
 
     // Connection test state
     @State private var isTestingConnection: Bool = false
     @State private var testFailure: String?
     @State private var testTask: Task<Void, Never>?
+
+    @State private var showingRemoveConfirmation: Bool = false
 
     var body: some View {
         Form {
@@ -33,7 +34,6 @@ struct AudiobookshelfSettingsView: View {
                     .autocapitalization(.none)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                    .disabled(isEnabled)
                     .onChange(of: serverURL) {
                         scheduleConnectionTest(after: .milliseconds(800))
                     }
@@ -53,52 +53,25 @@ struct AudiobookshelfSettingsView: View {
                 SecureField("API Key", text: $apiKey)
                     .textContentType(.password)
                     .autocapitalization(.none)
-                    .disabled(isEnabled)
-                    .onChange(of: apiKey) { _, newValue in
-                        settingsManager.audiobookshelfAPIKey = newValue
+                    .onChange(of: apiKey) {
                         scheduleConnectionTest(after: .milliseconds(800))
                     }
 
-                if !isEnabled {
-                    connectionTestStatus
-                }
+                connectionStatus
 
             } header: {
                 Text("Server")
             } footer: {
+                // Verbatim: a literal is parsed as Markdown, which would turn the
+                // example address into a tappable link.
                 Text(
-                    "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server address (e.g., 192.168.1.123:13378 or https://abs.example.com) and the API key. The connection is tested automatically."
+                    verbatim:
+                        "Generate an API key in your Audiobookshelf web interface (Settings → Users → [Your User] → API Tokens → Create). Enter your server address (e.g., 192.168.1.123:13378 or https://abs.example.com) and the API key. The connection is tested automatically."
                 )
             }
 
-            // MARK: - Status
-            Section {
-                Toggle("Enable Audiobookshelf", isOn: $isEnabled)
-                    .disabled(isEnabled ? false : !canEnable)  // Always allow disabling, only validate when enabling
-                    .onChange(of: isEnabled) { oldValue, newValue in
-                        settingsManager.audiobookshelfEnabled = newValue
-                    }
-
-                if isEnabled {
-                    LabeledContent("Status") {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("Connected")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } header: {
-                Text("Status")
-            } footer: {
-                if !canEnable && !isEnabled {
-                    Text("Available once the connection test succeeds.")
-                }
-            }
-
             // MARK: - Playback Options
-            if isEnabled {
+            if isConnected {
                 Section {
                     Picker("Playback Mode", selection: $playbackMode) {
                         Text("Stream Always").tag(AudiobookshelfPlaybackMode.streamAlways)
@@ -128,19 +101,31 @@ struct AudiobookshelfSettingsView: View {
                 }
             }
 
-            // MARK: - Reset
-            if isEnabled {
+            // MARK: - Remove
+            if hasSavedServer {
                 Section {
-                    Button(role: .destructive) {
-                        resetConfiguration()
-                    } label: {
-                        Text("Reset Configuration")
+                    Button("Remove Server", role: .destructive) {
+                        showingRemoveConfirmation = true
                     }
                 }
             }
         }
         .navigationTitle("Audiobookshelf")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Remove Server?",
+            isPresented: $showingRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Server", role: .destructive) {
+                removeServer()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "The server address and API key will be removed from all your devices. Books already in your library stay."
+            )
+        }
         .onAppear {
             loadSettings()
         }
@@ -157,10 +142,10 @@ struct AudiobookshelfSettingsView: View {
         }
     }
 
-    // MARK: - Connection Test Status
+    // MARK: - Connection Status
 
     @ViewBuilder
-    private var connectionTestStatus: some View {
+    private var connectionStatus: some View {
         if isTestingConnection {
             HStack(spacing: 8) {
                 ProgressView()
@@ -169,8 +154,14 @@ struct AudiobookshelfSettingsView: View {
             }
         } else if let testFailure {
             Label {
-                Text(testFailure)
-                    .font(.caption)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(testFailure)
+                    if isConnected {
+                        Text("Your previous server settings are still in use.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
             } icon: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.red)
@@ -179,9 +170,9 @@ struct AudiobookshelfSettingsView: View {
             Button("Test Again") {
                 scheduleConnectionTest(after: .zero)
             }
-        } else if canEnable {
+        } else if isConnected && !hasUnsavedEdits {
             Label {
-                Text("Connection successful")
+                Text("Connected")
                     .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: "checkmark.circle.fill")
@@ -192,18 +183,24 @@ struct AudiobookshelfSettingsView: View {
 
     // MARK: - Computed Properties
 
+    /// Audiobookshelf features are on once a configuration has tested successfully.
+    private var isConnected: Bool {
+        settingsManager.audiobookshelfEnabled
+    }
+
+    private var hasSavedServer: Bool {
+        !settingsManager.audiobookshelfServerURL.isEmpty || isConnected
+    }
+
     /// The typed address with a scheme filled in when missing.
     private var normalizedURL: URL? {
         ABSServerAddress.normalizedURL(from: serverURL)
     }
 
-    /// Enabling needs a successful test of the address currently in the field,
-    /// not of whatever was tested before the user edited it.
-    private var canEnable: Bool {
-        guard let normalizedURL else { return false }
-        return settingsManager.audiobookshelfLastConnectionSuccess
-            && settingsManager.audiobookshelfServerURL == normalizedURL.absoluteString
-            && !apiKey.isEmpty
+    /// Whether the fields differ from the saved, working configuration.
+    private var hasUnsavedEdits: Bool {
+        normalizedURL?.absoluteString != settingsManager.audiobookshelfServerURL
+            || apiKey != settingsManager.audiobookshelfAPIKey
     }
 
     /// App Transport Security only permits cleartext to local addresses, so warn
@@ -218,7 +215,6 @@ struct AudiobookshelfSettingsView: View {
     private func loadSettings() {
         serverURL = settingsManager.audiobookshelfServerURL
         apiKey = settingsManager.audiobookshelfAPIKey
-        isEnabled = settingsManager.audiobookshelfEnabled
         playbackMode = settingsManager.audiobookshelfPlaybackMode
 
         AppLogger.settings.info(
@@ -226,9 +222,12 @@ struct AudiobookshelfSettingsView: View {
     }
 
     /// Starts a connection test once input settles, replacing any pending one.
+    /// Only untested input needs it: edits, or a saved configuration that isn't
+    /// on yet (e.g. switched off with the old Enable toggle).
     private func scheduleConnectionTest(after delay: Duration) {
         testTask?.cancel()
-        guard !isEnabled, let url = normalizedURL, !apiKey.isEmpty else {
+        guard let url = normalizedURL, !apiKey.isEmpty, hasUnsavedEdits || !isConnected
+        else {
             isTestingConnection = false
             testFailure = nil
             return
@@ -237,11 +236,11 @@ struct AudiobookshelfSettingsView: View {
         testTask = Task {
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            await testConnection(url: url)
+            await testConnection(url: url, apiKey: apiKey)
         }
     }
 
-    private func testConnection(url: URL) async {
+    private func testConnection(url: URL, apiKey: String) async {
         isTestingConnection = true
 
         do {
@@ -249,14 +248,18 @@ struct AudiobookshelfSettingsView: View {
             try await provider.authenticateWithAPIKey(serverURL: url, apiKey: apiKey)
             guard !Task.isCancelled else { return }
 
+            // Save the address and key together, and only now that they work.
             settingsManager.audiobookshelfServerURL = url.absoluteString
+            settingsManager.audiobookshelfAPIKey = apiKey
             settingsManager.audiobookshelfLastConnectionTest = Date()
             settingsManager.audiobookshelfLastConnectionSuccess = true
+            settingsManager.audiobookshelfEnabled = true
             testFailure = nil
         } catch {
             // A newer test replaced this one; let it report instead.
             guard !Task.isCancelled else { return }
 
+            // Keep any previously working configuration active.
             settingsManager.audiobookshelfLastConnectionTest = Date()
             settingsManager.audiobookshelfLastConnectionSuccess = false
             testFailure = failureMessage(for: error, url: url)
@@ -286,11 +289,9 @@ struct AudiobookshelfSettingsView: View {
         }
     }
 
-    private func resetConfiguration() {
+    private func removeServer() {
         testTask?.cancel()
-        isEnabled = false
-        serverURL = ""
-        apiKey = ""
+        isTestingConnection = false
         testFailure = nil
 
         settingsManager.audiobookshelfEnabled = false
@@ -298,6 +299,9 @@ struct AudiobookshelfSettingsView: View {
         settingsManager.audiobookshelfAPIKey = ""
         settingsManager.audiobookshelfLastConnectionTest = nil
         settingsManager.audiobookshelfLastConnectionSuccess = false
+
+        serverURL = ""
+        apiKey = ""
     }
 }
 
