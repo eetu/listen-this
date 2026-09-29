@@ -50,8 +50,9 @@ struct AudiobookshelfSettingsView: View {
                     }
                 }
 
+                // No .password content type: an API key isn't a login, and
+                // tagging it as one makes iOS offer to save it to Passwords.
                 SecureField("API Key", text: $apiKey)
-                    .textContentType(.password)
                     .autocapitalization(.none)
                     .onChange(of: apiKey) {
                         scheduleConnectionTest(after: .milliseconds(800))
