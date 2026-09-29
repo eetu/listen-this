@@ -25,6 +25,9 @@ struct AudiobookshelfSettingsView: View {
 
     @State private var showingRemoveConfirmation: Bool = false
 
+    @State private var isAPIKeyVisible: Bool = false
+    @FocusState private var isAPIKeyFocused: Bool
+
     var body: some View {
         Form {
             // MARK: - Server Configuration
@@ -50,10 +53,7 @@ struct AudiobookshelfSettingsView: View {
                     }
                 }
 
-                // No .password content type: an API key isn't a login, and
-                // tagging it as one makes iOS offer to save it to Passwords.
-                SecureField("API Key", text: $apiKey)
-                    .autocapitalization(.none)
+                apiKeyField
                     .onChange(of: apiKey) {
                         scheduleConnectionTest(after: .milliseconds(800))
                     }
@@ -140,6 +140,51 @@ struct AudiobookshelfSettingsView: View {
         }
         .onDisappear {
             testTask?.cancel()
+        }
+    }
+
+    // MARK: - API Key Field
+
+    /// A plain text field masked while not being edited. Not a SecureField: iOS
+    /// offers to save any secure field's contents to Passwords, and an API key
+    /// isn't a login.
+    private var apiKeyField: some View {
+        HStack {
+            if isAPIKeyVisible || isAPIKeyFocused || apiKey.isEmpty {
+                TextField("API Key", text: $apiKey)
+                    .focused($isAPIKeyFocused)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                    .fontDesign(.monospaced)
+            } else {
+                Text(String(repeating: "•", count: min(apiKey.count, 16)))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // Show the field first; focus can only land once it exists.
+                        isAPIKeyVisible = true
+                        Task { isAPIKeyFocused = true }
+                    }
+                    .accessibilityLabel("API key, hidden")
+                    .accessibilityHint("Double-tap to edit")
+                    .accessibilityAddTraits(.isButton)
+            }
+
+            if !apiKey.isEmpty {
+                Button {
+                    isAPIKeyVisible.toggle()
+                } label: {
+                    Image(systemName: isAPIKeyVisible ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isAPIKeyVisible ? "Hide API key" : "Show API key")
+            }
+        }
+        .onChange(of: isAPIKeyFocused) { _, focused in
+            // Mask again once editing ends.
+            if !focused { isAPIKeyVisible = false }
         }
     }
 
