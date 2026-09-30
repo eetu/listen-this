@@ -312,7 +312,6 @@ private struct EmptyNowPlayingView: View {
                 remaining: base.remaining, artwork: cover.cgImage, isPlaying: false)
         }
     }
-#endif
 
 #Preview("Small", as: .systemSmall) {
     Listen_This_iPhone_Widgets()
@@ -336,3 +335,4 @@ private struct EmptyNowPlayingView: View {
 } timeline: {
     AudiobookEntry.placeholder
 }
+#endif
