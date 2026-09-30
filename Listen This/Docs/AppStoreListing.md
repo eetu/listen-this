@@ -20,6 +20,7 @@ A simple, focused audiobook player for your M4B files. Listen on iPhone, iPad, o
 • Adjustable playback speed (0.5x - 2.0x)
 • Sleep timer with presets or end of chapter
 • Background playback with Now Playing controls
+• Home Screen and Lock Screen widgets with play and pause
 • Apple Watch complications showing the current book
 
 **APPLE WATCH**

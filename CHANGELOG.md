@@ -8,10 +8,12 @@ A version's **App Store** line is the short text for App Store Connect's
 "What's New in This Version" field; the lists below it are the full detail.
 Up to 1.3.0 the lists themselves were submitted.
 
-## 1.4.0 — Unreleased
+## 1.4.0 — 2026-09-30
 
-`v1.3.1` (build 6) was tagged and built but never submitted; its changes ship
-in this version.
+Tags: `v1.4.0` (build 7). `v1.3.1` (build 6) was tagged and built but never
+submitted; its changes ship in this version.
+
+**App Store:** New Home Screen and Lock Screen widgets with play and pause, and a simpler, more reliable Audiobookshelf setup.
 
 ### Added
 - Home Screen widgets (small and medium) showing the book you're listening to, its cover, chapter and time left
