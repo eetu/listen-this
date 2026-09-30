@@ -1,4 +1,7 @@
-# App Store Submission
+# App Store Listing
+
+The text as submitted to App Store Connect. Update it here when the store
+listing changes, so the repository keeps the source.
 
 ## App Name
 Listen This
@@ -17,7 +20,7 @@ A simple, focused audiobook player for your M4B files. Listen on iPhone, iPad, o
 • Adjustable playback speed (0.5x - 2.0x)
 • Sleep timer with presets or end of chapter
 • Background playback with Now Playing controls
-• Home Screen widget showing current book
+• Apple Watch complications showing the current book
 
 **APPLE WATCH**
 
@@ -31,22 +34,10 @@ Connect to your self-hosted Audiobookshelf server to stream your library or down
 
 Your library and playback position sync automatically across all your devices via iCloud. Start listening on your iPhone, continue on your iPad, finish on your Watch.
 
-## What's New (1.2.0)
+## What's New
 
-Paste into the "What's New in This Version" field:
-
-**New**
-- Apple Watch can download books directly from your Audiobookshelf server over WiFi, without the iPhone
-- Download progress now appears on Watch library rows
-- Partly downloaded books are marked and resume where they stopped instead of starting over
-
-**Fixed**
-- Audiobookshelf servers on a local network using http:// couldn't be reached at all — on iPhone or Watch
-- A download interrupted partway could show as complete and play silence past a certain point
-- Cancelling a download to Watch didn't stop it — the book finished downloading and was saved anyway
-- Removing a download on Watch left the iPhone showing it as sent, with no way to send it again
-- The Transfer to Watch screen had no way to close it while a transfer was running
-- Temporary iCloud files were left behind when a book reached the Watch by another route
+Release notes live in `CHANGELOG.md` at the repository root; paste a version's
+**App Store** line into the "What's New in This Version" field.
 
 ## Keywords
 audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audiobookshelf
@@ -56,7 +47,7 @@ audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audioboo
 - Secondary: Entertainment
 
 ## Screenshots
-See `Screenshots/` folder:
+See the `Screenshots/` folder at the repository root:
 - iPhone: Library, Player, Import, Settings
 - iPad: Player with split view
 - Apple Watch: Library, Player

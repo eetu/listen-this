@@ -498,7 +498,6 @@ Remaining work, in rough priority order:
 - Jellyfin provider (`ContentSource` is designed for it; no implementation)
 - Bookmarks and notes
 - CarPlay integration
-- Watch complications (Now Playing quick launch)
 - Onboarding for first-time iCloud/Watch setup
 - Listening statistics
 - Siri shortcuts
@@ -515,6 +514,12 @@ Smaller UX items are tracked in the UX audit section of `CLAUDE.md`.
   there) is unaffected. Treated as a corner case. A possible fix is a passive
   "Also playing on iPad" notice with a jump option, which needs a new optional
   `PlaybackSession` field and a CloudKit production schema deploy.
+- **Widget play button after force-quit.** The button plays in the background
+  without opening the app, but iOS doesn't relaunch an app the user
+  force-quit, so the button does nothing until the app has been opened once.
+  The widget can't detect this (a force-quit app runs no code), and opening
+  the app on every play would be worse for the normal case. Tapping elsewhere
+  on the widget opens the app. Other audiobook apps' widgets behave the same.
 - **Sync is not instant.** Position reaches other devices via CloudKit, which
   can take from seconds to a couple of minutes, and a playing device saves every
   30 seconds, so a paused device can trail the one playing by up to that much.
@@ -835,14 +840,14 @@ strings first. Dates and durations do go through `RelativeDateTimeFormatter` and
 ## Deployment
 
 ### Requirements
-- Xcode 15.0+
-- iOS 17.0+
-- iPadOS 17.0+
-- watchOS 10.0+
-- Swift 5.9+
+- Xcode 26.2+
+- iOS 26.2+
+- iPadOS 26.2+
+- watchOS 26.2+
+- Swift 5 language mode, default `MainActor` isolation
 
 ### App Store Metadata
-- Category: Books & Reference
+- Category: Books (secondary: Entertainment)
 - Age Rating: 4+
 - Privacy Nutrition Labels: Required
 - App Privacy: File access, CloudKit usage
@@ -850,9 +855,10 @@ strings first. Dates and durations do go through `RelativeDateTimeFormatter` and
 ### Build Configuration
 ```swift
 // Build settings
-SWIFT_VERSION = 5.9
-IPHONEOS_DEPLOYMENT_TARGET = 17.0
-WATCHOS_DEPLOYMENT_TARGET = 10.0
+SWIFT_VERSION = 5.0
+SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
+IPHONEOS_DEPLOYMENT_TARGET = 26.2   // project level; targets don't override
+WATCHOS_DEPLOYMENT_TARGET = 26.2
 
 // Capabilities required
 - iCloud (CloudKit)

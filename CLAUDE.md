@@ -2,40 +2,48 @@
 
 ## Project Overview
 
-Listen This is a cross-platform M4B audiobook player for iOS, iPadOS, and watchOS with CloudKit sync.
+Listen This is an M4B audiobook player for iPhone, iPad and Apple Watch, with
+iCloud (CloudKit) sync and optional Audiobookshelf server support.
 
 ## Key Documentation
 
 - `README.md` - Project status and features
-- `Listen This/Docs/Architechture.md` - System architecture
+- `Listen This/Docs/Architechture.md` - System architecture, roadmap, known issues
 - `Listen This AppTests/TESTING.md` - Testing guide
+- `CHANGELOG.md` - User-facing changes per App Store version
+- `Listen This/Docs/AppStoreListing.md` - App Store name, description, keywords
 
-## Code Guidelines
+## Working Rules
 
-- Ensure proper folder structure instead of creating flattened files
-- Scan existing file structure and avoid creating duplicates in different directories
-- Limit emoji usage in documentation and debug output
-- Only update README and Architechture.md with relevant information
-- Never add actual code into architecture docs, only pseudo code if applicable
-- Try to share as much code between iOS and watchOS targets in Shared directory
-- **Do not create separate instruction/setup files** - Add all instructions to CLAUDE.md instead
-- When code requires manual Xcode configuration (like adding files to targets), mention it directly in conversation rather than creating files
+- Keep the folder structure; don't create flattened files or duplicates in
+  other directories — scan the existing structure first
+- Share code between iOS and watchOS through `Shared/` wherever possible
+- Keep README and Architechture.md to relevant information; architecture docs
+  get pseudo code at most, never real code
+- Don't create separate instruction or setup files — instructions belong here
+- When a change needs manual Xcode configuration (such as target membership),
+  say so in the conversation instead of writing a file about it
+- Limit emoji in documentation and debug output
+- **Zero warnings**: builds of both schemes stay at 0 compiler warnings. Ignore
+  DerivedData "Could not read priors" noise; mention Xcode's "Update to
+  recommended settings" prompt rather than accepting it silently
+- **Commits**: conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`,
+  `test:`), and no `Co-Authored-By` or other AI attribution lines in commits or
+  PRs
 
 ### Swift & Language Features
 
-The project targets modern OS versions and should use current Swift features:
-- **Minimum Deployment Targets**: iOS 18.0, watchOS 11.0
-- **Swift Concurrency**: Use modern async/await, actors, and Task APIs
-- **Swift 6 Compatibility**: Write code that's forward-compatible with Swift 6 language mode
-  - Use `OSAllocatedUnfairLock` for thread-safe state instead of `NSLock` where appropriate
-  - Prefer `@MainActor` and actor isolation over manual synchronization
-  - Use `Sendable` types for concurrent code
-  - Avoid mutable captured variables in concurrent closures
-- **SwiftUI**: Use latest SwiftUI features available in iOS 18/watchOS 11
-  - `.task { }` modifier instead of `.onAppear { Task { } }`
-  - `@Observable` macro for observable objects
-  - New SwiftData integration patterns
-- **Swift Testing**: Use Swift Testing framework (not XCTest) for new tests
+- **Deployment targets**: iOS 26.2 and watchOS 26.2, set at the project level
+  (the targets don't override them). APIs newer than that need `#available`
+- **Isolation**: Swift 5 language mode with approachable concurrency, and types
+  default to `@MainActor` (`SWIFT_DEFAULT_ACTOR_ISOLATION`). Mark pure helpers
+  that run off the main thread `nonisolated` (see `ABSServerAddress`)
+- **Concurrency**: async/await, actors and `Task`; prefer actor isolation over
+  locks, `OSAllocatedUnfairLock` over `NSLock` when a lock is needed; `Sendable`
+  types and no mutable captures in concurrent closures
+- **SwiftUI**: `.task { }` instead of `.onAppear { Task { } }`, `@Observable`
+  for observable objects
+- **Tests**: Swift Testing, not XCTest
 
 ## Project Structure
 
@@ -53,6 +61,7 @@ Listen This/
 │   ├── Views/        # Cross-platform views (AudiobookRowView,
 │   │                 #   PlayerControlsView, TransferProgressView, ...)
 │   ├── Utilities/    # AppLogger, MetadataExtractor, UIImage+DominantColor
+│   ├── Widgets/      # Widget timeline data + accessory views (both widget targets)
 │   ├── Preview/      # SwiftUI preview helpers
 │   └── Mocks.swift   # Mock implementations for tests and previews
 ├── iOS/              # iOS-only
@@ -60,7 +69,7 @@ Listen This/
 │   ├── Managers/     # iOSWatchConnectivityManager
 │   ├── Models/       # WatchTransferProgress
 │   └── Protocols/    # iOSWatchConnectivity
-└── Docs/             # ARCHITECHTURE.md
+└── Docs/             # Architechture.md, AppStoreListing.md
 
 Listen This Watch App/
 └── Watch/
@@ -68,7 +77,10 @@ Listen This Watch App/
     │                 #   WatchTransferStatusView, AudiobookshelfDownloadView
     └── Managers/     # WatchConnectivityManager, WatchExtensionDelegate
 
-Listen This Widgets/  # Widget extension (reads the shared models)
+Listen This Widgets/  # watchOS widget extension: complications
+Listen This iPhone Widgets/  # iOS widget extension: Home Screen + Lock Screen
+                      # Both read the shared models; every target must share one
+                      # build number and version (app extensions must match the app)
 
 Listen This AppTests/ # Swift Testing; TESTING.md documents the suites
 ```
@@ -79,193 +91,109 @@ To use it from the Watch or the tests, tick it into those targets in Xcode's
 File Inspector — otherwise the Watch build fails with "cannot find type in
 scope". This appears in `project.pbxproj` as `membershipExceptions`.
 
+The test target compiles selected `Shared/` files directly (e.g.
+`AudioPlayerService.swift`), so code in those files must not reference types
+that only the app or a widget target includes — expose a hook the app fills in
+at launch instead (see `AudioPlayerService.playbackStateDidChange`). After
+touching such files, build for testing, not just the app.
+
 ## Key Patterns
 
-### Playback State Sync
-Cross-device sync uses timestamp comparison in `AudioPlayerService.savePlaybackState()`:
-- Tracks `lastKnownPlayedTimestamp` when loading audiobook
-- Before saving, checks if CloudKit synced newer data
-- If remote is newer, adopts remote state instead of overwriting
+### Playback Position Sync
 
-### Testing
-- Use Swift Testing framework (not XCTest)
-- Tests organized by feature in separate files
-- Run with: `xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'`
+Positions sync through `PlaybackSession` in CloudKit; `lastPlayed` decides which
+position is newest. The rules, in `AudioPlayerService`:
+
+- The device actually playing owns the position and is never moved by a sync
+- A paused device adopts newer remote progress: live on a CloudKit remote
+  change, and again in `play()` before resuming
+- Applying a stored position (restore, adopt) must never save — saving stamps a
+  fresh `lastPlayed`, which would let a stale position win
+- `pause()` saves before clearing `isPlaying`, so the listening device's
+  position isn't swapped for another device's
+- Newest wins, not furthest: going back to re-listen is legitimate
+
+Playing on two devices at once is a documented known issue (Architechture.md).
 
 ### SwiftData + CloudKit
-- All models sync via CloudKit Private Database
-- `PlaybackSession.lastPlayed` is key field for sync conflict resolution
-- Cache state is device-local (not synced)
 
-## Xcode & Build Configuration
+- All models sync via the CloudKit private database; cache state is
+  device-local
+- A new or changed model field needs the CloudKit schema deployed to production
+  (CloudKit Console) before release, or it won't sync
+- In-memory test containers must pass `cloudKitDatabase: .none`: the default
+  `.automatic` starts mirroring in the host app and crashes parallel tests
 
-### Project Files
-- **Xcode Project**: `Listen This.xcodeproj`
-- **Main Scheme**: `Listen This`
-- **Test Target**: `Listen This AppTests`
-- **Watch Target**: `Listen This Watch App`
+### Audiobookshelf
 
-### Build Commands
+- The server may be stock Audiobookshelf or a compatible server (the
+  maintainer runs one); rely only on the documented API (`/ping`, `/api/...`)
+- Settings save the address and API key together, and only after a
+  successful test. Never disable the integration because a check fails — a
+  LAN-only server is unreachable away from home
+- Send the API key only after `verifyServer` (unauthenticated `/ping`) succeeds
+
+## Building & Testing
+
+- **Project**: `Listen This.xcodeproj`; schemes `Listen This` (iOS, includes the
+  Watch app) and `Listen This Watch App`; tests in `Listen This AppTests`
+- **During changes**: incremental build, per-file diagnostics, and only the
+  relevant tests. A command-line `clean` also wipes Xcode's DerivedData, so the
+  next Xcode build starts from scratch
+- **Before tagging**: clean build of both schemes (check for `warning:`) and
+  the full test suite
+- **Run tests on a simulator**, not a connected device: a device run makes
+  Xcode copy several GB of debug symbols for a new OS version
+
 ```bash
-# Build project (iOS)
-xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
-
-# Build Watch app
-xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'
-
-# Run tests
-xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 17'
-
-# Clean build
-xcodebuild clean -project "Listen This.xcodeproj" -scheme "Listen This"
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max'
+xcodebuild build -project "Listen This.xcodeproj" -scheme "Listen This Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 12 (46mm)'
+xcodebuild test -scheme "Listen This" -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max'
+xcrun simctl list devices available   # simulator names change with each Xcode
 ```
 
-### Finding Available Simulators
-```bash
-# List all iOS simulators
-xcrun simctl list devices available | grep iPhone
+**LSP for other editors**: install `xcode-build-server` (Homebrew), then
+`xcode-build-server config -project "Listen This.xcodeproj" -scheme "Listen This"`.
+It writes `buildServer.json`, which isn't committed (machine-specific paths).
 
-# List all watchOS simulators
-xcrun simctl list devices available | grep "Apple Watch"
+## Releasing
 
-# List all iPad simulators
-xcrun simctl list devices available | grep iPad
-```
+**Pushing a tag triggers the app build** in Xcode Cloud, which is configured in
+Xcode / App Store Connect, not in this repo. GitHub Actions only runs the tests
+(`tests.yml`) and publishes the marketing site (`pages.yml`).
 
-### Common Build Destinations
-- **iPhone**: `'platform=iOS Simulator,name=iPhone 17'`
-- **iPad**: `'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'`
-- **Apple Watch**: `'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'`
+Tags mark builds and App Store versions mark submissions, so they don't map
+one-to-one: `v1.2.0`–`v1.2.2` all shipped as version 1.2.0. A fix that must
+reach a build needs a tag even when the version doesn't change.
 
-Note: Simulator names change with Xcode/iOS versions. Use the commands above to find the latest available devices on your system.
+Release checklist:
 
-### LSP Setup (for non-Xcode editors)
-- Requires `xcode-build-server` (install via Homebrew)
-- Generate config: `xcode-build-server config -project "Listen This.xcodeproj" -scheme "Listen This"`
-- Creates `buildServer.json` (not committed to git - contains machine-specific paths)
-- Enables SourceKit LSP in editors like Zed, VS Code, Neovim
+1. **Bump the build number** (`CURRENT_PROJECT_VERSION`). Xcode Cloud doesn't
+   set it, and App Store Connect rejects a build number it already has. For a
+   new App Store version, also bump `MARKETING_VERSION`
+2. **Changelog**: user-facing changes go under the next version's heading in
+   `CHANGELOG.md` (`## X.Y.Z — Unreleased`) as they land. At release, replace
+   "Unreleased" with the date, list the tag, and add a one-line **App Store**
+   summary — that line is the "What's New" text; users skim it, so the detail
+   stays in the lists. A tag that never reaches the App Store gets no section
+   or GitHub release; its changes roll into the next version
+3. **Verify**: clean build of both schemes with 0 warnings, and the full test
+   suite
+4. **Tag and push** (`vX.Y.Z`), which starts the Xcode Cloud build
+5. **GitHub release**: one per App Store version, on its first tag. Title
+   `X.Y.Z — short summary` (the App Store version, not the tag), body = that
+   CHANGELOG section plus a closing italic line with the App Store version and
+   build. A later tag for the same version edits the existing release instead
 
-### Release Builds (Xcode Cloud)
+## UI Conventions
 
-**Pushing a tag triggers the app build.** That build runs in **Xcode Cloud**,
-configured in Xcode / App Store Connect — *not* in this repo, so nothing about
-it appears under `.github/workflows/`. GitHub Actions here only runs the test
-suite (`tests.yml`) and publishes the marketing site (`pages.yml`).
+### SwiftUI List Stability
 
-Consequences worth remembering:
-
-- A tag is not just a bookmark. It is how a distributable build gets produced,
-  so a fix that needs to reach a build needs a tag — even when the marketing
-  version doesn't change.
-- Git tags and App Store versions don't map one-to-one. `v1.2.0`, `v1.2.1` and
-  `v1.2.2` all carry `MARKETING_VERSION = 1.2.0`; the tag marks a build, the
-  marketing version marks a submission.
-- Before tagging, check whether `CURRENT_PROJECT_VERSION` needs bumping. App
-  Store Connect rejects a re-upload of a build number it already holds, so if
-  an earlier tag's build was archived there, the next tag needs a new build
-  number even for the same marketing version.
-
-## UX Audit Findings (June 2026)
-
-Comprehensive UX review findings organized by priority. Address these when improving the app.
-
-### Critical Priority
-
-1. **Silent Failures in Transfer Operations**
-   - Files: `AutoTransferSheet.swift`, `CloudKitTransferView.swift`
-   - Issue: Network failures during CloudKit transfers may not show user-visible errors
-   - Fix: Add retry UI and clear error states with actionable messages
-
-2. **No Offline Mode Indication**
-   - Files: `LibraryView.swift`, `WatchLibraryView.swift`
-   - Issue: Users don't know when they're offline or what content is available
-   - Fix: Add network status indicator and show which books are cached locally
-
-### High Priority
-
-3. **Touch Targets Below 44pt Minimum**
-   - Files: `PlayerControlsView.swift` (chapter skip buttons), `WatchPlayerView.swift`
-   - Issue: Some buttons are smaller than Apple's 44x44pt minimum
-   - Fix: Increase hitArea even if visual size stays small
-
-4. **Missing Delete Confirmations**
-   - Files: `DeleteAudiobookSheet.swift`, `CloudKitStorageView.swift`
-   - Issue: "Delete from everywhere" and "Clear All CloudKit Data" need stronger confirmation
-   - Fix: Add two-step confirmation or require typing to confirm destructive actions
-
-5. **No Loading States for Long Operations**
-   - Files: `AudiobookshelfBrowserView.swift`, `ImportView.swift`
-   - Issue: Large library fetches show no progress indication
-   - Fix: Add skeleton loaders or progress indicators for operations >1s
-
-6. **Watch App: No Battery Warning for Large Downloads**
-   - Files: `WatchLibraryView.swift`
-   - Issue: Starting a large download on low battery could kill the watch
-   - Fix: Warn if battery <20% before starting CloudKit download
-
-### Medium Priority
-
-7. **Inconsistent Empty States**
-   - Files: Various list views
-   - Issue: Some empty states have actions, others don't
-   - Fix: All empty states should guide users to the next action
-
-8. **No Haptic Feedback on Watch**
-   - Files: `WatchPlayerView.swift`, `WatchTransferStatusView.swift`
-   - Issue: Missing haptic confirmation for button presses
-   - Fix: Add `WKInterfaceDevice.current().play(.click)` for key actions
-
-9. **Chapter List Scrolling Performance**
-   - Files: `PlayerView.swift` (chapter list section)
-   - Issue: Books with 100+ chapters may have scroll lag
-   - Fix: Use `LazyVStack` with proper identifiers
-
-10. **No Pull-to-Refresh on Some Lists**
-    - Files: `CloudKitStorageView.swift`
-    - Issue: Inconsistent refresh patterns across views
-    - Fix: Add `.refreshable` to all data-fetching lists
-
-11. **Transfer Progress Not Visible After Dismissing Sheet**
-    - Files: `AutoTransferSheet.swift`
-    - Issue: If user dismisses transfer sheet, they lose visibility into progress
-    - Fix: Show mini progress indicator in library row during active transfer
-
-### Low Priority
-
-12. **Color Contrast in Dark Mode**
-    - Files: Various views with `.secondary` text
-    - Issue: Some secondary text may not meet WCAG AA contrast ratios
-    - Fix: Audit with accessibility inspector
-
-13. **No VoiceOver Hints for Complex Gestures**
-    - Files: `LibraryView.swift` (swipe actions)
-    - Issue: VoiceOver users may not discover swipe actions
-    - Fix: Add `accessibilityHint` describing available actions
-
-14. **Settings Organization**
-    - Files: `SettingsView.swift`
-    - Issue: Settings could be better grouped as app grows
-    - Fix: Consider grouping by function (Playback, Storage, Sync, About)
-
-15. **No Onboarding for First-Time Users**
-    - Issue: New users don't get guidance on key features
-    - Fix: Consider adding optional walkthrough for iCloud setup, Watch pairing
-
-16. **Sleep Timer UI Discoverability**
-    - Files: `PlayerView.swift`, `SleepTimerSheet.swift`
-    - Issue: Sleep timer button may not be obvious to new users
-    - Fix: Consider adding tooltip on first use
-
-17. **Watch Complications Not Implemented**
-    - Issue: No quick-launch complications for Watch
-    - Fix: Add Now Playing complication for quick access
-
-### SwiftUI List Stability Note
-
-When using observable state in SwiftUI List rows (like tracking transfer status):
-- **DON'T** conditionally show/hide swipe action buttons based on frequently changing state
-- **DO** always show buttons but disable them when action isn't available
-- This prevents `NSInternalInconsistencyException` crashes from collection view update mismatches
+When List rows observe frequently changing state (like transfer status):
+- **DON'T** conditionally show/hide swipe action buttons based on that state
+- **DO** always show them and disable them when the action isn't available
+- This prevents `NSInternalInconsistencyException` crashes from collection view
+  update mismatches
 
 ### Sheet Dismissal
 
@@ -294,3 +222,36 @@ can't know reliably whether the Watch still has a book — three transfer routes
 intermittent connectivity, and the Watch can delete its copy at any time. A
 stale "already sent" disables the button and leaves the user stuck, while a
 redundant transfer costs seconds. Show state if it's useful; don't block on it.
+
+## Open UX Items
+
+From a June 2026 audit, re-checked against the code in September 2026; fixed
+items were removed. Address these when working nearby.
+
+**High**
+- **Destructive actions confirm too little**: "Delete Everywhere"
+  (`DeleteAudiobookSheet.swift`) deletes on one tap inside the sheet, and "Clear
+  All CloudKit Data" (`CloudKitStorageView.swift`) has no confirmation at all
+- **Touch targets under 44pt**: iOS chapter skip buttons
+  (`PlayerControlsView.swift`, 30pt icons, no hit area) and the Watch chapters
+  button (`WatchPlayerView.swift`, 32×32)
+- **Transfer errors can't be retried**: `AutoTransferSheet` and
+  `CloudKitTransferView` show the error in an OK-only alert, with no Retry
+- **No low-battery warning for Watch CloudKit downloads**: the Audiobookshelf
+  download path warns below 20%, the CloudKit path (`CloudKitTransferView`)
+  doesn't
+
+**Medium**
+- **No offline indicator**: rows show whether a book is on the device, but
+  nothing says the device is offline (`LibraryView`, `WatchLibraryView`)
+- **No haptics on Watch** for key actions (`WatchPlayerView`,
+  `WatchTransferStatusView`)
+- **No pull-to-refresh** in `CloudKitStorageView`, unlike the other data lists
+- **CloudKit storage empty state** has no next step
+
+**Low**
+- **No VoiceOver hint for library swipe actions** (a context menu offers the
+  same actions)
+- **No first-run onboarding** beyond the Watch transfer hint banner
+- **Dark mode contrast** of secondary text is unverified — check with the
+  Accessibility Inspector
