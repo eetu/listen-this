@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C299FD76306CD0E00038A98A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C2F172CB2F138F0400B3CA6C /* WidgetKit.framework */; };
+		C299FD77306CD0E00038A98A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C2F172CD2F138F0400B3CA6C /* SwiftUI.framework */; };
+		C299FD82306CD0E10038A98A /* Listen This iPhone WidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C299FD75306CD0DF0038A98A /* Listen This iPhone WidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C2B59A6E2EEFD84400090C62 /* Listen This Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C2B59A642EEFD84300090C62 /* Listen This Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C2F172CC2F138F0400B3CA6C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C2F172CB2F138F0400B3CA6C /* WidgetKit.framework */; };
 		C2F172CE2F138F0400B3CA6C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C2F172CD2F138F0400B3CA6C /* SwiftUI.framework */; };
@@ -20,6 +23,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = C25538942EEFD37200874394;
 			remoteInfo = "Listen This";
+		};
+		C299FD80306CD0E10038A98A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C255388D2EEFD37200874394 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C299FD74306CD0DF0038A98A;
+			remoteInfo = "Listen This iPhone WidgetsExtension";
 		};
 		C2B59A6C2EEFD84400090C62 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -38,6 +48,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		C299FD87306CD0E10038A98A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C299FD82306CD0E10038A98A /* Listen This iPhone WidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C2B59A722EEFD84400090C62 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -66,6 +87,8 @@
 		C25538952EEFD37200874394 /* Listen This.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C270F6192EF889E8008500DF /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Listen This AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C299FD75306CD0DF0038A98A /* Listen This iPhone WidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Listen This iPhone WidgetsExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C299FD88306CD1250038A98A /* Listen This iPhone WidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Listen This iPhone WidgetsExtension.entitlements"; sourceTree = "<group>"; };
 		C2B59A642EEFD84300090C62 /* Listen This Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Listen This Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2EE209C2EEFDAC60008D70C /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		C2EE209D2EEFDAC60008D70C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -120,6 +143,28 @@
 			);
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
 		};
+		C299FD86306CD0E10038A98A /* Exceptions for "Listen This iPhone Widgets" folder in "Listen This iPhone WidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C299FD74306CD0DF0038A98A /* Listen This iPhone WidgetsExtension */;
+		};
+		C299FD8E306D7EDB0038A98A /* Exceptions for "Listen This" folder in "Listen This iPhone WidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Shared/Models/Audiobook.swift,
+				Shared/Models/AudiobookError.swift,
+				Shared/Models/AudiobookshelfSettings.swift,
+				Shared/Models/CacheEntry.swift,
+				Shared/Models/Chapter.swift,
+				Shared/Models/PlaybackSession.swift,
+				Shared/Models/UserSettings.swift,
+				Shared/Utilities/AppLogger.swift,
+				Shared/Widgets/NowPlayingWidgetData.swift,
+			);
+			target = C299FD74306CD0DF0038A98A /* Listen This iPhone WidgetsExtension */;
+		};
 		C2EBC4102EFFF36200524C8A /* Exceptions for "Listen This" folder in "Listen This AppTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -171,6 +216,7 @@
 				Shared/Models/PlaybackSession.swift,
 				Shared/Models/UserSettings.swift,
 				Shared/Utilities/AppLogger.swift,
+				Shared/Widgets/NowPlayingWidgetData.swift,
 			);
 			target = C2F172C82F138F0400B3CA6C /* Listen This WidgetsExtension */;
 		};
@@ -184,6 +230,7 @@
 				C25DBDDA2EEFD9A000FD4952 /* Exceptions for "Listen This" folder in "Listen This Watch App" target */,
 				C2EBC4102EFFF36200524C8A /* Exceptions for "Listen This" folder in "Listen This AppTests" target */,
 				C2F172EC2F13908300B3CA6C /* Exceptions for "Listen This" folder in "Listen This WidgetsExtension" target */,
+				C299FD8E306D7EDB0038A98A /* Exceptions for "Listen This" folder in "Listen This iPhone WidgetsExtension" target */,
 			);
 			path = "Listen This";
 			sourceTree = "<group>";
@@ -191,6 +238,14 @@
 		C270F7502EFC53AF008500DF /* Listen This AppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Listen This AppTests";
+			sourceTree = "<group>";
+		};
+		C299FD78306CD0E00038A98A /* Listen This iPhone Widgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C299FD86306CD0E10038A98A /* Exceptions for "Listen This iPhone Widgets" folder in "Listen This iPhone WidgetsExtension" target */,
+			);
+			path = "Listen This iPhone Widgets";
 			sourceTree = "<group>";
 		};
 		C2B59A652EEFD84300090C62 /* Listen This Watch App */ = {
@@ -223,6 +278,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C299FD72306CD0DF0038A98A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C299FD77306CD0E00038A98A /* SwiftUI.framework in Frameworks */,
+				C299FD76306CD0E00038A98A /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C2B59A612EEFD84300090C62 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -245,6 +309,7 @@
 		C255388C2EEFD37200874394 = {
 			isa = PBXGroup;
 			children = (
+				C299FD88306CD1250038A98A /* Listen This iPhone WidgetsExtension.entitlements */,
 				C2F172EE2F139A9500B3CA6C /* Listen This WidgetsExtension.entitlements */,
 				C270F6192EF889E8008500DF /* .gitignore */,
 				C2EE209C2EEFDAC60008D70C /* CLAUDE.md */,
@@ -253,6 +318,7 @@
 				C2B59A652EEFD84300090C62 /* Listen This Watch App */,
 				C270F7502EFC53AF008500DF /* Listen This AppTests */,
 				C2F172CF2F138F0400B3CA6C /* Listen This Widgets */,
+				C299FD78306CD0E00038A98A /* Listen This iPhone Widgets */,
 				C2F172CA2F138F0400B3CA6C /* Frameworks */,
 				C25538962EEFD37200874394 /* Products */,
 			);
@@ -265,6 +331,7 @@
 				C2B59A642EEFD84300090C62 /* Listen This Watch App.app */,
 				C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */,
 				C2F172C92F138F0400B3CA6C /* Listen This WidgetsExtension.appex */,
+				C299FD75306CD0DF0038A98A /* Listen This iPhone WidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -289,11 +356,13 @@
 				C25538922EEFD37200874394 /* Frameworks */,
 				C25538932EEFD37200874394 /* Resources */,
 				C2B59A722EEFD84400090C62 /* Embed Watch Content */,
+				C299FD87306CD0E10038A98A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				C2B59A6D2EEFD84400090C62 /* PBXTargetDependency */,
+				C299FD81306CD0E10038A98A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C25538972EEFD37200874394 /* Listen This */,
@@ -327,6 +396,28 @@
 			productName = "Listen This AppTests";
 			productReference = C270F74F2EFC53AF008500DF /* Listen This AppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C299FD74306CD0DF0038A98A /* Listen This iPhone WidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C299FD83306CD0E10038A98A /* Build configuration list for PBXNativeTarget "Listen This iPhone WidgetsExtension" */;
+			buildPhases = (
+				C299FD71306CD0DF0038A98A /* Sources */,
+				C299FD72306CD0DF0038A98A /* Frameworks */,
+				C299FD73306CD0DF0038A98A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C299FD78306CD0E00038A98A /* Listen This iPhone Widgets */,
+			);
+			name = "Listen This iPhone WidgetsExtension";
+			packageProductDependencies = (
+			);
+			productName = "Listen This iPhone WidgetsExtension";
+			productReference = C299FD75306CD0DF0038A98A /* Listen This iPhone WidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		C2B59A632EEFD84300090C62 /* Listen This Watch App */ = {
 			isa = PBXNativeTarget;
@@ -381,7 +472,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					C25538942EEFD37200874394 = {
@@ -390,6 +481,9 @@
 					C270F74E2EFC53AF008500DF = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = C25538942EEFD37200874394;
+					};
+					C299FD74306CD0DF0038A98A = {
+						CreatedOnToolsVersion = 27.0;
 					};
 					C2B59A632EEFD84300090C62 = {
 						CreatedOnToolsVersion = 26.2;
@@ -417,6 +511,7 @@
 				C2B59A632EEFD84300090C62 /* Listen This Watch App */,
 				C270F74E2EFC53AF008500DF /* Listen This AppTests */,
 				C2F172C82F138F0400B3CA6C /* Listen This WidgetsExtension */,
+				C299FD74306CD0DF0038A98A /* Listen This iPhone WidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -430,6 +525,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C270F74D2EFC53AF008500DF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C299FD73306CD0DF0038A98A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -467,6 +569,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C299FD71306CD0DF0038A98A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C2B59A602EEFD84300090C62 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -489,6 +598,11 @@
 			target = C25538942EEFD37200874394 /* Listen This */;
 			targetProxy = C270F7532EFC53AF008500DF /* PBXContainerItemProxy */;
 		};
+		C299FD81306CD0E10038A98A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C299FD74306CD0DF0038A98A /* Listen This iPhone WidgetsExtension */;
+			targetProxy = C299FD80306CD0E10038A98A /* PBXContainerItemProxy */;
+		};
 		C2B59A6D2EEFD84400090C62 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C2B59A632EEFD84300090C62 /* Listen This Watch App */;
@@ -509,21 +623,25 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Listen This/Listen_This.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Listen This/Info.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Listen This connects to your Audiobookshelf server on your local network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportsDocumentBrowser = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -543,21 +661,25 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Listen This/Listen_This.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Listen This/Info.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Listen This connects to your Audiobookshelf server on your local network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportsDocumentBrowser = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -698,10 +820,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -719,10 +841,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -735,6 +857,86 @@
 			};
 			name = Release;
 		};
+		C299FD84306CD0E10038A98A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "Listen This iPhone WidgetsExtension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 6;
+				DEVELOPMENT_TEAM = A9B4GVX4R5;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Listen This iPhone Widgets/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Listen This iPhone Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.Listen-This-iPhone-Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C299FD85306CD0E10038A98A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "Listen This iPhone WidgetsExtension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 6;
+				DEVELOPMENT_TEAM = A9B4GVX4R5;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Listen This iPhone Widgets/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Listen This iPhone Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.Listen-This-iPhone-Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		C2B59A702EEFD84400090C62 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -743,7 +945,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Listen This Watch App/Listen This Watch App.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -755,7 +957,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -780,7 +982,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Listen This Watch App/Listen This Watch App.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -792,7 +994,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -817,7 +1019,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Listen This WidgetsExtension.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Listen This Widgets/Info.plist";
@@ -829,7 +1031,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.watchkitapp.Listen-This-Widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -852,7 +1054,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Listen This WidgetsExtension.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = A9B4GVX4R5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Listen This Widgets/Info.plist";
@@ -864,7 +1066,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.anarkisti.Listen-This.watchkitapp.Listen-This-Widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -905,6 +1107,15 @@
 			buildConfigurations = (
 				C270F7552EFC53AF008500DF /* Debug */,
 				C270F7562EFC53AF008500DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C299FD83306CD0E10038A98A /* Build configuration list for PBXNativeTarget "Listen This iPhone WidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C299FD84306CD0E10038A98A /* Debug */,
+				C299FD85306CD0E10038A98A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -79,6 +79,21 @@ struct Listen_ThisApp: App {
                 modelContainer = try! ModelContainer(for: schema, configurations: [memoryConfig])
             }
         }
+
+        #if os(iOS)
+            // The widget's play/pause button runs in this process, possibly with
+            // the app launched in the background just for it, so hook it up here
+            // rather than in a view.
+            let container = modelContainer
+            PlaybackControl.toggle = {
+                await AudioPlayerService.shared(modelContext: container.mainContext)
+                    .toggleResumingMostRecent()
+            }
+            // And the widget shows whether a book is playing.
+            AudioPlayerService.playbackStateDidChange = { isPlaying, audiobookID in
+                WidgetPlaybackState.save(isPlaying: isPlaying, audiobookID: audiobookID)
+            }
+        #endif
     }
 
     var body: some Scene {

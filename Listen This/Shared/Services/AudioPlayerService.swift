@@ -12,9 +12,7 @@ import MediaPlayer
 import OSLog
 import SwiftData
 
-#if os(watchOS)
-    import WidgetKit
-#endif
+import WidgetKit
 
 // MARK: - Concrete Implementation
 
@@ -108,7 +106,24 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     /// Debounces follow-up checks after CloudKit imports, which arrive in bursts.
     private var remoteChangeTask: Task<Void, Never>?
 
-    var isPlaying = false
+    /// Spaces out widget reloads during playback (iPhone only; see reloadWidgets).
+    private var lastWidgetReloadDate: Date?
+    private let widgetReloadInterval: TimeInterval = 300
+
+    var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            Self.playbackStateDidChange?(isPlaying, audiobook?.id)
+            #if os(iOS)
+                reloadWidgets(force: true)
+            #endif
+        }
+    }
+
+    /// Called when playback starts or stops. The iPhone app uses it to share
+    /// the state with the widgets; kept as a hook so this service doesn't
+    /// depend on widget code (the test target compiles it without that).
+    static var playbackStateDidChange: ((_ isPlaying: Bool, _ audiobookID: UUID?) -> Void)?
     var currentPosition: Double = 0
     var duration: Double = 0
     var playbackRate: Double = 1.0
@@ -577,6 +592,30 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
     }
 
+    /// Play/pause from outside the player screen (the widget button). With
+    /// nothing loaded — e.g. the app was just launched in the background for
+    /// the button — resumes the most recently played book.
+    func toggleResumingMostRecent() async {
+        if isPlaying {
+            await pause()
+            return
+        }
+
+        if audiobook == nil || player == nil {
+            var descriptor = FetchDescriptor<PlaybackSession>(
+                sortBy: [SortDescriptor(\.lastPlayed, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+            guard let recent = try? modelContext.fetch(descriptor).first?.audiobook else {
+                logger.info("Play from widget: no audiobook has been played yet")
+                return
+            }
+            await load(audiobook: recent)
+        }
+
+        await play()
+    }
+
     func pause() async {
         let wasPlaying = isPlaying
         player?.pause()
@@ -936,11 +975,24 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
 
         try? modelContext.save()
+        reloadWidgets(force: !isPlaying)
+    }
 
-        // Reload watch complications to show updated progress
-        #if os(watchOS)
-            WidgetCenter.shared.reloadAllTimelines()
+    /// Refreshes the complications / Home Screen widgets after a save.
+    /// On iPhone, reloads made while the app runs in the background count
+    /// against a daily budget, so during playback they're spaced out; pausing
+    /// always refreshes.
+    private func reloadWidgets(force: Bool) {
+        #if os(iOS)
+            let now = Date()
+            if !force, let last = lastWidgetReloadDate,
+                now.timeIntervalSince(last) < widgetReloadInterval
+            {
+                return
+            }
+            lastWidgetReloadDate = now
         #endif
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func updateLastPlayed() {
