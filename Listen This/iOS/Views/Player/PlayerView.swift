@@ -10,11 +10,24 @@ struct PlayerView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var player: AudioPlayerService?
     @State private var isLoading = true
+    private let downloadManager = AudiobookshelfDownloadManager.shared
 
     var body: some View {
         Group {
             if let player, !isLoading {
                 PlayerViewContent(audiobook: audiobook, player: player)
+            } else if let download = downloadManager.activeDownloads[audiobook.id] {
+                // Auto-download mode fetches the whole book before playing.
+                // Show how long that takes, and let the user stream instead:
+                // cancelling makes the load fall back to the stream.
+                VStack(spacing: 16) {
+                    Text("Downloading for offline listening")
+                        .font(.headline)
+                    TransferProgressView(progress: download, cancelTitle: "Stream Instead") {
+                        downloadManager.cancel(audiobookId: audiobook.id)
+                    }
+                }
+                .padding()
             } else {
                 ProgressView("Loading...")
             }

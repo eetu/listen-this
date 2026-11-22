@@ -30,6 +30,9 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
     var watchCachedAudiobookIds: Set<String> = []  // Track which audiobooks are cached on Watch
     var cloudKitUploadedAudiobookIds: Set<String> = []  // Track which audiobooks are uploaded to CloudKit
     var lastError: Error?
+    /// The most recent direct transfer that failed, for the library to report.
+    /// Cleared by the UI once shown.
+    var transferFailure: WatchTransferFailure?
 
     // MARK: - Internal Properties
 
@@ -603,18 +606,18 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
 
             if let error = error {
-                // Update transfer status to failed
-                if var progress = activeTransfers[audiobookId] {
-                    progress.isActive = false
-                    activeTransfers[audiobookId] = progress
-                }
-
                 self.lastError = error
-                
-                // Remove failed transfer after showing error briefly
-                Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3 seconds
-                    activeTransfers.removeValue(forKey: audiobookId)
+
+                // A transfer the user cancelled is already gone from
+                // activeTransfers; anything still listed failed on its own.
+                if let progress = activeTransfers.removeValue(forKey: audiobookId),
+                    let id = UUID(uuidString: audiobookId)
+                {
+                    transferFailure = WatchTransferFailure(
+                        audiobookId: id,
+                        title: progress.audiobookTitle,
+                        message: error.localizedDescription
+                    )
                 }
             } else {
                 // Mark as complete (100%) and show completion state

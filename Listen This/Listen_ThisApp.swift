@@ -118,6 +118,11 @@ struct Listen_ThisApp: App {
                         // Configure Watch Connectivity with model context
                         watchConnectivity.configure(modelContext: modelContainer.mainContext)
 
+                        // Re-attach to server downloads still running from an
+                        // earlier launch, so their rows show progress again
+                        AudiobookshelfDownloadManager.shared.configure(
+                            modelContext: modelContainer.mainContext)
+
                         // Check for outstanding transfers
                         watchConnectivity.checkOutstandingTransfers()
 
