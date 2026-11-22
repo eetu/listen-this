@@ -16,6 +16,8 @@ Up to 1.3.0 the lists themselves were submitted.
 - While a book downloads before playing, the player shows progress, time left and Stream Instead
 - Sending to Watch offers the other route ("Send Directly Instead" / "Send via iCloud Instead")
 - After sending, the sheet says what happens next, such as opening the Watch app to download
+- A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there, unless the battery is low
+- The Watch taps your wrist when a book finishes downloading
 - Books coming down from iCloud Drive show a percentage in the library, the player and the Send to Watch sheet
 
 ### Changed
@@ -27,6 +29,7 @@ Up to 1.3.0 the lists themselves were submitted.
 - A failed download or direct Watch transfer looked like it had finished; it now shows an error with Try Again
 - An upload that failed after closing the Send to Watch sheet went unreported
 - Cancel didn't stop an iCloud upload
+- Sending a book already in iCloud said "Upload is incomplete, try again"
 - The Watch showed 0% for the whole of a transfer from iPhone; it now shows "Receiving from iPhone"
 - A transfer from iPhone that failed left the Watch row stuck as transferring; the Watch now shows why it failed
 - An iCloud Drive download that was still progressing could give up after 10 minutes

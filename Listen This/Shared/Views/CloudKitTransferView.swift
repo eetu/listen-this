@@ -11,6 +11,10 @@ import Observation
 import SwiftData
 import SwiftUI
 
+#if os(watchOS)
+    import WatchKit
+#endif
+
 // MARK: - View Model
 
 @Observable
@@ -48,7 +52,14 @@ final class CloudKitTransferViewModel {
         self.audiobook = audiobook
         self.mode = mode
         self.modelContext = modelContext
-        self.transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
+        #if os(watchOS)
+            // Shared with downloads the iPhone started, so this screen shows
+            // and can cancel one already running
+            self.transferManager = WatchCloudKitDownloads.shared.transferManager(
+                modelContext: modelContext)
+        #else
+            self.transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
+        #endif
         self.cacheManager = AudiobookCacheManager(modelContext: modelContext)
 
         // Initialize button title based on mode
@@ -164,6 +175,9 @@ final class CloudKitTransferViewModel {
             _ = try await transferManager.downloadAudiobook(audiobook)
 
             state = .complete
+            #if os(watchOS)
+                WKInterfaceDevice.current().play(.success)
+            #endif
 
         } catch ChunkTransferError.cancelled {
             // The user asked for this; don't report it back to them as a failure.
@@ -265,9 +279,14 @@ struct CloudKitTransferView: View {
                 )
                 viewModel = vm
 
-                // Check chunk availability for both upload and download modes
-                Task {
-                    await vm.checkChunkAvailability()
+                if let progress = vm.activeProgress {
+                    // Already running, started from elsewhere
+                    vm.state = .transferring(progress)
+                } else {
+                    // Check chunk availability for both upload and download modes
+                    Task {
+                        await vm.checkChunkAvailability()
+                    }
                 }
             }
         }

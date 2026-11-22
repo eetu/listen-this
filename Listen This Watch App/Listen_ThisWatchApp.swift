@@ -102,6 +102,12 @@ struct Listen_ThisWatchApp: App {
                     AudiobookshelfDownloadManager.shared.configure(
                         modelContext: modelContainer.mainContext)
 
+                    // Start any iCloud download the iPhone queued while the
+                    // app wasn't running
+                    WatchCloudKitDownloads.shared.configure(
+                        modelContext: modelContainer.mainContext)
+                    WatchCloudKitDownloads.shared.setAppActive(true)
+
                     // Check for any ongoing or pending transfers
                     watchConnectivityManager.checkPendingTransfers()
 
@@ -188,6 +194,8 @@ struct Listen_ThisWatchApp: App {
     // MARK: - Scene Phase Handling
 
     private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+        WatchCloudKitDownloads.shared.setAppActive(newPhase == .active)
+
         if newPhase == .background {
             // App entering background - save playback state and sync
             AppLogger.general.info("[WatchApp] Entering background, saving playback state")

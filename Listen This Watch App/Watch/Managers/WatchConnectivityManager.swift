@@ -7,6 +7,7 @@ import Foundation
 import OSLog
 import SwiftData
 import WatchConnectivity
+import WatchKit
 
 // MARK: - Public Protocol (View-Facing)
 
@@ -334,6 +335,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
         }
     }
 
+    /// Queued requests (transferUserInfo), delivered even if the app wasn't
+    /// running when they were sent.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveUserInfo userInfo: [String: Any] = [:]
+    ) {
+        Task { @MainActor in
+            handleMessage(userInfo)
+        }
+    }
+
     nonisolated func session(
         _ session: WCSession,
         didReceiveMessage message: [String: Any],
@@ -359,6 +371,12 @@ extension WatchConnectivityManager: WCSessionDelegate {
             handleTransferCancelled(message)
         case "transferFailed":
             handleTransferFailed(message)
+        case "cloudKitUploadReady":
+            if let idString = message["audiobookId"] as? String,
+                let id = UUID(uuidString: idString)
+            {
+                WatchCloudKitDownloads.shared.uploadReady(audiobookId: id)
+            }
         case "requestCachedList":
             // iPhone is asking which books are cached on Watch
             sendCachedAudiobookList()
@@ -510,6 +528,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             // Clear transfer progress
             activeTransfers.removeValue(forKey: audiobookId.uuidString)
+            WKInterfaceDevice.current().play(.success)
 
             // Notify iPhone that we now have this book cached
             sendCachedAudiobookList()

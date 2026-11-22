@@ -256,6 +256,11 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
 
         let audiobookId = audiobook.id
 
+        // Two loops would append to the same partial file
+        guard activeDownloads[audiobookId] == nil else {
+            throw ChunkTransferError.alreadyInProgress
+        }
+
         // Clear any leftover cancellation intent before starting. A cancel
         // arriving when nothing was running would otherwise sit in the set and
         // abort this attempt on its first chunk.
@@ -1130,10 +1135,15 @@ enum ChunkTransferError: LocalizedError {
     case quotaExceeded
     case insufficientStorage
     case cloudKitError(String)
-    static let alreadyUploaded = ChunkTransferError.incompleteUpload
+    case alreadyUploaded
+    case alreadyInProgress
 
     var errorDescription: String? {
         switch self {
+        case .alreadyUploaded:
+            return "This book is already in iCloud."
+        case .alreadyInProgress:
+            return "This book is already downloading."
         case .fileNotAvailable:
             return "File is not available for transfer"
         case .invalidFile:
@@ -1149,7 +1159,7 @@ enum ChunkTransferError: LocalizedError {
         case .incompleteDownload:
             return "The download finished short of the full audiobook and was discarded. Try again."
         case .cancelled:
-            return "Download cancelled."
+            return "Transfer cancelled."
         case .networkError:
             return "Network error during transfer"
         case .quotaExceeded:

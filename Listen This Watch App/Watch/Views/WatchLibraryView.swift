@@ -13,6 +13,7 @@ internal import os
 struct WatchLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WatchConnectivityManager.self) private var connectivity
+    private let cloudKitDownloads = WatchCloudKitDownloads.shared
 
     @Query(sort: \Audiobook.lastAccessedDate, order: .reverse)
     private var audiobooks: [Audiobook]
@@ -296,6 +297,21 @@ struct WatchLibraryView: View {
         } message: {
             Text("This will remove the downloaded file from your Watch.")
         }
+        .alert(
+            "Download Failed",
+            isPresented: .init(
+                get: { cloudKitDownloads.failure != nil },
+                set: { if !$0 { cloudKitDownloads.failure = nil } }
+            ),
+            presenting: cloudKitDownloads.failure
+        ) { failure in
+            Button("Try Again") {
+                cloudKitDownloads.uploadReady(audiobookId: failure.audiobookId)
+            }
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text("\(failure.title): \(failure.message)")
+        }
     }
 
     // MARK: - Actions
@@ -348,6 +364,7 @@ struct AudiobookRowWithActions: View {
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobookId] != nil
+            || WatchCloudKitDownloads.shared.isDownloading(audiobookId)
     }
 
     /// Only WatchConnectivity transfers are cancelled from the row's swipe
@@ -449,6 +466,7 @@ struct AudiobookRow: View {
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobook.id] != nil
+            || WatchCloudKitDownloads.shared.isDownloading(audiobook.id)
     }
 
     /// Bytes from an interrupted transfer that a retry could continue from,

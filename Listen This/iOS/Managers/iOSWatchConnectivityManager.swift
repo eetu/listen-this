@@ -297,6 +297,17 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         cloudKitUploadedAudiobookIds.insert(audiobookId)
     }
 
+    /// Ask the Watch to download a book that is now complete in iCloud. Queued
+    /// with transferUserInfo, so it arrives even if the Watch app isn't running
+    /// and the download starts the next time it is.
+    func announceCloudKitUpload(audiobookId: UUID) {
+        guard let session, session.isPaired, session.isWatchAppInstalled else { return }
+        session.transferUserInfo([
+            "command": "cloudKitUploadReady",
+            "audiobookId": audiobookId.uuidString,
+        ])
+    }
+
     /// Clear CloudKit uploaded status for an audiobook
     func clearCloudKitUploaded(audiobookId: String) {
         cloudKitUploadedAudiobookIds.remove(audiobookId)

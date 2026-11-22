@@ -26,10 +26,8 @@ struct AutoTransferSheet: View {
     /// meaning (see the toolbar).
     private var canOnlyAcknowledge: Bool {
         if isTransferring || completedMethod != nil { return true }
-        switch selectedMethod {
-        case .alreadyUploaded, .error: return true
-        default: return false
-        }
+        if case .error = selectedMethod { return true }
+        return false
     }
 
     var body: some View {
@@ -166,8 +164,8 @@ struct AutoTransferSheet: View {
             switch method {
             case .cloudKit, .alreadyUploaded:
                 (
-                    "checkmark.icloud", "Uploaded to iCloud",
-                    "Now open Listen This on your Watch and tap \"\(title)\" to download it."
+                    "checkmark.icloud", "Ready in iCloud",
+                    "Open Listen This on your Watch and it downloads \"\(title)\" over Wi-Fi."
                 )
             case .watchConnectivity:
                 (
@@ -206,9 +204,15 @@ struct AutoTransferSheet: View {
         do {
             switch selectedMethod {
             case .cloudKit:
-                try await manager.uploadAudiobook(audiobook)
+                do {
+                    try await manager.uploadAudiobook(audiobook)
+                } catch ChunkTransferError.alreadyUploaded {
+                    // Finished by an earlier attempt; nothing left to send
+                }
                 iOSWatchConnectivityManager.shared.markCloudKitUploaded(
                     audiobookId: audiobook.id.uuidString)
+                iOSWatchConnectivityManager.shared.announceCloudKitUpload(
+                    audiobookId: audiobook.id)
 
             case .watchConnectivity:
                 if !audiobook.isFileCached {
@@ -222,7 +226,8 @@ struct AutoTransferSheet: View {
                 _ = try await audiobook.downloadAndCache(using: cacheManager)
 
             case .alreadyUploaded:
-                break
+                iOSWatchConnectivityManager.shared.announceCloudKitUpload(
+                    audiobookId: audiobook.id)
 
             case .error(let reason):
                 throw TransferError.noMethodAvailable(reason)
@@ -275,7 +280,8 @@ struct AutoTransferSheet: View {
         case .cloudKit: "Upload to iCloud"
         case .watchConnectivity: "Send to Watch"
         case .iCloudDirect: "Download"
-        case .alreadyUploaded, .error: nil
+        case .alreadyUploaded: "Send to Watch"
+        case .error: nil
         }
     }
 
@@ -312,13 +318,13 @@ struct AutoTransferSheet: View {
     private func methodSummary(_ method: SelectedMethod) -> String {
         switch method {
         case .cloudKit:
-            "Uploads the book to iCloud. Then open Listen This on your Watch and tap the book to download it over Wi-Fi."
+            "Uploads the book to iCloud, and your Watch downloads it over Wi-Fi the next time Listen This is open there."
         case .watchConnectivity:
             "Sends the book straight from this iPhone to your Watch. Slower, but it keeps going in the background."
         case .iCloudDirect:
             "Downloads the book from iCloud Drive to this iPhone."
         case .alreadyUploaded:
-            "Open Listen This on your Watch and tap the book to download it."
+            "The book is already in iCloud. Your Watch downloads it the next time Listen This is open there."
         case .error(let reason):
             reason
         }
