@@ -235,8 +235,8 @@ items were removed. Address these when working nearby.
 - **Touch targets under 44pt**: iOS chapter skip buttons
   (`PlayerControlsView.swift`, 30pt icons, no hit area) and the Watch chapters
   button (`WatchPlayerView.swift`, 32×32)
-- **Transfer errors can't be retried**: `AutoTransferSheet` and
-  `CloudKitTransferView` show the error in an OK-only alert, with no Retry
+- **Transfer errors can't be retried on the Watch**: `CloudKitTransferView`
+  shows the error in an OK-only alert, with no Retry
 - **No low-battery warning for Watch CloudKit downloads**: the Audiobookshelf
   download path warns below 20%, the CloudKit path (`CloudKitTransferView`)
   doesn't
@@ -244,8 +244,8 @@ items were removed. Address these when working nearby.
 **Medium**
 - **No offline indicator**: rows show whether a book is on the device, but
   nothing says the device is offline (`LibraryView`, `WatchLibraryView`)
-- **No haptics on Watch** for key actions (`WatchPlayerView`,
-  `WatchTransferStatusView`)
+- **No haptics on Watch** beyond a finished download: playback actions
+  (`WatchPlayerView`) and starting a transfer (`WatchTransferStatusView`)
 - **No pull-to-refresh** in `CloudKitStorageView`, unlike the other data lists
 - **CloudKit storage empty state** has no next step
 

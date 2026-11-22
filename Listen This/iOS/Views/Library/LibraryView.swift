@@ -91,16 +91,45 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
+    /// Search, toolbar and the add/settings sheets sit on the container, not
+    /// on each state, so a search with no matches keeps its search field.
     private func sidebarContent(connectivity: iOSWatchConnectivityManager) -> some View {
-        if filteredAudiobooks.isEmpty {
-            if isSyncingInBackground {
-                skeletonLoadingView
+        Group {
+            if filteredAudiobooks.isEmpty {
+                if isSyncingInBackground {
+                    skeletonLoadingView
+                } else if !searchText.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    emptyStateView
+                }
             } else {
-                emptyStateView
+                libraryList(connectivity: connectivity)
             }
-        } else {
-            libraryList(connectivity: connectivity)
+        }
+        .searchable(text: $searchText, prompt: "Search audiobooks")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showingAddBook = true
+                } label: {
+                    Label("Add Book", systemImage: "plus")
+                }
+                // Unavailable while the synced library is still loading
+                .disabled(isSyncingInBackground && audiobooks.isEmpty)
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddBook) {
+            ImportView()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
     }
 
@@ -210,31 +239,6 @@ struct LibraryView: View {
             Button("OK", role: .cancel) {}
         } message: { failure in
             Text("\(failure.title): \(failure.message)")
-        }
-        .refreshable {
-            await refreshLibrary()
-        }
-        .searchable(text: $searchText, prompt: "Search audiobooks")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingAddBook) {
-            ImportView()
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
         }
         .sheet(
             isPresented: .init(
@@ -390,16 +394,6 @@ struct LibraryView: View {
         }
     }
 
-    private func refreshLibrary() async {
-        // Force a refresh by triggering SwiftData to re-evaluate queries
-        // This is useful after downloads or external changes
-        do {
-            try modelContext.save()
-        } catch {
-            AppLogger.import.error("Failed to refresh library: \(error.localizedDescription)")
-        }
-    }
-
     /// Start a server download, or cancel the one in flight.
     ///
     /// Goes through the shared manager so the transfer survives backgrounding,
@@ -448,25 +442,6 @@ struct LibraryView: View {
             ForEach(0..<3, id: \.self) { _ in
                 SkeletonRow()
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    // Disabled during sync
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-                .disabled(true)
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
         }
         .overlay(alignment: .bottom) {
             HStack(spacing: 8) {
@@ -606,41 +581,14 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label("No Audiobooks", systemImage: "books.vertical")
         } description: {
-            if searchText.isEmpty {
-                Text("Add audiobooks from iCloud Drive or connect to Audiobookshelf")
-            } else {
-                Text("No audiobooks match \"\(searchText)\"")
-            }
+            Text("Add audiobooks from iCloud Drive or connect to Audiobookshelf")
         } actions: {
-            if searchText.isEmpty {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Audiobook", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+            Button {
+                showingAddBook = true
+            } label: {
+                Label("Add Audiobook", systemImage: "plus")
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingAddBook) {
-            ImportView()
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
+            .buttonStyle(.borderedProminent)
         }
     }
 }

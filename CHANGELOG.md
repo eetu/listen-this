@@ -12,7 +12,7 @@ Up to 1.3.0 the lists themselves were submitted.
 
 ### Added
 - Library rows show download and upload progress as a ring
-- Download and Cancel Download in a book's context menu
+- Download and Cancel Download in a book's context menu and its Details, with progress
 - While a book downloads before playing, the player shows progress, time left and Stream Instead
 - Sending to Watch offers the other route ("Send Directly Instead" / "Send via iCloud Instead")
 - After sending, the sheet says what happens next, such as opening the Watch app to download
@@ -24,12 +24,14 @@ Up to 1.3.0 the lists themselves were submitted.
 - Downloads from Audiobookshelf on iPhone continue in the background and resume after a dropped connection
 - iCloud transfers report progress within each 100 MB part, so smaller books get a percentage and time estimate
 - Transfer routes have plain names: Via iCloud and Directly from iPhone
+- Pull to refresh in the library is gone; it never fetched anything, and the library syncs on its own
 
 ### Fixed
 - A failed download or direct Watch transfer looked like it had finished; it now shows an error with Try Again
 - An upload that failed after closing the Send to Watch sheet went unreported
 - Cancel didn't stop an iCloud upload
 - Sending a book already in iCloud said "Upload is incomplete, try again"
+- A library search with no matches hid the search field
 - The Watch showed 0% for the whole of a transfer from iPhone; it now shows "Receiving from iPhone"
 - A transfer from iPhone that failed left the Watch row stuck as transferring; the Watch now shows why it failed
 - An iCloud Drive download that was still progressing could give up after 10 minutes
