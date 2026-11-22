@@ -134,10 +134,11 @@ struct Listen_ThisWatchApp: App {
     // MARK: - Transfer Monitoring
 
     private func startTransferMonitoring() {
-        // Log transfer status every 10 seconds
+        // Drop transfers the iPhone has gone quiet about, so a row doesn't
+        // stay stuck on "transferring" with Download disabled
         transferCheckTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
-                _ = watchConnectivityManager.activeTransfers.count
+                watchConnectivityManager.expireStaleTransfers()
             }
         }
     }

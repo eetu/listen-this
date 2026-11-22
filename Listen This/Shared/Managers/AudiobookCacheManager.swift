@@ -775,6 +775,7 @@ enum ICloudFileDownloader {
 
 #if os(iOS)
     /// Feeds one iCloud item's download percentage into `TransferProgressCenter`.
+    @MainActor
     private final class ICloudPercentObserver: NSObject {
         private let query = NSMetadataQuery()
         private let path: String

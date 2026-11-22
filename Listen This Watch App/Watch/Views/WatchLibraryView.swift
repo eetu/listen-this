@@ -460,15 +460,16 @@ struct AudiobookRow: View {
     }
 
     /// How far along the transfer is, whichever route is carrying it. Direct
-    /// iPhone transfers report bytes rather than publishing to the centre.
+    /// iPhone transfers usually have no byte count; they keep the spinner
+    /// badge rather than a ring stuck at 0%.
     var transferFraction: Double? {
         if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
             return fraction
         }
         if let transfer = connectivity.activeTransfers[audiobook.id.uuidString],
-            transfer.totalBytes > 0
+            transfer.hasByteProgress
         {
-            return Double(transfer.bytesTransferred) / Double(transfer.totalBytes)
+            return transfer.progress
         }
         return nil
     }

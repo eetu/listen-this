@@ -97,7 +97,50 @@ struct WatchTransferStatusView: View {
 
     // MARK: - Active Transfer
 
+    @ViewBuilder
     private func activeTransferView(_ transfer: TransferProgress) -> some View {
+        if transfer.hasByteProgress {
+            measuredTransferView(transfer)
+        } else {
+            receivingView(transfer)
+        }
+    }
+
+    /// The usual direct transfer: WatchConnectivity reports no bytes, so say
+    /// what is happening instead of showing a percentage that never moves.
+    private func receivingView(_ transfer: TransferProgress) -> some View {
+        VStack(spacing: 6) {
+            ProgressView()
+
+            Text("Receiving from iPhone")
+                .font(.footnote)
+                .fontWeight(.medium)
+
+            Text(
+                transfer.totalBytes > 0
+                    ? "\(ByteCountFormatter.string(fromByteCount: transfer.totalBytes, countStyle: .file)). Keeps going if you leave."
+                    : "Keeps going if you leave."
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+
+            cancelButton
+        }
+    }
+
+    private var cancelButton: some View {
+        Button(role: .destructive) {
+            connectivity.cancelTransfer(audiobookId: audiobook.id)
+        } label: {
+            Text("Cancel")
+                .font(.caption)
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+    }
+
+    private func measuredTransferView(_ transfer: TransferProgress) -> some View {
         VStack(spacing: 6) {
             // Compact circular progress with percentage
             ZStack {
@@ -135,15 +178,7 @@ struct WatchTransferStatusView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.8)
 
-            // Cancel button - compact
-            Button(role: .destructive) {
-                connectivity.cancelTransfer(audiobookId: audiobook.id)
-            } label: {
-                Text("Cancel")
-                    .font(.caption)
-            }
-            .buttonStyle(.bordered)
-            .tint(.red)
+            cancelButton
         }
     }
     
@@ -204,10 +239,12 @@ struct WatchTransferStatusView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
+                    // A reported failure ends the wait early
+                    let isWaiting = isRequesting && connectivity.lastError == nil
                     Button {
                         requestDownload()
                     } label: {
-                        if isRequesting {
+                        if isWaiting {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
@@ -215,7 +252,7 @@ struct WatchTransferStatusView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isRequesting)
+                    .disabled(isWaiting)
                 }
             } else {
                 VStack(spacing: 8) {
@@ -252,18 +289,16 @@ struct WatchTransferStatusView: View {
 
     // MARK: - Actions
 
+    /// The iPhone answers with "transferStarted" (which swaps this screen for
+    /// the transfer view) or "transferFailed" (which shows the reason below).
+    /// The spinner covers the gap and gives up if neither arrives.
     private func requestDownload() {
         isRequesting = true
+        connectivity.requestDownload(audiobookId: audiobook.id)
 
         Task {
-            connectivity.requestDownload(audiobookId: audiobook.id)
-
-            // Wait a moment for the transfer to start
-            try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2 seconds
-
-            await MainActor.run {
-                isRequesting = false
-            }
+            try? await Task.sleep(for: .seconds(10))
+            isRequesting = false
         }
     }
 }

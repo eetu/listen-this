@@ -533,7 +533,15 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
 
                 // Check if file is already cached
                 if !audiobook.isFileCached {
-                    // Download from iCloud first
+                    // Tell the Watch it's under way: fetching from iCloud
+                    // Drive first can take minutes with nothing else to show
+                    session?.sendMessage(
+                        [
+                            "command": "transferStarted",
+                            "audiobookId": audiobookIdString,
+                            "totalBytes": audiobook.fileSize,
+                        ], replyHandler: nil, errorHandler: nil)
+
                     let cacheManager = AudiobookCacheManager(modelContext: modelContext)
                     _ = try await audiobook.downloadAndCache(using: cacheManager)
                 }
@@ -543,8 +551,21 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
 
             } catch {
                 lastError = error
+                notifyWatchOfFailure(audiobookId: audiobookIdString, error: error)
             }
         }
+    }
+
+    /// Clears the Watch's "receiving" state and tells it why. Without this the
+    /// Watch only learns from its own expiry timer, hours later.
+    private func notifyWatchOfFailure(audiobookId: String, error: Error) {
+        guard let session, session.isReachable else { return }
+        session.sendMessage(
+            [
+                "command": "transferFailed",
+                "audiobookId": audiobookId,
+                "error": error.localizedDescription,
+            ], replyHandler: nil, errorHandler: nil)
     }
 
     private func handleSyncRequest() {
@@ -613,6 +634,7 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
                 if let progress = activeTransfers.removeValue(forKey: audiobookId),
                     let id = UUID(uuidString: audiobookId)
                 {
+                    notifyWatchOfFailure(audiobookId: audiobookId, error: error)
                     transferFailure = WatchTransferFailure(
                         audiobookId: id,
                         title: progress.audiobookTitle,
