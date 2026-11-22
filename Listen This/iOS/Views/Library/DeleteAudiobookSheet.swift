@@ -15,6 +15,7 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
     let onDismiss: () -> Void
 
     @State private var isDeleting = false
+    @State private var confirmingFullDelete = false
     @State private var showDeleteError = false
     @State private var deleteErrorMessage = ""
 
@@ -78,11 +79,10 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
                         .disabled(isDeleting)
                     }
 
-                    // Show "Delete Everywhere" for iCloud books, or "Delete from Library" for other sources
+                    // Show "Delete Everywhere" for iCloud books, or "Delete from Library" for other sources.
+                    // Asks again: unlike the iPhone-only delete it can't be undone.
                     Button(role: .destructive) {
-                        Task {
-                            await deleteAudiobook(deleteFromiCloud: hasICloudPath)
-                        }
+                        confirmingFullDelete = true
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: hasICloudPath ? "icloud.slash" : "trash")
@@ -134,6 +134,22 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
             .navigationBarTitleDisplayMode(.inline)
             .presentationDetents([.medium])
             .interactiveDismissDisabled(isDeleting)
+            .confirmationDialog(
+                hasICloudPath
+                    ? "Delete \"\(audiobookTitle)\" Everywhere?"
+                    : "Delete \"\(audiobookTitle)\" from Library?",
+                isPresented: $confirmingFullDelete,
+                titleVisibility: .visible
+            ) {
+                Button(hasICloudPath ? "Delete Everywhere" : "Delete from Library", role: .destructive) {
+                    Task {
+                        await deleteAudiobook(deleteFromiCloud: hasICloudPath)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(fullDeleteConsequence)
+            }
         }
         .alert("Delete Failed", isPresented: $showDeleteError) {
             Button("OK", role: .cancel) {
@@ -141,6 +157,20 @@ struct DeleteAudiobookSheet<Connectivity: iOSWatchConnectivity & Observable>: Vi
             }
         } message: {
             Text(deleteErrorMessage)
+        }
+    }
+
+    /// Listening progress goes too: the playback session is deleted with the book.
+    private var fullDeleteConsequence: String {
+        if hasICloudPath {
+            return
+                "The file is deleted from iCloud Drive, this iPhone and your Apple Watch, along with your listening progress. This can't be undone."
+        } else if sourceIdentifier != nil {
+            return
+                "It's removed from your library on all devices, along with your listening progress. The book stays on the server."
+        } else {
+            return
+                "It's removed from your library on all devices, along with your listening progress. This can't be undone."
         }
     }
 

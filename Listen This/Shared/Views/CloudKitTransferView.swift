@@ -210,6 +210,7 @@ struct CloudKitTransferView: View {
     let audiobook: Audiobook
 
     @State private var viewModel: CloudKitTransferViewModel?
+    @State private var showingBatteryConfirmation = false
 
     private var isTransferring: Bool {
         viewModel?.activeProgress != nil
@@ -275,6 +276,16 @@ struct CloudKitTransferView: View {
                     }
                 }
             #endif
+        }
+        .confirmationDialog(
+            "Low Battery",
+            isPresented: $showingBatteryConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Download Anyway") { viewModel?.start() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your Watch battery is low. A large download may drain it before it finishes.")
         }
         #if os(iOS)
             // The Watch shows the error inline with Try Again instead
@@ -569,7 +580,11 @@ struct CloudKitTransferView: View {
             .foregroundStyle(viewModel.isActionDisabled ? .gray : .blue)
 
             Button {
-                viewModel.start()
+                if isBatteryLow {
+                    showingBatteryConfirmation = true
+                } else {
+                    viewModel.start()
+                }
             } label: {
                 Text(viewModel.actionButtonTitle)
                     .font(.footnote)
@@ -578,6 +593,22 @@ struct CloudKitTransferView: View {
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isActionDisabled)
         }
+    }
+
+    /// Low and not charging, so a long download deserves a warning first.
+    private var isBatteryLow: Bool {
+        #if os(watchOS)
+            let device = WKInterfaceDevice.current()
+            device.isBatteryMonitoringEnabled = true
+            if device.batteryState == .charging || device.batteryState == .full {
+                return false
+            }
+            // A negative level means monitoring is unavailable; don't block on it
+            let level = device.batteryLevel
+            return level >= 0 && level < WatchCloudKitDownloads.minimumBatteryLevel
+        #else
+            return false
+        #endif
     }
 
     // MARK: - Progress

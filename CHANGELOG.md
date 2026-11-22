@@ -20,6 +20,10 @@ Up to 1.3.0 the lists themselves were submitted.
 - The Watch taps your wrist when a book finishes downloading
 - Import several M4B files at once
 - A failed iCloud download on the Watch offers Try Again
+- Delete Everywhere and Delete from Library ask again, saying listening progress goes too
+- Removing all iCloud uploads asks first, showing how many books and how much space
+- The Watch warns before an iCloud download on low battery
+- Pull to refresh on iCloud Transfer Storage, and an empty state that explains it
 - Books coming down from iCloud Drive show a percentage in the library, the player and the Send to Watch sheet
 
 ### Changed

@@ -228,21 +228,11 @@ redundant transfer costs seconds. Show state if it's useful; don't block on it.
 From a June 2026 audit, re-checked against the code in September 2026; fixed
 items were removed. Address these when working nearby.
 
-**High**
-- **Destructive actions confirm too little**: "Delete Everywhere"
-  (`DeleteAudiobookSheet.swift`) deletes on one tap inside the sheet, and "Clear
-  All CloudKit Data" (`CloudKitStorageView.swift`) has no confirmation at all
-- **No low-battery warning for Watch CloudKit downloads**: the Audiobookshelf
-  download path warns below 20%, the CloudKit path (`CloudKitTransferView`)
-  doesn't
-
 **Medium**
 - **No offline indicator**: rows show whether a book is on the device, but
   nothing says the device is offline (`LibraryView`, `WatchLibraryView`)
 - **No haptics on Watch** beyond a finished download: playback actions
   (`WatchPlayerView`) and starting a transfer (`WatchTransferStatusView`)
-- **No pull-to-refresh** in `CloudKitStorageView`, unlike the other data lists
-- **CloudKit storage empty state** has no next step
 
 **Low**
 - **No VoiceOver hint for library swipe actions** (a context menu offers the
