@@ -142,6 +142,16 @@ struct AutoTransferSheet: View {
                 manager.cancelTransfer(audiobookId: audiobook.id)
             }
             .padding(.horizontal)
+        } else if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
+            // The book is coming down from iCloud Drive before it can be sent
+            VStack(spacing: 8) {
+                ProgressView(value: fraction)
+                Text("Downloading from iCloud Drive, \(Int(fraction * 100))%")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 32)
         } else {
             // Fetching the file from iCloud Drive or queueing a direct transfer
             ProgressView("Preparing...")

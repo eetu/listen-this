@@ -28,6 +28,19 @@ struct PlayerView: View {
                     }
                 }
                 .padding()
+            } else if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
+                // An evicted iCloud Drive file coming back to this device
+                VStack(spacing: 12) {
+                    Text("Downloading from iCloud")
+                        .font(.headline)
+                    ProgressView(value: fraction)
+                        .frame(maxWidth: 240)
+                    Text("\(Int(fraction * 100))%")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding()
             } else {
                 ProgressView("Loading...")
             }
