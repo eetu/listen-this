@@ -58,35 +58,14 @@ struct TransferSettingsView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Allow Cellular Data")
-                        Text("For CloudKit transfers")
+                        Text("For transfers via iCloud")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             } footer: {
                 Text(
-                    "When enabled, CloudKit transfers can use cellular data. This may incur data charges for large audiobook files. WiFi is always preferred when available."
-                )
-            }
-            
-            // Charging-only transfer setting
-            Section {
-                Toggle(
-                    isOn: Binding(
-                        get: { settingsManager.transferToWatchWhileChargingOnly },
-                        set: { settingsManager.transferToWatchWhileChargingOnly = $0 }
-                    )
-                ) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Transfer While Charging Only")
-                        Text("Preserve iPhone battery")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } footer: {
-                Text(
-                    "When enabled, transfers to Apple Watch will only start when your iPhone is connected to power. This helps preserve battery life during large file transfers."
+                    "When enabled, transfers via iCloud can use cellular data. This may incur data charges for large audiobook files. Wi-Fi is always preferred when available."
                 )
             }
 
@@ -108,7 +87,7 @@ struct TransferSettingsView: View {
                                 Text("Large files (>50MB)")
                                     .font(.caption)
                                     .fontWeight(.medium)
-                                Text("Uses CloudKit when WiFi is available")
+                                Text("Go via iCloud when on Wi-Fi")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -122,7 +101,7 @@ struct TransferSettingsView: View {
                                 Text("Small files (<50MB)")
                                     .font(.caption)
                                     .fontWeight(.medium)
-                                Text("Uses WatchConnectivity when Watch is nearby")
+                                Text("Go directly from iPhone when the Watch is reachable")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -155,10 +134,10 @@ struct TransferSettingsView: View {
                         // CloudKit Method
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("CloudKit Chunks")
+                                Text("Via iCloud")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
-                                Text("iPhone uploads to cloud, Watch downloads")
+                                Text("iPhone uploads to iCloud, then the Watch downloads it")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text("Best for: Large files (>50MB)")
@@ -176,10 +155,10 @@ struct TransferSettingsView: View {
                         // WatchConnectivity Method
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("WatchConnectivity")
+                                Text("Directly from iPhone")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
-                                Text("Direct Bluetooth transfer to Watch")
+                                Text("Sent straight to the Watch over Bluetooth or Wi-Fi")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text("Best for: Small files (<50MB)")
@@ -219,7 +198,7 @@ struct TransferSettingsView: View {
                 Section("Requirements") {
                     VStack(alignment: .leading, spacing: 8) {
                         RequirementRow(
-                            method: "CloudKit",
+                            method: "Via iCloud",
                             requirements: [
                                 ("WiFi connection", true),
                                 ("iCloud storage", true),
@@ -230,7 +209,7 @@ struct TransferSettingsView: View {
                         Divider()
 
                         RequirementRow(
-                            method: "WatchConnectivity",
+                            method: "Directly from iPhone",
                             requirements: [
                                 ("WiFi connection", false),
                                 ("iCloud storage", false),
@@ -242,7 +221,7 @@ struct TransferSettingsView: View {
                 }
             }
         }
-        .navigationTitle("Watch Transfer")
+        .navigationTitle("Send to Watch")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedMethod) { oldValue, newValue in
             selector.preferredMethod = newValue
@@ -263,7 +242,7 @@ struct ComparisonRow: View {
                 .fontWeight(.semibold)
 
             HStack {
-                Text("CloudKit:")
+                Text("Via iCloud:")
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(cloudKit)
@@ -272,7 +251,7 @@ struct ComparisonRow: View {
             }
 
             HStack {
-                Text("Bluetooth:")
+                Text("Directly:")
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(watchConnectivity)

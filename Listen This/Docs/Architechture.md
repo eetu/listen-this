@@ -359,22 +359,24 @@ The app uses timestamp-based conflict resolution to handle cross-device sync.
 - Direct device-to-device transfers via Bluetooth/WiFi Direct
 - Slower for large files (100+ MB)
 - Requires devices nearby and paired
-- Real-time progress tracking via `WatchTransferProgress`
+- No byte progress: the sender's `WCSessionFileTransfer.progress` never
+  advances, so both devices show an indeterminate state until it finishes
+- Failures are reported to the Watch with a `transferFailed` message; entries
+  the iPhone never resolves expire on the Watch after 3 hours
 - Useful fallback when WiFi unavailable or CloudKit issues
-- Implemented in `WatchConnectivityTransferView` (iOS) and `WatchTransferStatusView` (Watch)
 
-**Transfer Views:**
-- `CloudKitTransferView` (Shared) - Modern MVVM-based view for chunked CloudKit transfers
-  - Works on both iOS and watchOS
-  - Auto-detects upload vs download mode based on platform
-  - Shows chunk-by-chunk progress
-  - Handles availability checking and error states
-
-- `WatchConnectivityTransferView` (iOS-only) - Direct device transfer via WatchConnectivity
-  - Alternative to CloudKit when WiFi unavailable
-  - Requires iPhone and Watch to be nearby
-  - Handles download-then-transfer if file not cached
-  - Uses WatchConnectivity framework for Bluetooth/WiFi Direct transfer
+**Transfer Flow:**
+- `AutoTransferSheet` (iOS) - picks a route with `TransferMethodSelector`,
+  offers the other one, and ends by saying what happens next
+- After an iCloud upload the iPhone queues `cloudKitUploadReady`
+  (`transferUserInfo`, delivered even if the Watch app isn't running)
+- `WatchCloudKitDownloads` (Watch) - owns the Watch's single
+  `CloudKitChunkedTransferManager`; starts queued downloads while the app is
+  in front, unless the battery is low
+- `CloudKitTransferView` (Watch) - manual download screen on the same manager
+- `WatchTransferStatusView` (Watch) - direct transfer status and requests
+- `TransferProgressCenter` - per-book fraction from every route, read by
+  library rows on both devices
 
 **Communication Decision Matrix:**
 - Metadata updates → CloudKit sync (automatic)
