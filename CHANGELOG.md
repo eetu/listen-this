@@ -18,6 +18,8 @@ Up to 1.3.0 the lists themselves were submitted.
 - After sending, the sheet says what happens next, such as opening the Watch app to download
 - A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there, unless the battery is low
 - The Watch taps your wrist when a book finishes downloading
+- Import several M4B files at once
+- A failed iCloud download on the Watch offers Try Again
 - Books coming down from iCloud Drive show a percentage in the library, the player and the Send to Watch sheet
 
 ### Changed
@@ -25,6 +27,10 @@ Up to 1.3.0 the lists themselves were submitted.
 - iCloud transfers report progress within each 100 MB part, so smaller books get a percentage and time estimate
 - Transfer routes have plain names: Via iCloud and Directly from iPhone
 - Pull to refresh in the library is gone; it never fetched anything, and the library syncs on its own
+- The Transfer While Charging Only setting is gone; it had no effect
+- Settings say "Send to Watch" and "iCloud Transfer Storage" instead of CloudKit terms
+- Larger tap areas for the skip and chapter buttons on iPhone and the chapters button on Watch
+- The Watch library opens without a pause when it already has books
 
 ### Fixed
 - A failed download or direct Watch transfer looked like it had finished; it now shows an error with Try Again

@@ -169,6 +169,9 @@ struct WatchPlayerView: View {
                         .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
                         .background(.ultraThinMaterial, in: Circle())
+                        // Tap area larger than the visible circle
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Chapters")

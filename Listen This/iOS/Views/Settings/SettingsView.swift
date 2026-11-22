@@ -39,7 +39,7 @@ struct SettingsView: View {
                     NavigationLink {
                         CloudKitStorageView()
                     } label: {
-                        Label("CloudKit Storage", systemImage: "icloud")
+                        Label("iCloud Transfer Storage", systemImage: "icloud")
                     }
                 } header: {
                     Text("Storage")
@@ -56,7 +56,7 @@ struct SettingsView: View {
                     NavigationLink {
                         TransferSettingsView(modelContext: modelContext)
                     } label: {
-                        Label("Watch Transfer", systemImage: "applewatch")
+                        Label("Send to Watch", systemImage: "applewatch")
                     }
                 } header: {
                     Text("Sync")

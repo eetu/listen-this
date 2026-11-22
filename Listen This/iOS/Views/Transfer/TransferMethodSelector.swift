@@ -77,7 +77,7 @@ final class TransferMethodSelector {
             return .alreadyUploaded(reason: "It was uploaded earlier.")
         }
 
-        let preference = "Your choice in Transfer settings."
+        let preference = "Your choice in Settings › Send to Watch."
         switch preferredMethod {
         case .automatic:
             return automaticSelection(for: audiobook)

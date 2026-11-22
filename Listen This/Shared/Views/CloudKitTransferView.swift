@@ -141,6 +141,17 @@ final class CloudKitTransferViewModel {
         transferManager.cancelTransfer(audiobookId: audiobook.id)
     }
 
+    /// Check again (the upload may have finished since) and start if possible.
+    func retry() {
+        Task {
+            state = .idle
+            await checkChunkAvailability()
+            if state == .idle, !isActionDisabled {
+                start()
+            }
+        }
+    }
+
     // MARK: - Upload
 
     private func upload() async {
@@ -265,11 +276,14 @@ struct CloudKitTransferView: View {
                 }
             #endif
         }
-        .alert("Transfer Error", isPresented: errorBinding) {
-            Button("OK") {}
-        } message: {
-            Text(errorMessage)
-        }
+        #if os(iOS)
+            // The Watch shows the error inline with Try Again instead
+            .alert("Transfer Error", isPresented: errorBinding) {
+                Button("OK") {}
+            } message: {
+                Text(errorMessage)
+            }
+        #endif
         .onAppear {
             if viewModel == nil {
                 let vm = CloudKitTransferViewModel(
@@ -324,9 +338,17 @@ struct CloudKitTransferView: View {
             case .complete:
                 completionCard
 
-            case .error:
+            case .error(let message):
                 header(viewModel)
-                EmptyView()
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Try Again") {
+                    viewModel.retry()
+                }
+                .font(.footnote)
+                .buttonStyle(.borderedProminent)
             }
         #endif
     }

@@ -97,6 +97,12 @@ struct WatchLibraryView: View {
     /// Wait for initial CloudKit sync with a grace period
     /// Skips if no network connection to allow offline playback of cached books
     private func waitForInitialSync() async {
+        // The grace period is for a first sync; a library already here can show at once
+        guard audiobooks.isEmpty else {
+            isInitialSyncComplete = true
+            return
+        }
+
         // Check network availability
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "NetworkMonitor")
@@ -461,8 +467,6 @@ struct AudiobookRow: View {
     let audiobook: Audiobook
     @Environment(WatchConnectivityManager.self) private var connectivity
 
-    @State private var showingTransferSheet = false
-
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobook.id] != nil
@@ -500,43 +504,6 @@ struct AudiobookRow: View {
             transferProgress: transferFraction,
             hasPartialDownload: hasResumableDownload
         )
-        .sheet(isPresented: $showingTransferSheet) {
-            NavigationStack {
-                WatchTransferStatusView(audiobook: audiobook)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var cacheStatusBadge: some View {
-        HStack(spacing: 4) {
-            if audiobook.cacheFileURL != nil {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Downloaded")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-            } else if connectivity.activeTransfers[audiobook.id.uuidString] != nil {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Downloading")
-                    .font(.caption2)
-                    .foregroundStyle(.blue)
-            } else {
-                Button {
-                    showingTransferSheet = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.blue)
-                        Text("Download")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        }
     }
 }
 

@@ -180,8 +180,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         Button {
             Task { await player.previousChapter() }
         } label: {
-            Image(systemName: "backward.fill")
-                .font(skipFont)
+            skipIcon("backward.fill")
         }
         .disabled(player.currentChapterIndex == 0)
         .accessibilityLabel("Previous chapter")
@@ -191,8 +190,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         Button {
             Task { await player.nextChapter() }
         } label: {
-            Image(systemName: "forward.fill")
-                .font(skipFont)
+            skipIcon("forward.fill")
         }
         .disabled(player.currentChapterIndex >= chapters.count - 1)
         .accessibilityLabel("Next chapter")
@@ -202,8 +200,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         Button {
             Task { await player.skip(by: -Double(settings.skipBackwardInterval)) }
         } label: {
-            Image(systemName: "gobackward.\(settings.skipBackwardInterval)")
-                .font(skipFont)
+            skipIcon("gobackward.\(settings.skipBackwardInterval)")
         }
         .accessibilityLabel("Skip back \(settings.skipBackwardInterval) seconds")
     }
@@ -212,8 +209,7 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
         Button {
             Task { await player.skip(by: Double(settings.skipForwardInterval)) }
         } label: {
-            Image(systemName: "goforward.\(settings.skipForwardInterval)")
-                .font(skipFont)
+            skipIcon("goforward.\(settings.skipForwardInterval)")
         }
         .accessibilityLabel("Skip forward \(settings.skipForwardInterval) seconds")
     }
@@ -247,10 +243,21 @@ struct PlayerControlsView<Player: AudioPlayer & Observable>: View {
 
     private var spacing: CGFloat {
         #if os(iOS)
-            32
+            // The skip buttons' 44pt hit areas already add the rest of the gap
+            18
         #elseif os(watchOS)
             16
         #endif
+    }
+
+    private func skipIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(skipFont)
+            #if os(iOS)
+                // The glyph alone is under the 44pt minimum touch target
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            #endif
     }
 
     private var skipFont: Font {

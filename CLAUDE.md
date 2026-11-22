@@ -232,11 +232,6 @@ items were removed. Address these when working nearby.
 - **Destructive actions confirm too little**: "Delete Everywhere"
   (`DeleteAudiobookSheet.swift`) deletes on one tap inside the sheet, and "Clear
   All CloudKit Data" (`CloudKitStorageView.swift`) has no confirmation at all
-- **Touch targets under 44pt**: iOS chapter skip buttons
-  (`PlayerControlsView.swift`, 30pt icons, no hit area) and the Watch chapters
-  button (`WatchPlayerView.swift`, 32×32)
-- **Transfer errors can't be retried on the Watch**: `CloudKitTransferView`
-  shows the error in an OK-only alert, with no Retry
 - **No low-battery warning for Watch CloudKit downloads**: the Audiobookshelf
   download path warns below 20%, the CloudKit path (`CloudKitTransferView`)
   doesn't

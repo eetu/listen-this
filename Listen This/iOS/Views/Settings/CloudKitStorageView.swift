@@ -84,7 +84,7 @@ struct CloudKitStorageView: View {
                 .disabled(isLoading || uploadedAudiobooks.isEmpty)
             }
         }
-        .navigationTitle("CloudKit Storage")
+        .navigationTitle("iCloud Transfer Storage")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showingError) {
             Button("OK") {}
