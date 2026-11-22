@@ -131,6 +131,7 @@
 				Shared/Services/AudiobookLibraryService.swift,
 				Shared/Services/AudioPlayerService.swift,
 				Shared/Services/CacheSettings.swift,
+				Shared/Services/NetworkStatusMonitor.swift,
 				Shared/Services/TransferProgressCenter.swift,
 				Shared/Utilities/AppLogger.swift,
 				Shared/Utilities/MetadataExtractor.swift,

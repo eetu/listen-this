@@ -7,6 +7,7 @@
 
 import SwiftData
 import SwiftUI
+import WatchKit
 
 struct WatchTransferStatusView: View {
     @Environment(\.dismiss) private var dismiss
@@ -294,6 +295,7 @@ struct WatchTransferStatusView: View {
     /// The spinner covers the gap and gives up if neither arrives.
     private func requestDownload() {
         isRequesting = true
+        WKInterfaceDevice.current().play(.start)
         connectivity.requestDownload(audiobookId: audiobook.id)
 
         Task {

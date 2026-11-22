@@ -225,14 +225,8 @@ redundant transfer costs seconds. Show state if it's useful; don't block on it.
 
 ## Open UX Items
 
-From a June 2026 audit, re-checked against the code in September 2026; fixed
+From a June 2026 audit, re-checked against the code in November 2026; fixed
 items were removed. Address these when working nearby.
-
-**Medium**
-- **No offline indicator**: rows show whether a book is on the device, but
-  nothing says the device is offline (`LibraryView`, `WatchLibraryView`)
-- **No haptics on Watch** beyond a finished download: playback actions
-  (`WatchPlayerView`) and starting a transfer (`WatchTransferStatusView`)
 
 **Low**
 - **No VoiceOver hint for library swipe actions** (a context menu offers the

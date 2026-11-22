@@ -24,6 +24,8 @@ Up to 1.3.0 the lists themselves were submitted.
 - Removing all iCloud uploads asks first, showing how many books and how much space
 - The Watch warns before an iCloud download on low battery
 - Pull to refresh on iCloud Transfer Storage, and an empty state that explains it
+- The library says when the iPhone or Watch is offline
+- The Watch clicks on play, pause and skip, and taps when a download from iPhone starts
 - Books coming down from iCloud Drive show a percentage in the library, the player and the Send to Watch sheet
 
 ### Changed

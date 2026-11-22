@@ -14,6 +14,7 @@ struct WatchLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WatchConnectivityManager.self) private var connectivity
     private let cloudKitDownloads = WatchCloudKitDownloads.shared
+    private let network = NetworkStatusMonitor.shared
 
     @Query(sort: \Audiobook.lastAccessedDate, order: .reverse)
     private var audiobooks: [Audiobook]
@@ -197,6 +198,15 @@ struct WatchLibraryView: View {
 
     private var audiobookList: some View {
         List {
+            if !network.isOnline {
+                Section {
+                    Label("Offline. Downloaded books still play.", systemImage: "wifi.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                }
+            }
+
             ForEach(audiobooks) { audiobook in
                 AudiobookRowWithActions(
                     audiobook: audiobook,

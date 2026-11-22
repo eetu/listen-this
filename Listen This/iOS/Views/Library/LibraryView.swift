@@ -27,6 +27,7 @@ struct LibraryView: View {
     @State private var detailsAudiobookId: UUID?
 
     private let downloadManager = AudiobookshelfDownloadManager.shared
+    private let network = NetworkStatusMonitor.shared
     @State private var failedDownload: FailedDownload?
 
     // Initial sync state
@@ -105,6 +106,16 @@ struct LibraryView: View {
                 }
             } else {
                 libraryList(connectivity: connectivity)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !network.isOnline {
+                Label("Offline. Downloaded books still play.", systemImage: "wifi.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(.bar)
             }
         }
         .searchable(text: $searchText, prompt: "Search audiobooks")
