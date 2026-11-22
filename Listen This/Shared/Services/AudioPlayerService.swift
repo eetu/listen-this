@@ -110,6 +110,14 @@ final class AudioPlayerService: NSObject, AudioPlayer {
     private var lastWidgetReloadDate: Date?
     private let widgetReloadInterval: TimeInterval = 300
 
+    #if os(iOS)
+        /// Built once per book. Now Playing is refreshed every 5 s while
+        /// playing; a new artwork object each time meant decoding the cover
+        /// and the system re-encoding it on every refresh.
+        @ObservationIgnored
+        private var nowPlayingArtwork: (audiobookId: UUID, artwork: MPMediaItemArtwork?)?
+    #endif
+
     var isPlaying = false {
         didSet {
             guard isPlaying != oldValue else { return }
@@ -682,11 +690,14 @@ final class AudioPlayerService: NSObject, AudioPlayer {
         }
 
         #if os(iOS)
-            if let data = audiobook.artworkData,
-                let image = UIImage(data: data)
-            {
-                info[MPMediaItemPropertyArtwork] =
+            if nowPlayingArtwork?.audiobookId != audiobook.id {
+                let artwork = audiobook.artworkData.flatMap(UIImage.init(data:)).map { image in
                     MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                }
+                nowPlayingArtwork = (audiobook.id, artwork)
+            }
+            if let artwork = nowPlayingArtwork?.artwork {
+                info[MPMediaItemPropertyArtwork] = artwork
             }
         #endif
 
