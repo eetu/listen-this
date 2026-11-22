@@ -634,7 +634,7 @@ struct DownloadOptionsSheet: View {
                 // Help text. Pointless when the book can come straight from the
                 // server — that path doesn't involve the iPhone at all.
                 if cloudKitAvailability != .fullyUploaded && !canDownloadFromAudiobookshelf {
-                    Text("Fast Download requires uploading from iPhone first")
+                    Text("For iCloud, send the book via iCloud from your iPhone first")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

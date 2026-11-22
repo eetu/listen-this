@@ -110,7 +110,7 @@ struct AudiobookRowView: View {
     private var accessibilityDescription: String {
         var parts = ["\(title), by \(author)"]
         if let transferProgress {
-            parts.append("Downloading, \(Int(transferProgress * 100)) percent")
+            parts.append("Transferring, \(Int(transferProgress * 100)) percent")
         } else if isTransferring {
             parts.append("Transferring")
         } else if hasPartialDownload {

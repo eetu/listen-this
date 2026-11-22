@@ -8,6 +8,25 @@ A version's **App Store** line is the short text for App Store Connect's
 "What's New in This Version" field; the lists below it are the full detail.
 Up to 1.3.0 the lists themselves were submitted.
 
+## 1.4.1 — Unreleased
+
+### Added
+- Library rows show download and upload progress as a ring
+- Download and Cancel Download in a book's context menu
+- While a book downloads before playing, the player shows progress, time left and Stream Instead
+- Sending to Watch offers the other route ("Send Directly Instead" / "Send via iCloud Instead")
+- After sending, the sheet says what happens next, such as opening the Watch app to download
+
+### Changed
+- Downloads from Audiobookshelf on iPhone continue in the background and resume after a dropped connection
+- iCloud transfers report progress within each 100 MB part, so smaller books get a percentage and time estimate
+- Transfer routes have plain names: Via iCloud and Directly from iPhone
+
+### Fixed
+- A failed download or direct Watch transfer looked like it had finished; it now shows an error with Try Again
+- An upload that failed after closing the Send to Watch sheet went unreported
+- Cancel didn't stop an iCloud upload
+
 ## 1.4.0 — 2026-09-30
 
 Tags: `v1.4.0` (build 7). `v1.3.1` (build 6) was tagged and built but never

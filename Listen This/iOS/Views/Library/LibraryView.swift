@@ -325,7 +325,7 @@ struct LibraryView: View {
                 .foregroundStyle(.blue)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text("Transfer to Apple Watch")
+                Text("Send to Apple Watch")
                     .font(.subheadline.weight(.medium))
                 Text("Swipe right on any audiobook to send it to your Watch")
                     .font(.caption)
