@@ -221,19 +221,32 @@ struct ByteProgressTests {
         #expect(progress.currentSpeedBytesPerSecond < steady * 3)
     }
 
-    @Test("Chunked progress is unaffected")
-    func chunkedProgressUnchanged() {
+    @Test("Chunked progress follows bytes within a chunk")
+    func chunkedProgressFollowsBytes() {
         let progress = ChunkTransferProgress(
             audiobookId: UUID(),
             totalBytes: 1000,
             totalChunks: 4,
             completedChunks: 1,
-            bytesTransferred: 999,
+            bytesTransferred: 300,
+            isUploading: false
+        )
+
+        #expect(progress.progress == 0.3)
+        #expect(progress.statusText == "Downloading chunk 2 of 4")
+    }
+
+    @Test("Chunked progress counts chunks when the size is unknown")
+    func chunkedProgressWithoutSize() {
+        let progress = ChunkTransferProgress(
+            audiobookId: UUID(),
+            totalBytes: 0,
+            totalChunks: 4,
+            completedChunks: 1,
             isUploading: false
         )
 
         #expect(progress.progress == 0.25)
-        #expect(progress.statusText == "Downloading chunk 2 of 4")
     }
 }
 
