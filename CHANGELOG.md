@@ -8,46 +8,37 @@ A version's **App Store** line is the short text for App Store Connect's
 "What's New in This Version" field; the lists below it are the full detail.
 Up to 1.3.0 the lists themselves were submitted.
 
-## 1.4.1 — Unreleased
+## 1.5.0 — 2026-11-24
+
+Tags: `v1.5.0` (build 8)
+
+**App Store:** Sending books to Apple Watch is clearer, books sent via iCloud download on the Watch by themselves, and downloads show their progress everywhere.
 
 ### Added
-- Library rows show download and upload progress as a ring
-- Download and Cancel Download in a book's context menu and its Details, with progress
-- While a book downloads before playing, the player shows progress, time left and Stream Instead
-- Sending to Watch offers the other route ("Send Directly Instead" / "Send via iCloud Instead")
-- After sending, the sheet says what happens next, such as opening the Watch app to download
-- A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there, unless the battery is low
-- The Watch taps your wrist when a book finishes downloading
+- A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there (not on low battery)
+- Download progress with time left in the library, the player and a book's Details, with Cancel and Stream Instead
+- Send to Watch explains each route, offers the other one, and says what happens next
 - Import several M4B files at once
-- A failed iCloud download on the Watch offers Try Again
-- Delete Everywhere and Delete from Library ask again, saying listening progress goes too
-- Removing all iCloud uploads asks first, showing how many books and how much space
-- The Watch warns before an iCloud download on low battery
-- Pull to refresh on iCloud Transfer Storage, and an empty state that explains it
-- The library says when the iPhone or Watch is offline
-- The Watch clicks on play, pause and skip, and taps when a download from iPhone starts
-- Books coming down from iCloud Drive show a percentage in the library, the player and the Send to Watch sheet
+- An offline note in the library on iPhone and Watch
+- Watch haptics for play, pause, skip and finished downloads
 
 ### Changed
-- Downloads from Audiobookshelf on iPhone continue in the background and resume after a dropped connection
-- iCloud transfers report progress within each 100 MB part, so smaller books get a percentage and time estimate
-- Transfer routes have plain names: Via iCloud and Directly from iPhone
-- Pull to refresh in the library is gone; it never fetched anything, and the library syncs on its own
-- The Transfer While Charging Only setting is gone; it had no effect
-- Settings say "Send to Watch" and "iCloud Transfer Storage" instead of CloudKit terms
-- Larger tap areas for the skip and chapter buttons on iPhone and the chapters button on Watch
-- The Watch library opens without a pause when it already has books
+- Audiobookshelf downloads on iPhone continue in the background and resume after a dropped connection
+- Delete Everywhere, Delete from Library and removing all iCloud uploads ask for confirmation
+- The Watch warns before an iCloud download on low battery
+- Plain names for transfer routes and settings: Via iCloud, Directly from iPhone, iCloud Transfer Storage
+- Larger tap areas for the skip and chapter buttons
+
+### Removed
+- Library pull to refresh and the Transfer While Charging Only setting, neither of which did anything
 
 ### Fixed
-- A failed download or direct Watch transfer looked like it had finished; it now shows an error with Try Again
-- An upload that failed after closing the Send to Watch sheet went unreported
+- Failed downloads and transfers looked finished; both devices now show the error with Try Again
+- The Watch showed 0% for a whole transfer from iPhone, and stayed stuck on one that failed
+- iCloud transfers of books under 100 MB showed no percentage or time left
 - Cancel didn't stop an iCloud upload
-- Sending a book already in iCloud said "Upload is incomplete, try again"
 - A library search with no matches hid the search field
-- The Watch showed 0% for the whole of a transfer from iPhone; it now shows "Receiving from iPhone"
-- A transfer from iPhone that failed left the Watch row stuck as transferring; the Watch now shows why it failed
-- An iCloud Drive download that was still progressing could give up after 10 minutes
-- Sending a book to the Watch didn't wait for iCloud Drive to download a file it had offloaded
+- iCloud Drive downloads could give up after 10 minutes while still progressing
 
 ## 1.4.0 — 2026-09-30
 
