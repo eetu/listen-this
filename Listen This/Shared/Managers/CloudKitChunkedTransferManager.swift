@@ -57,10 +57,10 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     var activeUploads: [UUID: ChunkTransferProgress] = [:]
     var activeDownloads: [UUID: ChunkTransferProgress] = [:]
 
-    /// Downloads the user has asked to stop. Checked between chunks — clearing
-    /// the progress dictionary alone only hid the transfer, it kept running to
-    /// completion and cached the book regardless.
-    private var cancelledDownloads: Set<UUID> = []
+    /// Transfers the user has asked to stop. Checked between chunks: clearing
+    /// the progress dictionary alone only hides a transfer, it would keep
+    /// running to completion.
+    private var cancelledTransfers: Set<UUID> = []
 
     /// How a chunked download ended, which decides the fate of the partial file.
     private enum DownloadOutcome {
@@ -149,6 +149,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         let alreadyUploadedChunks = chunkCount - chunksToUpload.count
         let bytesAlreadyTransferred = Int64(alreadyUploadedChunks) * Int64(Self.chunkSize)
 
+        cancelledTransfers.remove(audiobookId)
         activeUploads[audiobookId] = ChunkTransferProgress(
             audiobookId: audiobookId,
             totalBytes: fileSize,
@@ -159,27 +160,46 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         )
         // Ensure the progress entry is never orphaned: clear it on any exit
         // (success or thrown error) so the UI doesn't show a frozen ring.
-        defer { activeUploads.removeValue(forKey: audiobookId) }
+        defer {
+            activeUploads.removeValue(forKey: audiobookId)
+            TransferProgressCenter.shared.finish(audiobookId)
+            cancelledTransfers.remove(audiobookId)
+        }
 
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
 
         for index in chunksToUpload {
+            guard !cancelledTransfers.contains(audiobookId) else {
+                throw ChunkTransferError.cancelled
+            }
+
             let data = try readChunk(from: handle, chunkIndex: index, totalSize: fileSize)
+            // Counted from what's done so far, not from the chunk's offset: a
+            // resumed upload sends only the missing chunks, in any position.
+            let chunkStart = activeUploads[audiobookId]?.bytesTransferred ?? 0
+            let chunkLength = Int64(data.count)
 
             try await uploadChunkWithRetry(
                 chunkData: data,
                 chunkIndex: index,
                 manifestRecordId: manifest.recordID,
                 audiobookId: audiobookId
-            )
+            ) { fraction in
+                Task { @MainActor in
+                    self.reportPartialProgress(
+                        audiobookId, uploading: true,
+                        bytes: chunkStart + Int64(Double(chunkLength) * fraction))
+                }
+            }
 
             if var progress = activeUploads[audiobookId] {
                 progress.updateProgress(
                     completedChunks: progress.completedChunks + 1,
-                    bytesTransferred: progress.bytesTransferred + Int64(data.count)
+                    bytesTransferred: min(chunkStart + chunkLength, fileSize)
                 )
                 activeUploads[audiobookId] = progress
+                TransferProgressCenter.shared.report(audiobookId, fraction: progress.progress)
             }
         }
 
@@ -189,7 +209,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     func cancelTransfer(audiobookId: UUID) {
         // Record the intent as well as clearing the UI state: the download loop
         // checks this between chunks and stops, then discards the partial.
-        cancelledDownloads.insert(audiobookId)
+        cancelledTransfers.insert(audiobookId)
         activeUploads.removeValue(forKey: audiobookId)
         activeDownloads.removeValue(forKey: audiobookId)
         TransferProgressCenter.shared.finish(audiobookId)
@@ -236,10 +256,15 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
 
         let audiobookId = audiobook.id
 
+        // Two loops would append to the same partial file
+        guard activeDownloads[audiobookId] == nil else {
+            throw ChunkTransferError.alreadyInProgress
+        }
+
         // Clear any leftover cancellation intent before starting. A cancel
         // arriving when nothing was running would otherwise sit in the set and
         // abort this attempt on its first chunk.
-        cancelledDownloads.remove(audiobookId)
+        cancelledTransfers.remove(audiobookId)
 
         let manifest = try await fetchManifest(audiobookId: audiobookId)
 
@@ -312,7 +337,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             try? handle.close()
             activeDownloads.removeValue(forKey: audiobookId)
             TransferProgressCenter.shared.finish(audiobookId)
-            cancelledDownloads.remove(audiobookId)
+            cancelledTransfers.remove(audiobookId)
 
             switch outcome {
             case .completed:
@@ -329,16 +354,24 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         }
 
         for index in resumeFrom..<manifest.chunkCount {
-            guard !cancelledDownloads.contains(audiobookId) else {
+            guard !cancelledTransfers.contains(audiobookId) else {
                 outcome = .cancelled
                 throw ChunkTransferError.cancelled
             }
 
+            let chunkStart = written
+            let chunkLength = min(Int64(Self.chunkSize), manifest.fileSize - written)
             let data = try await downloadChunkWithRetry(
                 chunkIndex: index,
                 manifestRecordId: manifest.recordId,
                 audiobookId: audiobookId
-            )
+            ) { fraction in
+                Task { @MainActor in
+                    self.reportPartialProgress(
+                        audiobookId, uploading: false,
+                        bytes: chunkStart + Int64(Double(chunkLength) * fraction))
+                }
+            }
 
             try handle.write(contentsOf: data)
             written += Int64(data.count)
@@ -538,14 +571,16 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         chunkData: Data,
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: UUID
+        audiobookId: UUID,
+        onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         try await retry {
             try await uploadChunk(
                 chunkData: chunkData,
                 chunkIndex: chunkIndex,
                 manifestRecordId: manifestRecordId,
-                audiobookId: audiobookId
+                audiobookId: audiobookId,
+                onProgress: onProgress
             )
         }
     }
@@ -553,15 +588,40 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     private func downloadChunkWithRetry(
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: UUID
+        audiobookId: UUID,
+        onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> Data {
         try await retry {
             try await downloadChunk(
                 chunkIndex: chunkIndex,
                 manifestRecordId: manifestRecordId,
-                audiobookId: audiobookId
+                audiobookId: audiobookId,
+                onProgress: onProgress
             )
         }
+    }
+
+    /// Minimum spacing between within-chunk progress samples. CloudKit reports
+    /// many times a second, and the speed average needs real intervals: each
+    /// update resets its clock, so unthrottled samples would never yield a rate.
+    private static let partialProgressInterval: TimeInterval = 0.5
+
+    /// Progress inside a chunk, so a 100 MB chunk doesn't sit at 0% with no
+    /// speed or estimate until it completes. Only ever moves forward: a sample
+    /// can land after the chunk's own completion update.
+    private func reportPartialProgress(_ audiobookId: UUID, uploading: Bool, bytes: Int64) {
+        guard var progress = uploading ? activeUploads[audiobookId] : activeDownloads[audiobookId],
+            bytes > progress.bytesTransferred,
+            Date().timeIntervalSince(progress.lastUpdateTime) >= Self.partialProgressInterval
+        else { return }
+
+        progress.updateProgress(completedChunks: progress.completedChunks, bytesTransferred: bytes)
+        if uploading {
+            activeUploads[audiobookId] = progress
+        } else {
+            activeDownloads[audiobookId] = progress
+        }
+        TransferProgressCenter.shared.report(audiobookId, fraction: progress.progress)
     }
 
     // MARK: - Background Execution
@@ -649,7 +709,8 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
         chunkData: Data,
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: UUID
+        audiobookId: UUID,
+        onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
 
         let recordId = CKRecord.ID(
@@ -686,6 +747,7 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
             config.isLongLived = true
             operation.configuration = config
             operation.savePolicy = .changedKeys
+            operation.perRecordProgressBlock = { _, fraction in onProgress(fraction) }
 
             operation.modifyRecordsResultBlock = { result in
                 Task { @MainActor in
@@ -708,14 +770,38 @@ final class CloudKitChunkedTransferManager: NSObject, CloudKitTransferManager, U
     private func downloadChunk(
         chunkIndex: Int,
         manifestRecordId: CKRecord.ID,
-        audiobookId: UUID
+        audiobookId: UUID,
+        onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> Data {
 
         let recordId = CKRecord.ID(
             recordName: "\(audiobookId.uuidString)-chunk-\(chunkIndex)"
         )
 
-        let record = try await database.record(for: recordId)
+        // An operation rather than database.record(for:) for its per-record
+        // progress, which covers the asset download.
+        let record: CKRecord = try await withCheckedThrowingContinuation { continuation in
+            let operation = CKFetchRecordsOperation(recordIDs: [recordId])
+            operation.qualityOfService = .userInitiated
+            let fetched = OSAllocatedUnfairLock<Result<CKRecord, Error>?>(initialState: nil)
+
+            operation.perRecordProgressBlock = { _, fraction in onProgress(fraction) }
+            operation.perRecordResultBlock = { _, result in
+                fetched.withLock { $0 = result }
+            }
+            operation.fetchRecordsResultBlock = { result in
+                switch (result, fetched.withLock { $0 }) {
+                case (.failure(let error), _), (.success, .failure(let error)?):
+                    continuation.resume(throwing: error)
+                case (.success, .success(let record)?):
+                    continuation.resume(returning: record)
+                case (.success, nil):
+                    continuation.resume(throwing: ChunkTransferError.chunkNotFound)
+                }
+            }
+
+            database.add(operation)
+        }
 
         guard let asset = record["data"] as? CKAsset,
             let url = asset.fileURL
@@ -912,11 +998,13 @@ struct ChunkTransferProgress: Equatable {
     /// dragged down forever by a lifetime average.
     var smoothedSpeedBytesPerSecond: Double = 0
 
+    /// From bytes whenever the size is known, so it moves within a chunk;
+    /// whole chunks are only the fallback.
     var progress: Double {
-        if usesByteProgress {
-            guard totalBytes > 0 else { return 0 }
+        if totalBytes > 0 {
             return min(1, Double(bytesTransferred) / Double(totalBytes))
         }
+        if usesByteProgress { return 0 }
         guard totalChunks > 0 else { return 0 }
         return Double(completedChunks) / Double(totalChunks)
     }
@@ -1047,10 +1135,15 @@ enum ChunkTransferError: LocalizedError {
     case quotaExceeded
     case insufficientStorage
     case cloudKitError(String)
-    static let alreadyUploaded = ChunkTransferError.incompleteUpload
+    case alreadyUploaded
+    case alreadyInProgress
 
     var errorDescription: String? {
         switch self {
+        case .alreadyUploaded:
+            return "This book is already in iCloud."
+        case .alreadyInProgress:
+            return "This book is already downloading."
         case .fileNotAvailable:
             return "File is not available for transfer"
         case .invalidFile:
@@ -1066,7 +1159,7 @@ enum ChunkTransferError: LocalizedError {
         case .incompleteDownload:
             return "The download finished short of the full audiobook and was discarded. Try again."
         case .cancelled:
-            return "Download cancelled."
+            return "Transfer cancelled."
         case .networkError:
             return "Network error during transfer"
         case .quotaExceeded:

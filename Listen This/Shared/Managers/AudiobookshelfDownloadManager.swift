@@ -12,6 +12,10 @@ import OSLog
 import Observation
 import SwiftData
 
+#if os(watchOS)
+    import WatchKit
+#endif
+
 internal import os
 
 // MARK: - Errors
@@ -411,6 +415,7 @@ final class AudiobookshelfDownloadManager: NSObject, URLSessionDownloadDelegate 
                 // it drives whether "Transfer" is offered over there.
                 #if os(watchOS)
                     WatchConnectivityManager.shared.sendCachedAudiobookList()
+                    WKInterfaceDevice.current().play(.success)
                 #endif
 
                 continuation?.resume(returning: url)

@@ -30,6 +30,9 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
     var watchCachedAudiobookIds: Set<String> = []  // Track which audiobooks are cached on Watch
     var cloudKitUploadedAudiobookIds: Set<String> = []  // Track which audiobooks are uploaded to CloudKit
     var lastError: Error?
+    /// The most recent direct transfer that failed, for the library to report.
+    /// Cleared by the UI once shown.
+    var transferFailure: WatchTransferFailure?
 
     // MARK: - Internal Properties
 
@@ -294,6 +297,17 @@ final class iOSWatchConnectivityManager: NSObject, iOSWatchConnectivity {
         cloudKitUploadedAudiobookIds.insert(audiobookId)
     }
 
+    /// Ask the Watch to download a book that is now complete in iCloud. Queued
+    /// with transferUserInfo, so it arrives even if the Watch app isn't running
+    /// and the download starts the next time it is.
+    func announceCloudKitUpload(audiobookId: UUID) {
+        guard let session, session.isPaired, session.isWatchAppInstalled else { return }
+        session.transferUserInfo([
+            "command": "cloudKitUploadReady",
+            "audiobookId": audiobookId.uuidString,
+        ])
+    }
+
     /// Clear CloudKit uploaded status for an audiobook
     func clearCloudKitUploaded(audiobookId: String) {
         cloudKitUploadedAudiobookIds.remove(audiobookId)
@@ -530,7 +544,15 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
 
                 // Check if file is already cached
                 if !audiobook.isFileCached {
-                    // Download from iCloud first
+                    // Tell the Watch it's under way: fetching from iCloud
+                    // Drive first can take minutes with nothing else to show
+                    session?.sendMessage(
+                        [
+                            "command": "transferStarted",
+                            "audiobookId": audiobookIdString,
+                            "totalBytes": audiobook.fileSize,
+                        ], replyHandler: nil, errorHandler: nil)
+
                     let cacheManager = AudiobookCacheManager(modelContext: modelContext)
                     _ = try await audiobook.downloadAndCache(using: cacheManager)
                 }
@@ -540,8 +562,21 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
 
             } catch {
                 lastError = error
+                notifyWatchOfFailure(audiobookId: audiobookIdString, error: error)
             }
         }
+    }
+
+    /// Clears the Watch's "receiving" state and tells it why. Without this the
+    /// Watch only learns from its own expiry timer, hours later.
+    private func notifyWatchOfFailure(audiobookId: String, error: Error) {
+        guard let session, session.isReachable else { return }
+        session.sendMessage(
+            [
+                "command": "transferFailed",
+                "audiobookId": audiobookId,
+                "error": error.localizedDescription,
+            ], replyHandler: nil, errorHandler: nil)
     }
 
     private func handleSyncRequest() {
@@ -603,18 +638,19 @@ extension iOSWatchConnectivityManager: WCSessionDelegate {
             let audiobookId = fileTransfer.file.metadata?["audiobookId"] as? String ?? "unknown"
 
             if let error = error {
-                // Update transfer status to failed
-                if var progress = activeTransfers[audiobookId] {
-                    progress.isActive = false
-                    activeTransfers[audiobookId] = progress
-                }
-
                 self.lastError = error
-                
-                // Remove failed transfer after showing error briefly
-                Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3 seconds
-                    activeTransfers.removeValue(forKey: audiobookId)
+
+                // A transfer the user cancelled is already gone from
+                // activeTransfers; anything still listed failed on its own.
+                if let progress = activeTransfers.removeValue(forKey: audiobookId),
+                    let id = UUID(uuidString: audiobookId)
+                {
+                    notifyWatchOfFailure(audiobookId: audiobookId, error: error)
+                    transferFailure = WatchTransferFailure(
+                        audiobookId: id,
+                        title: progress.audiobookTitle,
+                        message: error.localizedDescription
+                    )
                 }
             } else {
                 // Mark as complete (100%) and show completion state

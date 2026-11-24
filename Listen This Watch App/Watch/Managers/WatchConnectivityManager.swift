@@ -7,6 +7,7 @@ import Foundation
 import OSLog
 import SwiftData
 import WatchConnectivity
+import WatchKit
 
 // MARK: - Public Protocol (View-Facing)
 
@@ -136,6 +137,7 @@ final class WatchConnectivityManager: NSObject, WatchConnectivity {
 
     /// Request to download and transfer an audiobook from iPhone
     func requestDownload(audiobookId: UUID) {
+        lastError = nil
         guard let session = session, session.isReachable else {
             lastError = WatchTransferError.iPhoneNotReachable
             return
@@ -333,6 +335,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
         }
     }
 
+    /// Queued requests (transferUserInfo), delivered even if the app wasn't
+    /// running when they were sent.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveUserInfo userInfo: [String: Any] = [:]
+    ) {
+        Task { @MainActor in
+            handleMessage(userInfo)
+        }
+    }
+
     nonisolated func session(
         _ session: WCSession,
         didReceiveMessage message: [String: Any],
@@ -356,6 +369,14 @@ extension WatchConnectivityManager: WCSessionDelegate {
             handleTransferProgress(message)
         case "transferCancelled":
             handleTransferCancelled(message)
+        case "transferFailed":
+            handleTransferFailed(message)
+        case "cloudKitUploadReady":
+            if let idString = message["audiobookId"] as? String,
+                let id = UUID(uuidString: idString)
+            {
+                WatchCloudKitDownloads.shared.uploadReady(audiobookId: id)
+            }
         case "requestCachedList":
             // iPhone is asking which books are cached on Watch
             sendCachedAudiobookList()
@@ -507,6 +528,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             // Clear transfer progress
             activeTransfers.removeValue(forKey: audiobookId.uuidString)
+            WKInterfaceDevice.current().play(.success)
 
             // Notify iPhone that we now have this book cached
             sendCachedAudiobookList()
@@ -554,6 +576,23 @@ extension WatchConnectivityManager: WCSessionDelegate {
         guard let audiobookId = message["audiobookId"] as? String else { return }
 
         activeTransfers.removeValue(forKey: audiobookId)
+    }
+
+    private func handleTransferFailed(_ message: [String: Any]) {
+        guard let audiobookId = message["audiobookId"] as? String else { return }
+
+        activeTransfers.removeValue(forKey: audiobookId)
+        lastError = WatchTransferError.failedOnIPhone(
+            message["error"] as? String ?? "The transfer stopped.")
+    }
+
+    func expireStaleTransfers(now: Date = Date()) {
+        let stale = activeTransfers.filter {
+            now.timeIntervalSince($0.value.startDate) > TransferProgress.staleAfter
+        }
+        for id in stale.keys {
+            activeTransfers.removeValue(forKey: id)
+        }
     }
 
     private func handleDeleteAudiobook(_ message: [String: Any]) async -> [String: Any] {
@@ -609,6 +648,17 @@ struct TransferProgress {
     let totalBytes: Int64
     var startDate: Date = Date()
 
+    /// A direct transfer that hasn't finished in this long has failed
+    /// somewhere the Watch never heard about (the iPhone went out of range or
+    /// was closed). Generous: 300 MB over Bluetooth can take most of an hour.
+    static let staleAfter: TimeInterval = 3 * 60 * 60
+
+    /// WatchConnectivity gives the iPhone no byte progress to forward, so a
+    /// percentage exists only once bytes have actually been reported.
+    var hasByteProgress: Bool {
+        bytesTransferred > 0 && totalBytes > 0
+    }
+
     var progress: Double {
         guard totalBytes > 0 else { return 0 }
         return Double(bytesTransferred) / Double(totalBytes)
@@ -641,9 +691,12 @@ enum WatchTransferError: LocalizedError {
     case fileNotCached
     case fileNotFound
     case transferFailed
+    case failedOnIPhone(String)
 
     var errorDescription: String? {
         switch self {
+        case .failedOnIPhone(let reason):
+            return "Couldn't send from iPhone: \(reason)"
         case .sessionUnavailable:
             return "Watch Connectivity session is not available"
         case .iPhoneNotReachable:

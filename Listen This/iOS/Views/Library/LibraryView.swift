@@ -26,8 +26,9 @@ struct LibraryView: View {
     @State private var transferAudiobookId: UUID?
     @State private var detailsAudiobookId: UUID?
 
-    // Track books currently downloading
-    @State private var downloadingBookIds: Set<UUID> = []
+    private let downloadManager = AudiobookshelfDownloadManager.shared
+    private let network = NetworkStatusMonitor.shared
+    @State private var failedDownload: FailedDownload?
 
     // Initial sync state
     @State private var isInitialSyncComplete = false
@@ -91,16 +92,55 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
+    /// Search, toolbar and the add/settings sheets sit on the container, not
+    /// on each state, so a search with no matches keeps its search field.
     private func sidebarContent(connectivity: iOSWatchConnectivityManager) -> some View {
-        if filteredAudiobooks.isEmpty {
-            if isSyncingInBackground {
-                skeletonLoadingView
+        Group {
+            if filteredAudiobooks.isEmpty {
+                if isSyncingInBackground {
+                    skeletonLoadingView
+                } else if !searchText.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    emptyStateView
+                }
             } else {
-                emptyStateView
+                libraryList(connectivity: connectivity)
             }
-        } else {
-            libraryList(connectivity: connectivity)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !network.isOnline {
+                Label("Offline. Downloaded books still play.", systemImage: "wifi.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(.bar)
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search audiobooks")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showingAddBook = true
+                } label: {
+                    Label("Add Book", systemImage: "plus")
+                }
+                // Unavailable while the synced library is still loading
+                .disabled(isSyncingInBackground && audiobooks.isEmpty)
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddBook) {
+            ImportView()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
     }
 
@@ -110,12 +150,9 @@ struct LibraryView: View {
             // Capture all values we need before any closures
             let bookId = book.id
             let isFileCached = book.isFileCached
-            let requiresStreaming = book.requiresStreaming
-            let sourceIdentifier = book.sourceIdentifier
-            
-            LibraryRow(
-                audiobook: book, connectivity: connectivity, downloadingBookIds: downloadingBookIds
-            )
+            let canDownload = book.requiresStreaming && book.sourceIdentifier != nil
+
+            LibraryRow(audiobook: book, connectivity: connectivity, downloadManager: downloadManager)
             .tag(book)
             // Leading edge (swipe right) - Common actions (full swipe supported)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -123,7 +160,8 @@ struct LibraryView: View {
                 // Use stable conditions (isPaired, isWatchAppInstalled, isFileCached) for showing the button
                 // Use dynamic conditions (isOnWatch, isUploadedToCloudKit, hasActiveTransfer) only for disabling
                 if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
-                    let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
+                    let hasActiveTransfer =
+                        connectivity.activeTransfers[bookId.uuidString]?.isActive == true
 
                     // Deliberately no "already sent" state. Whether a book is
                     // still on the Watch can't be known reliably from here —
@@ -148,19 +186,20 @@ struct LibraryView: View {
                     .tint(hasActiveTransfer ? .orange : .blue)
                 }
 
-                // Download for remote books - primary action for streamable content
-                if requiresStreaming && sourceIdentifier != nil {
+                // Download for remote books - primary action for streamable content.
+                // Like Transfer, it turns into Cancel while in flight rather than
+                // disappearing.
+                if canDownload {
+                    let isDownloading = downloadManager.isDownloading(bookId)
                     Button {
-                        downloadingBookIds.insert(bookId)
-                        Task {
-                            await downloadRemoteBookById(bookId)
-                            downloadingBookIds.remove(bookId)
-                        }
+                        toggleDownload(bookId)
                     } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
+                        Label(
+                            isDownloading ? "Cancel" : "Download",
+                            systemImage: isDownloading ? "xmark.circle" : "arrow.down.circle"
+                        )
                     }
-                    .tint(.green)
-                    .disabled(downloadingBookIds.contains(bookId))
+                    .tint(isDownloading ? .orange : .green)
                 }
             }
             // Trailing edge (swipe left) - Info & Delete
@@ -181,33 +220,36 @@ struct LibraryView: View {
                 .tint(.blue)
             }
             .contextMenu {
-                contextMenuItems(for: bookId, isFileCached: isFileCached, connectivity: connectivity)
+                contextMenuItems(
+                    for: bookId, isFileCached: isFileCached, canDownload: canDownload,
+                    connectivity: connectivity)
             }
         }
-        .refreshable {
-            await refreshLibrary()
+        .alert(
+            "Download Failed",
+            isPresented: .init(
+                get: { failedDownload != nil },
+                set: { if !$0 { failedDownload = nil } }
+            ),
+            presenting: failedDownload
+        ) { failure in
+            Button("Try Again") { toggleDownload(failure.audiobookId) }
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text("\(failure.title): \(failure.message)")
         }
-        .searchable(text: $searchText, prompt: "Search audiobooks")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingAddBook) {
-            ImportView()
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
+        .alert(
+            "Couldn't Send to Watch",
+            isPresented: .init(
+                get: { connectivity.transferFailure != nil },
+                set: { if !$0 { connectivity.transferFailure = nil } }
+            ),
+            presenting: connectivity.transferFailure
+        ) { failure in
+            Button("Try Again") { transferAudiobookId = failure.audiobookId }
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text("\(failure.title): \(failure.message)")
         }
         .sheet(
             isPresented: .init(
@@ -298,7 +340,7 @@ struct LibraryView: View {
                 .foregroundStyle(.blue)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text("Transfer to Apple Watch")
+                Text("Send to Apple Watch")
                     .font(.subheadline.weight(.medium))
                 Text("Swipe right on any audiobook to send it to your Watch")
                     .font(.caption)
@@ -325,11 +367,25 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func contextMenuItems(
-        for bookId: UUID, isFileCached: Bool, connectivity: iOSWatchConnectivityManager
+        for bookId: UUID, isFileCached: Bool, canDownload: Bool,
+        connectivity: iOSWatchConnectivityManager
     ) -> some View {
+        if canDownload {
+            let isDownloading = downloadManager.isDownloading(bookId)
+            Button {
+                toggleDownload(bookId)
+            } label: {
+                Label(
+                    isDownloading ? "Cancel Download" : "Download",
+                    systemImage: isDownloading ? "xmark.circle" : "arrow.down.circle"
+                )
+            }
+        }
+
         // Send to Watch - show for cached books when Watch is available
         if connectivity.isPaired && connectivity.isWatchAppInstalled && isFileCached {
-            let hasActiveTransfer = connectivity.activeTransfers[bookId.uuidString] != nil
+            let hasActiveTransfer =
+                connectivity.activeTransfers[bookId.uuidString]?.isActive == true
 
             // As with the swipe action: no "already on Watch" state, because it
             // can't be known reliably and being wrong blocked re-sending.
@@ -349,104 +405,36 @@ struct LibraryView: View {
         }
     }
 
-    private func refreshLibrary() async {
-        // Force a refresh by triggering SwiftData to re-evaluate queries
-        // This is useful after downloads or external changes
-        do {
-            try modelContext.save()
-        } catch {
-            AppLogger.import.error("Failed to refresh library: \(error.localizedDescription)")
+    /// Start a server download, or cancel the one in flight.
+    ///
+    /// Goes through the shared manager so the transfer survives backgrounding,
+    /// resumes after a dropped connection, and publishes byte progress for the
+    /// row's ring.
+    private func toggleDownload(_ bookId: UUID) {
+        if downloadManager.isDownloading(bookId) {
+            downloadManager.cancel(audiobookId: bookId)
+            return
         }
-    }
 
-    private func downloadRemoteBookById(_ bookId: UUID) async {
-        // Fetch the audiobook fresh from context to avoid detached object issues
-        let descriptor = FetchDescriptor<Audiobook>(
-            predicate: #Predicate { $0.id == bookId }
-        )
+        // Fetch fresh from the context to avoid detached-object crashes
+        let descriptor = FetchDescriptor<Audiobook>(predicate: #Predicate { $0.id == bookId })
         guard let audiobook = try? modelContext.fetch(descriptor).first else {
             AppLogger.import.error("Audiobook not found for download")
             return
         }
-        await downloadRemoteBook(audiobook)
-    }
+        let title = audiobook.title
 
-    private func downloadRemoteBook(_ audiobook: Audiobook) async {
-        guard let identifier = audiobook.sourceIdentifier else {
-            AppLogger.import.error("Missing source identifier for download")
-            return
-        }
-
-        // Mark as downloading
-        downloadingBookIds.insert(audiobook.id)
-        defer {
-            // Always remove from downloading set when done
-            downloadingBookIds.remove(audiobook.id)
-        }
-
-        do {
-            let downloadURL: URL
-
-            // Get download URL based on source type
-            switch audiobook.sourceType {
-            case "audiobookshelf":
-                let provider = try await AudiobookshelfProvider.authenticatedFromSettings()
-                downloadURL = try await provider.getStreamURL(identifier: identifier)
-
-            case "jellyfin":
-                // Future: Add Jellyfin support
-                AppLogger.import.error("Jellyfin downloads not yet supported")
-                return
-
-            default:
-                AppLogger.import.error("Unknown source type: \(audiobook.sourceType)")
-                return
+        Task {
+            do {
+                try await downloadManager.download(audiobook)
+            } catch AudiobookshelfDownloadError.cancelled {
+                // The user asked for it
+            } catch AudiobookshelfDownloadError.alreadyInProgress {
+                // A transfer from an earlier launch was adopted instead
+            } catch {
+                failedDownload = FailedDownload(
+                    audiobookId: bookId, title: title, message: error.localizedDescription)
             }
-
-            // Download the file
-            let (localURL, _) = try await URLSession.shared.download(from: downloadURL)
-
-            // Move to cache
-            let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-            let cacheURL = try cacheManager.cacheAudiobook(audiobook, from: localURL)
-
-            if cacheURL.path != audiobook.expectedCachePath,
-                let expectedPath = audiobook.expectedCachePath
-            {
-                let expectedURL = URL(fileURLWithPath: expectedPath)
-                try? FileManager.default.removeItem(at: expectedURL)
-                try FileManager.default.moveItem(at: cacheURL, to: expectedURL)
-            }
-
-            // Create or update CacheEntry to trigger UI update
-            let fileSize =
-                try FileManager.default.attributesOfItem(
-                    atPath: audiobook.expectedCachePath ?? ""
-                )[.size] as? Int64 ?? 0
-
-            if let existingEntry = audiobook.cacheEntry {
-                // Update existing entry
-                existingEntry.lastAccessedDate = Date()
-                existingEntry.fileSize = fileSize
-            } else {
-                // Create new cache entry
-                let cacheEntry = CacheEntry(
-                    filePath: audiobook.expectedCachePath ?? "",
-                    fileSize: fileSize,
-                    downloadedDate: Date(),
-                    lastAccessedDate: Date()
-                )
-                cacheEntry.audiobook = audiobook
-                audiobook.cacheEntry = cacheEntry
-                modelContext.insert(cacheEntry)
-            }
-
-            try modelContext.save()
-
-            AppLogger.import.info("Downloaded remote book: \(audiobook.title)")
-        } catch {
-            AppLogger.import.error(
-                "Failed to download remote book: \(error.localizedDescription)")
         }
     }
 
@@ -465,25 +453,6 @@ struct LibraryView: View {
             ForEach(0..<3, id: \.self) { _ in
                 SkeletonRow()
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    // Disabled during sync
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-                .disabled(true)
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
         }
         .overlay(alignment: .bottom) {
             HStack(spacing: 8) {
@@ -623,41 +592,14 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label("No Audiobooks", systemImage: "books.vertical")
         } description: {
-            if searchText.isEmpty {
-                Text("Add audiobooks from iCloud Drive or connect to Audiobookshelf")
-            } else {
-                Text("No audiobooks match \"\(searchText)\"")
-            }
+            Text("Add audiobooks from iCloud Drive or connect to Audiobookshelf")
         } actions: {
-            if searchText.isEmpty {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Audiobook", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+            Button {
+                showingAddBook = true
+            } label: {
+                Label("Add Audiobook", systemImage: "plus")
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingAddBook = true
-                } label: {
-                    Label("Add Book", systemImage: "plus")
-                }
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
-        .sheet(isPresented: $showingAddBook) {
-            ImportView()
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
+            .buttonStyle(.borderedProminent)
         }
     }
 }
@@ -707,12 +649,20 @@ struct SkeletonRow: View {
     }
 }
 
+// MARK: - Failed Download
+
+private struct FailedDownload {
+    let audiobookId: UUID
+    let title: String
+    let message: String
+}
+
 // MARK: - Library Row Component
 
 struct LibraryRow: View {
     let connectivity: iOSWatchConnectivityManager
-    let downloadingBookIds: Set<UUID>
-    
+    let downloadManager: AudiobookshelfDownloadManager
+
     // Captured values to prevent detached object crashes
     private let audiobookId: UUID
     private let title: String
@@ -722,9 +672,12 @@ struct LibraryRow: View {
     private let currentPosition: Double
     private let playabilityState: AudiobookPlayabilityState
     
-    init(audiobook: Audiobook, connectivity: iOSWatchConnectivityManager, downloadingBookIds: Set<UUID>) {
+    init(
+        audiobook: Audiobook, connectivity: iOSWatchConnectivityManager,
+        downloadManager: AudiobookshelfDownloadManager
+    ) {
         self.connectivity = connectivity
-        self.downloadingBookIds = downloadingBookIds
+        self.downloadManager = downloadManager
         
         // Capture values at init to resolve faults and prevent crashes
         self.audiobookId = audiobook.id
@@ -739,8 +692,10 @@ struct LibraryRow: View {
 
     var body: some View {
         // Reading activeTransfers here observes it, so the spinner badge appears
-        // while a direct Watch transfer is in flight (not just remote downloads).
-        let isWatchTransferring = connectivity.activeTransfers[audiobookId.uuidString] != nil
+        // while a direct Watch transfer is in flight. A finished one lingers in
+        // the dictionary briefly but no longer spins.
+        let isWatchTransferring =
+            connectivity.activeTransfers[audiobookId.uuidString]?.isActive == true
         AudiobookRowView(
             title: title,
             author: author,
@@ -749,7 +704,10 @@ struct LibraryRow: View {
             currentPosition: currentPosition,
             playabilityState: playabilityState,
             showProgress: true,
-            isTransferring: downloadingBookIds.contains(audiobookId) || isWatchTransferring
+            isTransferring: downloadManager.isDownloading(audiobookId) || isWatchTransferring,
+            // A determinate ring once the download knows its size; until then
+            // (or when the server never says) the spinner badge stands in.
+            transferProgress: TransferProgressCenter.shared.fraction(for: audiobookId)
         )
     }
 }

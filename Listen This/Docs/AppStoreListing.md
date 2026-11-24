@@ -25,7 +25,7 @@ A simple, focused audiobook player for your M4B files. Listen on iPhone, iPad, o
 
 **APPLE WATCH**
 
-Listen without your iPhone. Download audiobooks to your Watch for offline playback during workouts, walks, or whenever you leave your phone behind — either sent across from your iPhone, or downloaded straight from your Audiobookshelf server over WiFi with no iPhone involved. Downloads continue in the background and pick up where they left off if interrupted.
+Listen without your iPhone. Download audiobooks to your Watch for offline playback during workouts, walks, or whenever you leave your phone behind — either sent across from your iPhone, or downloaded straight from your Audiobookshelf server over WiFi with no iPhone involved. A book sent via iCloud starts downloading as soon as you open the app on your Watch. Downloads continue in the background and pick up where they left off if interrupted.
 
 **AUDIOBOOKSHELF**
 

@@ -10,6 +10,8 @@ import SwiftUI
 struct AudiobookDetailsSheet: View {
     let audiobook: Audiobook
     @Environment(\.dismiss) private var dismiss
+    @State private var downloadError: String?
+    private let downloadManager = AudiobookshelfDownloadManager.shared
 
     var body: some View {
         NavigationStack {
@@ -76,6 +78,10 @@ struct AudiobookDetailsSheet: View {
                                     .foregroundStyle(.blue)
                             }
                         }
+                    }
+
+                    if audiobook.requiresStreaming && audiobook.sourceIdentifier != nil {
+                        downloadRow
                     }
 
                     if let cachePath = audiobook.expectedCachePath {
@@ -174,6 +180,58 @@ struct AudiobookDetailsSheet: View {
                         dismiss()
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var downloadRow: some View {
+        if let progress = downloadManager.activeDownloads[audiobook.id] {
+            VStack(alignment: .leading, spacing: 6) {
+                ProgressView(value: progress.progress)
+                Text(
+                    [
+                        "\(progress.progressPercentage)%",
+                        progress.speedText,
+                        progress.estimatedTimeRemainingText ?? "",
+                    ]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · ")
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            }
+
+            Button("Cancel Download", role: .destructive) {
+                downloadManager.cancel(audiobookId: audiobook.id)
+            }
+        } else {
+            Button {
+                startDownload()
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
+
+            if let downloadError {
+                Text(downloadError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func startDownload() {
+        downloadError = nil
+        Task {
+            do {
+                try await downloadManager.download(audiobook)
+            } catch AudiobookshelfDownloadError.cancelled {
+                // The user asked for it
+            } catch AudiobookshelfDownloadError.alreadyInProgress {
+                // Already running; its progress shows here
+            } catch {
+                downloadError = error.localizedDescription
             }
         }
     }

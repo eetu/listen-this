@@ -54,6 +54,12 @@ final class AudiobookCacheManager: CacheManager {
         // Copy to cache
         try FileManager.default.copyItem(at: sourceURL, to: cacheURL)
 
+        return try recordCachedFile(for: audiobook, at: cacheURL)
+    }
+
+    /// Record a file already in the cache directory as this book's cached copy.
+    @discardableResult
+    func recordCachedFile(for audiobook: Audiobook, at cacheURL: URL) throws -> URL {
         // Get file size
         let fileSize =
             (try? FileManager.default.attributesOfItem(atPath: cacheURL.path)[.size] as? Int64) ?? 0
@@ -669,25 +675,18 @@ extension Audiobook {
 
         let iCloudURL = ubiquityURL.appendingPathComponent(iCloudPath)
 
-        // Trigger download if needed
-        if !FileManager.default.fileExists(atPath: iCloudURL.path) {
-            try FileManager.default.startDownloadingUbiquitousItem(at: iCloudURL)
+        try await ICloudFileDownloader.download(iCloudURL, audiobookId: id)
 
-            // Wait for download (simplified - production should have progress tracking)
-            for _ in 0..<300 {  // 5 minutes timeout
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+        // Copy off the main actor: a several-hundred-megabyte copy would
+        // freeze the UI.
+        let cacheURL = AudiobookCacheManager.cacheDirectory
+            .appendingPathComponent(iCloudURL.lastPathComponent)
+        try await Task.detached(priority: .userInitiated) {
+            try? FileManager.default.removeItem(at: cacheURL)
+            try FileManager.default.copyItem(at: iCloudURL, to: cacheURL)
+        }.value
 
-                let status = try? iCloudURL.resourceValues(forKeys: [
-                    .ubiquitousItemDownloadingStatusKey
-                ])
-                if status?.ubiquitousItemDownloadingStatus == .current {
-                    break
-                }
-            }
-        }
-
-        // Cache the file
-        return try cacheManager.cacheAudiobook(self, from: iCloudURL)
+        return try cacheManager.recordCachedFile(for: self, at: cacheURL)
     }
 
     /// Delete local cache for this audiobook
@@ -696,4 +695,137 @@ extension Audiobook {
         try cacheManager.deleteCachedFile(for: self)
     }
 }
+
+// MARK: - iCloud Drive Download
+
+/// Brings a file in the app's iCloud container down to this device.
+///
+/// Completion comes from polling the item's downloading status, which is
+/// reliable but says nothing about how far along it is. On iOS a metadata query
+/// adds the percentage, published to `TransferProgressCenter` for the library
+/// row and the player. watchOS has no `NSMetadataQuery`.
+@MainActor
+enum ICloudFileDownloader {
+
+    /// Give up when nothing has moved for this long. Without a percentage
+    /// (watchOS) it is a limit on the whole download.
+    static let stallTimeout: Duration = .seconds(600)
+
+    /// Whether the file's bytes are on this device. An evicted file still
+    /// exists at its path, so existence alone isn't enough. A file outside
+    /// iCloud has no downloading status and counts as local.
+    static func isDownloaded(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        guard let status = values?.ubiquitousItemDownloadingStatus else { return true }
+        return status == .current
+    }
+
+    static func download(_ url: URL, audiobookId: UUID) async throws {
+        if isDownloaded(url) { return }
+
+        // A library entry synced from another device can arrive before its
+        // file's placeholder does, so starting may take a few tries.
+        var attempts = 0
+        while true {
+            do {
+                try FileManager.default.startDownloadingUbiquitousItem(at: url)
+                break
+            } catch {
+                attempts += 1
+                guard attempts < 10 else { throw AudiobookError.downloadFailed }
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
+
+        #if os(iOS)
+            let observer = ICloudPercentObserver(url: url, audiobookId: audiobookId)
+            observer.start()
+            defer { observer.stop() }
+        #endif
+        defer { TransferProgressCenter.shared.finish(audiobookId) }
+
+        var deadline = ContinuousClock.now + stallTimeout
+        var lastFraction = TransferProgressCenter.shared.fraction(for: audiobookId)
+
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: .seconds(1))
+            if isDownloaded(url) { return }
+
+            let fraction = TransferProgressCenter.shared.fraction(for: audiobookId)
+            if fraction != lastFraction {
+                lastFraction = fraction
+                deadline = ContinuousClock.now + stallTimeout
+            }
+
+            // iCloud sometimes drops a request; ask again
+            let values = try? url.resourceValues(forKeys: [
+                .ubiquitousItemIsDownloadingKey, .ubiquitousItemDownloadRequestedKey,
+            ])
+            if values?.ubiquitousItemIsDownloading != true,
+                values?.ubiquitousItemDownloadRequested != true
+            {
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            }
+        }
+
+        throw AudiobookError.downloadFailed
+    }
+}
+
+#if os(iOS)
+    /// Feeds one iCloud item's download percentage into `TransferProgressCenter`.
+    @MainActor
+    private final class ICloudPercentObserver: NSObject {
+        private let query = NSMetadataQuery()
+        private let path: String
+        private let audiobookId: UUID
+
+        init(url: URL, audiobookId: UUID) {
+            self.path = url.resolvingSymlinksInPath().path
+            self.audiobookId = audiobookId
+            super.init()
+            query.searchScopes = [
+                NSMetadataQueryUbiquitousDocumentsScope, NSMetadataQueryUbiquitousDataScope,
+            ]
+            // Matched by name here and by resolved path below: the query
+            // reports /private/var paths where the container URL may not.
+            query.predicate = NSPredicate(
+                format: "%K == %@", NSMetadataItemFSNameKey, url.lastPathComponent)
+        }
+
+        /// Must run on the main thread: the query posts its notifications on
+        /// the run loop it was started from.
+        func start() {
+            let center = NotificationCenter.default
+            center.addObserver(
+                self, selector: #selector(queryChanged),
+                name: .NSMetadataQueryDidFinishGathering, object: query)
+            center.addObserver(
+                self, selector: #selector(queryChanged),
+                name: .NSMetadataQueryDidUpdate, object: query)
+            query.start()
+        }
+
+        func stop() {
+            query.stop()
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        @objc private func queryChanged(_ notification: Notification) {
+            query.disableUpdates()
+            defer { query.enableUpdates() }
+
+            for case let item as NSMetadataItem in query.results {
+                guard let itemURL = item.value(forAttribute: NSMetadataItemURLKey) as? URL,
+                    itemURL.resolvingSymlinksInPath().path == path,
+                    let percent = item.value(
+                        forAttribute: NSMetadataUbiquitousItemPercentDownloadedKey) as? Double
+                else { continue }
+
+                TransferProgressCenter.shared.report(audiobookId, fraction: percent / 100)
+            }
+        }
+    }
+#endif
 // MARK: - Mock Implementation (Previews & Testing)

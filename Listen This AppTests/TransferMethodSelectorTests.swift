@@ -204,9 +204,9 @@ struct TransferMethodSelectorTests {
     func testDisplayNamesAreUserFriendly() {
         let expectations: [TransferMethod: String] = [
             .automatic: "Automatic",
-            .cloudKit: "CloudKit Chunks",
-            .watchConnectivity: "WatchConnectivity",
-            .iCloudDirect: "iCloud Direct",
+            .cloudKit: "Via iCloud",
+            .watchConnectivity: "Directly from iPhone",
+            .iCloudDirect: "iCloud Drive",
         ]
 
         for (method, expectedName) in expectations {

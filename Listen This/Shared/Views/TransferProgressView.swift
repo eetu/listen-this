@@ -11,6 +11,8 @@ import SwiftUI
 struct TransferProgressView: View {
 
     let progress: ChunkTransferProgress
+    /// What the cancel button does, in the user's terms (iPhone layout only).
+    var cancelTitle = "Cancel Transfer"
     let onCancel: () -> Void
 
     var body: some View {
@@ -138,7 +140,7 @@ struct TransferProgressView: View {
                 }
             }
 
-            Button("Cancel Transfer", role: .destructive, action: onCancel)
+            Button(cancelTitle, role: .destructive, action: onCancel)
                 .controlSize(.large)
         }
         .padding(20)

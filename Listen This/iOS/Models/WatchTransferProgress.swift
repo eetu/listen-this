@@ -149,6 +149,15 @@ struct WatchTransferProgress: Equatable {
     }
 }
 
+// MARK: - Transfer Failure
+
+/// A direct transfer that ended in an error, kept until the user has seen it.
+struct WatchTransferFailure: Equatable {
+    let audiobookId: UUID
+    let title: String
+    let message: String
+}
+
 // MARK: - Transfer Errors
 enum WatchTransferError: LocalizedError {
     case sessionUnavailable

@@ -13,6 +13,8 @@ internal import os
 struct WatchLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WatchConnectivityManager.self) private var connectivity
+    private let cloudKitDownloads = WatchCloudKitDownloads.shared
+    private let network = NetworkStatusMonitor.shared
 
     @Query(sort: \Audiobook.lastAccessedDate, order: .reverse)
     private var audiobooks: [Audiobook]
@@ -96,6 +98,12 @@ struct WatchLibraryView: View {
     /// Wait for initial CloudKit sync with a grace period
     /// Skips if no network connection to allow offline playback of cached books
     private func waitForInitialSync() async {
+        // The grace period is for a first sync; a library already here can show at once
+        guard audiobooks.isEmpty else {
+            isInitialSyncComplete = true
+            return
+        }
+
         // Check network availability
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "NetworkMonitor")
@@ -190,6 +198,15 @@ struct WatchLibraryView: View {
 
     private var audiobookList: some View {
         List {
+            if !network.isOnline {
+                Section {
+                    Label("Offline. Downloaded books still play.", systemImage: "wifi.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                }
+            }
+
             ForEach(audiobooks) { audiobook in
                 AudiobookRowWithActions(
                     audiobook: audiobook,
@@ -296,6 +313,21 @@ struct WatchLibraryView: View {
         } message: {
             Text("This will remove the downloaded file from your Watch.")
         }
+        .alert(
+            "Download Failed",
+            isPresented: .init(
+                get: { cloudKitDownloads.failure != nil },
+                set: { if !$0 { cloudKitDownloads.failure = nil } }
+            ),
+            presenting: cloudKitDownloads.failure
+        ) { failure in
+            Button("Try Again") {
+                cloudKitDownloads.uploadReady(audiobookId: failure.audiobookId)
+            }
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text("\(failure.title): \(failure.message)")
+        }
     }
 
     // MARK: - Actions
@@ -348,6 +380,7 @@ struct AudiobookRowWithActions: View {
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobookId.uuidString] != nil
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobookId] != nil
+            || WatchCloudKitDownloads.shared.isDownloading(audiobookId)
     }
 
     /// Only WatchConnectivity transfers are cancelled from the row's swipe
@@ -444,11 +477,10 @@ struct AudiobookRow: View {
     let audiobook: Audiobook
     @Environment(WatchConnectivityManager.self) private var connectivity
 
-    @State private var showingTransferSheet = false
-
     var hasActiveTransfer: Bool {
         connectivity.activeTransfers[audiobook.id.uuidString] != nil
             || AudiobookshelfDownloadManager.shared.activeDownloads[audiobook.id] != nil
+            || WatchCloudKitDownloads.shared.isDownloading(audiobook.id)
     }
 
     /// Bytes from an interrupted transfer that a retry could continue from,
@@ -460,15 +492,16 @@ struct AudiobookRow: View {
     }
 
     /// How far along the transfer is, whichever route is carrying it. Direct
-    /// iPhone transfers report bytes rather than publishing to the centre.
+    /// iPhone transfers usually have no byte count; they keep the spinner
+    /// badge rather than a ring stuck at 0%.
     var transferFraction: Double? {
         if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
             return fraction
         }
         if let transfer = connectivity.activeTransfers[audiobook.id.uuidString],
-            transfer.totalBytes > 0
+            transfer.hasByteProgress
         {
-            return Double(transfer.bytesTransferred) / Double(transfer.totalBytes)
+            return transfer.progress
         }
         return nil
     }
@@ -481,43 +514,6 @@ struct AudiobookRow: View {
             transferProgress: transferFraction,
             hasPartialDownload: hasResumableDownload
         )
-        .sheet(isPresented: $showingTransferSheet) {
-            NavigationStack {
-                WatchTransferStatusView(audiobook: audiobook)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var cacheStatusBadge: some View {
-        HStack(spacing: 4) {
-            if audiobook.cacheFileURL != nil {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Downloaded")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-            } else if connectivity.activeTransfers[audiobook.id.uuidString] != nil {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Downloading")
-                    .font(.caption2)
-                    .foregroundStyle(.blue)
-            } else {
-                Button {
-                    showingTransferSheet = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.blue)
-                        Text("Download")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        }
     }
 }
 
@@ -634,7 +630,7 @@ struct DownloadOptionsSheet: View {
                 // Help text. Pointless when the book can come straight from the
                 // server — that path doesn't involve the iPhone at all.
                 if cloudKitAvailability != .fullyUploaded && !canDownloadFromAudiobookshelf {
-                    Text("Fast Download requires uploading from iPhone first")
+                    Text("For iCloud, send the book via iCloud from your iPhone first")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

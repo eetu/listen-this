@@ -11,6 +11,10 @@ import Observation
 import SwiftData
 import SwiftUI
 
+#if os(watchOS)
+    import WatchKit
+#endif
+
 // MARK: - View Model
 
 @Observable
@@ -48,7 +52,14 @@ final class CloudKitTransferViewModel {
         self.audiobook = audiobook
         self.mode = mode
         self.modelContext = modelContext
-        self.transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
+        #if os(watchOS)
+            // Shared with downloads the iPhone started, so this screen shows
+            // and can cancel one already running
+            self.transferManager = WatchCloudKitDownloads.shared.transferManager(
+                modelContext: modelContext)
+        #else
+            self.transferManager = CloudKitChunkedTransferManager(modelContext: modelContext)
+        #endif
         self.cacheManager = AudiobookCacheManager(modelContext: modelContext)
 
         // Initialize button title based on mode
@@ -130,6 +141,17 @@ final class CloudKitTransferViewModel {
         transferManager.cancelTransfer(audiobookId: audiobook.id)
     }
 
+    /// Check again (the upload may have finished since) and start if possible.
+    func retry() {
+        Task {
+            state = .idle
+            await checkChunkAvailability()
+            if state == .idle, !isActionDisabled {
+                start()
+            }
+        }
+    }
+
     // MARK: - Upload
 
     private func upload() async {
@@ -164,6 +186,9 @@ final class CloudKitTransferViewModel {
             _ = try await transferManager.downloadAudiobook(audiobook)
 
             state = .complete
+            #if os(watchOS)
+                WKInterfaceDevice.current().play(.success)
+            #endif
 
         } catch ChunkTransferError.cancelled {
             // The user asked for this; don't report it back to them as a failure.
@@ -185,6 +210,7 @@ struct CloudKitTransferView: View {
     let audiobook: Audiobook
 
     @State private var viewModel: CloudKitTransferViewModel?
+    @State private var showingBatteryConfirmation = false
 
     private var isTransferring: Bool {
         viewModel?.activeProgress != nil
@@ -251,11 +277,24 @@ struct CloudKitTransferView: View {
                 }
             #endif
         }
-        .alert("Transfer Error", isPresented: errorBinding) {
-            Button("OK") {}
+        .confirmationDialog(
+            "Low Battery",
+            isPresented: $showingBatteryConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Download Anyway") { viewModel?.start() }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text(errorMessage)
+            Text("Your Watch battery is low. A large download may drain it before it finishes.")
         }
+        #if os(iOS)
+            // The Watch shows the error inline with Try Again instead
+            .alert("Transfer Error", isPresented: errorBinding) {
+                Button("OK") {}
+            } message: {
+                Text(errorMessage)
+            }
+        #endif
         .onAppear {
             if viewModel == nil {
                 let vm = CloudKitTransferViewModel(
@@ -265,9 +304,14 @@ struct CloudKitTransferView: View {
                 )
                 viewModel = vm
 
-                // Check chunk availability for both upload and download modes
-                Task {
-                    await vm.checkChunkAvailability()
+                if let progress = vm.activeProgress {
+                    // Already running, started from elsewhere
+                    vm.state = .transferring(progress)
+                } else {
+                    // Check chunk availability for both upload and download modes
+                    Task {
+                        await vm.checkChunkAvailability()
+                    }
                 }
             }
         }
@@ -305,9 +349,17 @@ struct CloudKitTransferView: View {
             case .complete:
                 completionCard
 
-            case .error:
+            case .error(let message):
                 header(viewModel)
-                EmptyView()
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Try Again") {
+                    viewModel.retry()
+                }
+                .font(.footnote)
+                .buttonStyle(.borderedProminent)
             }
         #endif
     }
@@ -528,7 +580,11 @@ struct CloudKitTransferView: View {
             .foregroundStyle(viewModel.isActionDisabled ? .gray : .blue)
 
             Button {
-                viewModel.start()
+                if isBatteryLow {
+                    showingBatteryConfirmation = true
+                } else {
+                    viewModel.start()
+                }
             } label: {
                 Text(viewModel.actionButtonTitle)
                     .font(.footnote)
@@ -537,6 +593,22 @@ struct CloudKitTransferView: View {
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isActionDisabled)
         }
+    }
+
+    /// Low and not charging, so a long download deserves a warning first.
+    private var isBatteryLow: Bool {
+        #if os(watchOS)
+            let device = WKInterfaceDevice.current()
+            device.isBatteryMonitoringEnabled = true
+            if device.batteryState == .charging || device.batteryState == .full {
+                return false
+            }
+            // A negative level means monitoring is unavailable; don't block on it
+            let level = device.batteryLevel
+            return level >= 0 && level < WatchCloudKitDownloads.minimumBatteryLevel
+        #else
+            return false
+        #endif
     }
 
     // MARK: - Progress

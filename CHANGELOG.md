@@ -8,6 +8,38 @@ A version's **App Store** line is the short text for App Store Connect's
 "What's New in This Version" field; the lists below it are the full detail.
 Up to 1.3.0 the lists themselves were submitted.
 
+## 1.5.0 — 2026-11-24
+
+Tags: `v1.5.0` (build 8)
+
+**App Store:** Sending books to Apple Watch is clearer, books sent via iCloud download on the Watch by themselves, and downloads show their progress everywhere.
+
+### Added
+- A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there (not on low battery)
+- Download progress with time left in the library, the player and a book's Details, with Cancel and Stream Instead
+- Send to Watch explains each route, offers the other one, and says what happens next
+- Import several M4B files at once
+- An offline note in the library on iPhone and Watch
+- Watch haptics for play, pause, skip and finished downloads
+
+### Changed
+- Audiobookshelf downloads on iPhone continue in the background and resume after a dropped connection
+- Delete Everywhere, Delete from Library and removing all iCloud uploads ask for confirmation
+- The Watch warns before an iCloud download on low battery
+- Plain names for transfer routes and settings: Via iCloud, Directly from iPhone, iCloud Transfer Storage
+- Larger tap areas for the skip and chapter buttons
+
+### Removed
+- Library pull to refresh and the Transfer While Charging Only setting, neither of which did anything
+
+### Fixed
+- Failed downloads and transfers looked finished; both devices now show the error with Try Again
+- The Watch showed 0% for a whole transfer from iPhone, and stayed stuck on one that failed
+- iCloud transfers of books under 100 MB showed no percentage or time left
+- Cancel didn't stop an iCloud upload
+- A library search with no matches hid the search field
+- iCloud Drive downloads could give up after 10 minutes while still progressing
+
 ## 1.4.0 — 2026-09-30
 
 Tags: `v1.4.0` (build 7). `v1.3.1` (build 6) was tagged and built but never

@@ -135,8 +135,7 @@ final class UserSettings {
     /// Default is false (WiFi-only) to preserve battery and avoid data charges
     var allowCellularForCloudKitTransfers: Bool = false
     
-    /// Whether to only allow Watch transfers while the iPhone is charging
-    /// Default is false (transfer anytime)
+    /// Unused. Stays because it is part of the deployed CloudKit schema.
     var transferToWatchWhileChargingOnly: Bool = false
 
     // MARK: - Timestamps
@@ -238,15 +237,6 @@ final class SettingsManager {
         get { settings?.allowCellularForCloudKitTransfers ?? false }
         set {
             settings?.allowCellularForCloudKitTransfers = newValue
-            settings?.touch()
-            save()
-        }
-    }
-    
-    var transferToWatchWhileChargingOnly: Bool {
-        get { settings?.transferToWatchWhileChargingOnly ?? false }
-        set {
-            settings?.transferToWatchWhileChargingOnly = newValue
             settings?.touch()
             save()
         }

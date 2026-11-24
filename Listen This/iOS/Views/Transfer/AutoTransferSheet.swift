@@ -15,58 +15,36 @@ struct AutoTransferSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selector: TransferMethodSelector?
     @State private var selectedMethod: SelectedMethod?
+    @State private var completedMethod: SelectedMethod?
     @State private var isTransferring = false
     @State private var transferError: Error?
     @State private var showError = false
     @State private var cloudKitManager: CloudKitChunkedTransferManager?
+    @State private var presence = SheetPresence()
+
+    /// Whether leaving abandons nothing, which decides the dismiss button's
+    /// meaning (see the toolbar).
+    private var canOnlyAcknowledge: Bool {
+        if isTransferring || completedMethod != nil { return true }
+        if case .error = selectedMethod { return true }
+        return false
+    }
 
     var body: some View {
         VStack(spacing: 20) {
-            if let selectedMethod {
-                // Show selected method
-                VStack(spacing: 12) {
-                    Image(systemName: methodIcon(selectedMethod))
-                        .font(.system(size: 48))
-                        .foregroundStyle(methodColor(selectedMethod))
-
-                    Text(methodTitle(selectedMethod))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-
-                    Text(methodDescription(selectedMethod))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .padding()
+            if let completedMethod {
+                completionView(completedMethod)
+            } else if let selectedMethod {
+                methodHeader(selectedMethod)
 
                 if isTransferring {
                     transferProgressView
-                } else {
-                    // Show appropriate buttons based on method
-                    if case .alreadyUploaded = selectedMethod {
-                        Button("OK") {
-                            dismiss()
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal)
-                    } else if case .error = selectedMethod {
-                        // Dismissal lives in the toolbar; a second Cancel here
-                        // would just be the same action twice on one screen.
-                        EmptyView()
-                    } else {
+                } else if let action = startTitle(selectedMethod) {
+                    VStack(spacing: 12) {
                         Button {
-                            Task {
-                                await performTransfer()
-                            }
+                            Task { await performTransfer() }
                         } label: {
-                            Text("Start Transfer")
+                            Text(action)
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .padding()
@@ -74,25 +52,26 @@ struct AutoTransferSheet: View {
                                 .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-                        .padding(.horizontal)
+
+                        if let alternative = alternativeMethod(to: selectedMethod) {
+                            Button(alternativeTitle(alternative)) {
+                                self.selectedMethod = alternative
+                            }
+                        }
                     }
+                    .padding(.horizontal)
                 }
             } else {
-                ProgressView("Selecting best method...")
+                ProgressView("Choosing how to send...")
             }
         }
-        .navigationTitle("Transfer to Watch")
+        .navigationTitle("Send to Watch")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // Without a toolbar dismiss this sheet had no visible way out at
-            // all while transferring — only an interactive swipe.
-            //
-            // The placements are semantic rather than positional, so the button
-            // is declared by what it means and the system positions it: before
-            // starting, leaving abandons the transfer (a cancellation); once
-            // running, the transfer continues regardless, so leaving is just an
-            // acknowledgement (a confirmation).
-            if isTransferring {
+            // Placements are semantic: before starting, leaving abandons the
+            // transfer (a cancellation); once running or finished, the transfer
+            // carries on regardless, so leaving is an acknowledgement.
+            if canOnlyAcknowledge {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
@@ -103,6 +82,9 @@ struct AutoTransferSheet: View {
             }
         }
         .alert("Transfer Failed", isPresented: $showError) {
+            Button("Try Again") {
+                Task { await performTransfer() }
+            }
             Button("OK", role: .cancel) {
                 transferError = nil
             }
@@ -121,197 +103,236 @@ struct AutoTransferSheet: View {
                 cloudKitManager = CloudKitChunkedTransferManager(modelContext: modelContext)
             }
         }
-        .interactiveDismissDisabled(isTransferring)
+        .onAppear { presence.isVisible = true }
+        .onDisappear { presence.isVisible = false }
     }
+
+    // MARK: - Sections
+
+    private func methodHeader(_ method: SelectedMethod) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: methodIcon(method))
+                .font(.system(size: 48))
+                .foregroundStyle(methodColor(method))
+
+            Text(methodTitle(method))
+                .font(.title3)
+                .fontWeight(.semibold)
+
+            Text(methodSummary(method))
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+
+            if let reason = method.reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var transferProgressView: some View {
+        if let manager = cloudKitManager, let progress = manager.activeUploads[audiobook.id] {
+            TransferProgressView(progress: progress, cancelTitle: "Cancel Upload") {
+                manager.cancelTransfer(audiobookId: audiobook.id)
+            }
+            .padding(.horizontal)
+        } else if let fraction = TransferProgressCenter.shared.fraction(for: audiobook.id) {
+            // The book is coming down from iCloud Drive before it can be sent
+            VStack(spacing: 8) {
+                ProgressView(value: fraction)
+                Text("Downloading from iCloud Drive, \(Int(fraction * 100))%")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 32)
+        } else {
+            // Fetching the file from iCloud Drive or queueing a direct transfer
+            ProgressView("Preparing...")
+                .padding()
+        }
+    }
+
+    /// What happens next, so the sheet never just closes on the user.
+    private func completionView(_ method: SelectedMethod) -> some View {
+        let title = audiobook.title
+        let (icon, heading, detail): (String, String, String) =
+            switch method {
+            case .cloudKit, .alreadyUploaded:
+                (
+                    "checkmark.icloud", "Ready in iCloud",
+                    "Open Listen This on your Watch and it downloads \"\(title)\" over Wi-Fi."
+                )
+            case .watchConnectivity:
+                (
+                    "applewatch", "Sending to Watch",
+                    "This keeps going in the background, so you can close this. \"\(title)\" appears on your Watch when it arrives, and you'll be told here if it fails."
+                )
+            case .iCloudDirect:
+                ("checkmark.circle", "Downloaded to iPhone", "\"\(title)\" is ready on this iPhone.")
+            case .error(let reason):
+                ("exclamationmark.triangle", "Can't Send", reason)
+            }
+
+        return VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundStyle(.green)
+            Text(heading)
+                .font(.title3)
+                .fontWeight(.semibold)
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+
+    // MARK: - Transfer
 
     private func performTransfer() async {
         guard let selectedMethod, let manager = cloudKitManager else { return }
 
         isTransferring = true
+        defer { isTransferring = false }
+
         do {
-            // Execute transfer based on selected method
             switch selectedMethod {
             case .cloudKit:
-                #if os(iOS)
-                    // iPhone: Upload to CloudKit with progress tracking
+                do {
                     try await manager.uploadAudiobook(audiobook)
-                    // Mark as uploaded so UI disables transfer button
-                    iOSWatchConnectivityManager.shared.markCloudKitUploaded(audiobookId: audiobook.id.uuidString)
-                #else
-                    // Watch: Download from CloudKit with progress tracking
-                    _ = try await manager.downloadAudiobook(audiobook)
-                #endif
+                } catch ChunkTransferError.alreadyUploaded {
+                    // Finished by an earlier attempt; nothing left to send
+                }
+                iOSWatchConnectivityManager.shared.markCloudKitUploaded(
+                    audiobookId: audiobook.id.uuidString)
+                iOSWatchConnectivityManager.shared.announceCloudKitUpload(
+                    audiobookId: audiobook.id)
 
             case .watchConnectivity:
-                #if os(iOS)
-                    // Direct transfer via WatchConnectivity
-                    // Ensure file is cached first
-                    if !audiobook.isFileCached {
-                        let cacheManager = AudiobookCacheManager(modelContext: modelContext)
-                        _ = try await audiobook.downloadAndCache(using: cacheManager)
-                    }
-
-                    let watchConnectivityManager = iOSWatchConnectivityManager.shared
-                    try await watchConnectivityManager.transferAudiobook(audiobook)
-                #else
-                    throw TransferError.methodUnavailable
-                #endif
+                if !audiobook.isFileCached {
+                    let cacheManager = AudiobookCacheManager(modelContext: modelContext)
+                    _ = try await audiobook.downloadAndCache(using: cacheManager)
+                }
+                try await iOSWatchConnectivityManager.shared.transferAudiobook(audiobook)
 
             case .iCloudDirect:
-                // Direct iCloud download
                 let cacheManager = AudiobookCacheManager(modelContext: modelContext)
                 _ = try await audiobook.downloadAndCache(using: cacheManager)
 
             case .alreadyUploaded:
-                // Nothing to do - already uploaded
-                break
+                iOSWatchConnectivityManager.shared.announceCloudKitUpload(
+                    audiobookId: audiobook.id)
 
             case .error(let reason):
                 throw TransferError.noMethodAvailable(reason)
             }
 
-            await MainActor.run {
-                dismiss()
-            }
+            completedMethod = selectedMethod
+        } catch ChunkTransferError.cancelled {
+            // The user stopped it
         } catch {
-            await MainActor.run {
+            if presence.isVisible {
                 transferError = error
                 showError = true
-                isTransferring = false
+            } else {
+                // The sheet was closed mid-upload; the library reports it instead.
+                iOSWatchConnectivityManager.shared.transferFailure = WatchTransferFailure(
+                    audiobookId: audiobook.id,
+                    title: audiobook.title,
+                    message: error.localizedDescription
+                )
             }
+        }
+    }
+
+    // MARK: - Method Presentation
+
+    /// The other route, when it can carry this book.
+    private func alternativeMethod(to method: SelectedMethod) -> SelectedMethod? {
+        switch method {
+        case .cloudKit:
+            guard audiobook.isFileCached,
+                audiobook.fileSize <= TransferMethodSelector.watchConnectivityLimit
+            else { return nil }
+            return .watchConnectivity(reason: "You chose to send it directly.")
+        case .watchConnectivity:
+            return .cloudKit(reason: "You chose to send it via iCloud.")
+        default:
+            return nil
+        }
+    }
+
+    private func alternativeTitle(_ method: SelectedMethod) -> String {
+        if case .cloudKit = method {
+            return "Send via iCloud Instead"
+        }
+        return "Send Directly Instead"
+    }
+
+    private func startTitle(_ method: SelectedMethod) -> String? {
+        switch method {
+        case .cloudKit: "Upload to iCloud"
+        case .watchConnectivity: "Send to Watch"
+        case .iCloudDirect: "Download"
+        case .alreadyUploaded: "Send to Watch"
+        case .error: nil
         }
     }
 
     private func methodIcon(_ method: SelectedMethod) -> String {
         switch method {
-        case .cloudKit:
-            return "icloud.and.arrow.up"
-        case .watchConnectivity:
-            return "applewatch"
-        case .iCloudDirect:
-            return "icloud.and.arrow.down"
-        case .alreadyUploaded:
-            return "checkmark.icloud"
-        case .error:
-            return "exclamationmark.triangle"
+        case .cloudKit: "icloud.and.arrow.up"
+        case .watchConnectivity: "applewatch"
+        case .iCloudDirect: "icloud.and.arrow.down"
+        case .alreadyUploaded: "checkmark.icloud"
+        case .error: "exclamationmark.triangle"
         }
     }
 
     private func methodColor(_ method: SelectedMethod) -> Color {
         switch method {
-        case .cloudKit:
-            return .blue
-        case .watchConnectivity:
-            return .purple
-        case .iCloudDirect:
-            return .green
-        case .alreadyUploaded:
-            return .blue
-        case .error:
-            return .red
+        case .cloudKit, .alreadyUploaded: .blue
+        case .watchConnectivity: .purple
+        case .iCloudDirect: .green
+        case .error: .red
         }
     }
 
     private func methodTitle(_ method: SelectedMethod) -> String {
         switch method {
-        case .cloudKit:
-            return "CloudKit Transfer"
-        case .watchConnectivity:
-            return "Direct Transfer"
-        case .iCloudDirect:
-            return "iCloud Download"
-        case .alreadyUploaded:
-            return "Already Uploaded"
-        case .error:
-            return "Transfer Error"
+        case .cloudKit: "Send via iCloud"
+        case .watchConnectivity: "Send Directly"
+        case .iCloudDirect: "Download from iCloud Drive"
+        case .alreadyUploaded: "Ready in iCloud"
+        case .error: "Can't Send"
         }
     }
 
-    private func methodDescription(_ method: SelectedMethod) -> String {
+    /// What the route does, in the user's terms.
+    private func methodSummary(_ method: SelectedMethod) -> String {
         switch method {
-        case .cloudKit(let reason):
-            return reason
-        case .watchConnectivity(let reason):
-            return reason
-        case .iCloudDirect(let reason):
-            return reason
-        case .alreadyUploaded(let reason):
-            return reason
+        case .cloudKit:
+            "Uploads the book to iCloud, and your Watch downloads it over Wi-Fi the next time Listen This is open there."
+        case .watchConnectivity:
+            "Sends the book straight from this iPhone to your Watch. Slower, but it keeps going in the background."
+        case .iCloudDirect:
+            "Downloads the book from iCloud Drive to this iPhone."
+        case .alreadyUploaded:
+            "The book is already in iCloud. Your Watch downloads it the next time Listen This is open there."
         case .error(let reason):
-            return reason
+            reason
         }
     }
+}
 
-    @ViewBuilder
-    private var transferProgressView: some View {
-        VStack(spacing: 16) {
-            // Check for CloudKit upload progress
-            if let manager = cloudKitManager,
-                let progress = manager.activeUploads[audiobook.id]
-            {
-                cloudKitProgressView(progress)
-            } else if let manager = cloudKitManager,
-                let progress = manager.activeDownloads[audiobook.id]
-            {
-                // Download progress (for Watch)
-                cloudKitProgressView(progress)
-            } else {
-                // Generic progress spinner for non-CloudKit transfers
-                ProgressView("Transferring...")
-                    .padding()
-            }
-        }
-        .padding()
-    }
-    
-    @ViewBuilder
-    private func cloudKitProgressView(_ progress: ChunkTransferProgress) -> some View {
-        VStack(spacing: 16) {
-            // Circular progress with percentage
-            ZStack {
-                Circle()
-                    .stroke(Color.blue.opacity(0.2), lineWidth: 8)
-                    .frame(width: 100, height: 100)
-                
-                Circle()
-                    .trim(from: 0, to: progress.progress)
-                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 100, height: 100)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.3), value: progress.progress)
-                
-                VStack(spacing: 2) {
-                    Text("\(progress.progressPercentage)%")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                    
-                    if !progress.speedText.isEmpty {
-                        Text(progress.speedText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-            }
-            
-            // Transfer details
-            VStack(spacing: 6) {
-                Text(progress.statusText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                
-                Text(progress.progressText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                
-                if let timeRemaining = progress.estimatedTimeRemainingText {
-                    Text(timeRemaining)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding()
-    }
+/// Whether the sheet is still on screen, readable from a transfer that
+/// outlives it. A class so the task sees changes made after it started.
+private final class SheetPresence {
+    var isVisible = true
 }

@@ -74,23 +74,23 @@ final class TransferMethodSelector {
         let cloudKitStatus = await cloudKitManager.checkCloudKitChunks(for: audiobook)
 
         if cloudKitStatus == .fullyUploaded {
-            return .alreadyUploaded(
-                reason: "Book is already uploaded to CloudKit. Watch can download it directly.")
+            return .alreadyUploaded(reason: "It was uploaded earlier.")
         }
 
+        let preference = "Your choice in Settings › Send to Watch."
         switch preferredMethod {
         case .automatic:
             return automaticSelection(for: audiobook)
         case .cloudKit:
-            return .cloudKit(reason: "User preference")
+            return .cloudKit(reason: preference)
         case .watchConnectivity:
             #if os(iOS)
-                return .watchConnectivity(reason: "User preference")
+                return .watchConnectivity(reason: preference)
             #else
                 return .cloudKit(reason: "WatchConnectivity unavailable on Watch")
             #endif
         case .iCloudDirect:
-            return .iCloudDirect(reason: "User preference")
+            return .iCloudDirect(reason: preference)
         }
     }
 
@@ -98,9 +98,13 @@ final class TransferMethodSelector {
     private func automaticSelection(for audiobook: Audiobook) -> SelectedMethod {
         let fileSize = audiobook.fileSize
 
+        // The monitor's first callback can arrive after this runs; read the
+        // path directly rather than decide on an unknown network.
+        updateNetworkStatus(networkMonitor.currentPath)
+
         // Very large files (>300MB) - CloudKit only
         if fileSize > Self.watchConnectivityLimit {
-            return .cloudKit(reason: "File too large for WatchConnectivity")
+            return .cloudKit(reason: "Picked because the book is too large to send directly.")
         }
 
         // Large files (>50MB) - prefer CloudKit
@@ -108,16 +112,18 @@ final class TransferMethodSelector {
             // Check network status
             switch currentNetworkStatus {
             case .wifi:
-                return .cloudKit(reason: "Large file + WiFi available")
+                return .cloudKit(reason: "Picked because it's faster for a large book on Wi-Fi.")
             case .cellular:
                 #if os(iOS)
-                    return .watchConnectivity(reason: "Large file but on cellular")
+                    return .watchConnectivity(
+                        reason: "Picked because this iPhone isn't on Wi-Fi.")
                 #else
                     return .cloudKit(reason: "Large file + cellular Watch")
                 #endif
             case .none, .unknown:
                 #if os(iOS)
-                    return .watchConnectivity(reason: "No WiFi, using Bluetooth")
+                    return .watchConnectivity(
+                        reason: "Picked because this iPhone is offline.")
                 #else
                     return .error(reason: "No network connection available")
                 #endif
@@ -128,9 +134,10 @@ final class TransferMethodSelector {
         #if os(iOS)
             // On iPhone, use WatchConnectivity for small files if Watch is nearby
             if watchConnectivityManager.isReachable {
-                return .watchConnectivity(reason: "Small file + Watch nearby")
+                return .watchConnectivity(
+                    reason: "Picked because the book is small and the Watch is reachable.")
             } else {
-                return .cloudKit(reason: "Small file but Watch not nearby")
+                return .cloudKit(reason: "Picked because the Watch isn't reachable right now.")
             }
         #else
             // On Watch, always use CloudKit for downloads
@@ -252,22 +259,22 @@ enum TransferMethod: String, CaseIterable, Identifiable {
         case .automatic:
             return "Automatic"
         case .cloudKit:
-            return "CloudKit Chunks"
+            return "Via iCloud"
         case .watchConnectivity:
-            return "WatchConnectivity"
+            return "Directly from iPhone"
         case .iCloudDirect:
-            return "iCloud Direct"
+            return "iCloud Drive"
         }
     }
 
     var description: String {
         switch self {
         case .automatic:
-            return "Automatically choose the best method"
+            return "Picks the best route for each book"
         case .cloudKit:
-            return "Fast cloud transfer (recommended for large files)"
+            return "Uploads to iCloud, then the Watch downloads it. Faster for large books"
         case .watchConnectivity:
-            return "Direct device transfer (slower, no cloud storage)"
+            return "Sends straight to the Watch. Slower, uses no iCloud storage"
         case .iCloudDirect:
             return "Download directly from iCloud Drive"
         }
@@ -280,6 +287,18 @@ enum SelectedMethod: CustomStringConvertible {
     case iCloudDirect(reason: String)
     case alreadyUploaded(reason: String)
     case error(reason: String)
+
+    /// Why this route was picked, for display. An error's reason is its whole
+    /// message, so it has none of its own.
+    var reason: String? {
+        switch self {
+        case .cloudKit(let reason), .watchConnectivity(let reason),
+            .iCloudDirect(let reason), .alreadyUploaded(let reason):
+            reason
+        case .error:
+            nil
+        }
+    }
 
     var description: String {
         switch self {

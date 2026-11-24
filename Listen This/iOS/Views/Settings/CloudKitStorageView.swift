@@ -20,6 +20,7 @@ struct CloudKitStorageView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var totalStorageUsed: Int64 = 0
+    @State private var confirmingClearAll = false
 
     var body: some View {
         List {
@@ -39,18 +40,24 @@ struct CloudKitStorageView: View {
                     }
                 }
             } header: {
-                Text("CloudKit Storage")
+                Text("iCloud")
             } footer: {
                 Text(
-                    "How much space is taken by the uploaded audiobooks."
+                    "Space in your iCloud storage taken by books sent to the Watch via iCloud."
                 )
             }
 
             Section {
                 if uploadedAudiobooks.isEmpty && !isLoading {
-                    Text("No audiobooks uploaded to CloudKit")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nothing waiting")
+                            .font(.subheadline)
+                        Text(
+                            "Books sent via iCloud wait here until your Watch downloads them, then they're removed. To send one, swipe right on it in the library."
+                        )
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .font(.subheadline)
+                    }
                 } else {
                     ForEach(uploadedAudiobooks) { uploaded in
                         UploadedAudiobookRow(uploaded: uploaded) {
@@ -61,31 +68,41 @@ struct CloudKitStorageView: View {
                     }
                 }
             } header: {
-                Text("Uploaded Audiobooks")
+                Text("Waiting for the Watch")
             } footer: {
-                Text(
-                    "These audiobooks are uploaded to CloudKit and can be downloaded on your Apple Watch."
-                )
+                if !uploadedAudiobooks.isEmpty {
+                    Text(
+                        "Deleting one frees its space. A book your Watch hasn't downloaded yet then has to be sent again."
+                    )
+                }
             }
 
             Section {
-                Button("Refresh Storage Info") {
-                    Task {
-                        await loadStorageInfo()
-                    }
-                }
-                .disabled(isLoading)
-
-                Button("Clear All CloudKit Data", role: .destructive) {
-                    Task {
-                        await clearAllData()
-                    }
+                Button("Remove All", role: .destructive) {
+                    confirmingClearAll = true
                 }
                 .disabled(isLoading || uploadedAudiobooks.isEmpty)
             }
         }
-        .navigationTitle("CloudKit Storage")
+        .refreshable {
+            await loadStorageInfo()
+        }
+        .navigationTitle("iCloud Transfer Storage")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Remove All Uploads?",
+            isPresented: $confirmingClearAll,
+            titleVisibility: .visible
+        ) {
+            Button("Remove All", role: .destructive) {
+                Task { await clearAllData() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Deletes \(uploadedAudiobooks.count) uploaded \(uploadedAudiobooks.count == 1 ? "book" : "books") (\(ByteCountFormatter.string(fromByteCount: totalStorageUsed, countStyle: .file))) from iCloud. Books already on your Watch stay there; the rest have to be sent again."
+            )
+        }
         .alert("Error", isPresented: $showingError) {
             Button("OK") {}
         } message: {
@@ -209,24 +226,29 @@ struct CloudKitStorageView: View {
         guard let manager = transferManager else { return }
 
         isLoading = true
+        defer { isLoading = false }
 
+        var failed: [UploadedAudiobook] = []
         for uploaded in uploadedAudiobooks {
             do {
                 try await manager.deleteAudiobookFromCloud(audiobookId: uploaded.audiobookId)
                 // Clear from tracking so transfer button becomes available again
-                await MainActor.run {
-                    iOSWatchConnectivityManager.shared.clearCloudKitUploaded(audiobookId: uploaded.audiobookId.uuidString)
-                }
+                iOSWatchConnectivityManager.shared.clearCloudKitUploaded(
+                    audiobookId: uploaded.audiobookId.uuidString)
             } catch {
                 AppLogger.cloudKit.error(
                     "Failed to delete \(uploaded.title): \(error.localizedDescription)")
+                failed.append(uploaded)
             }
         }
 
-        await MainActor.run {
-            uploadedAudiobooks = []
-            totalStorageUsed = 0
-            isLoading = false
+        // Keep what couldn't be removed listed, and say so
+        uploadedAudiobooks = failed
+        totalStorageUsed = failed.reduce(0) { $0 + $1.fileSize }
+        if !failed.isEmpty {
+            errorMessage =
+                "Couldn't remove \(failed.map(\.title).joined(separator: ", ")). Try again later."
+            showingError = true
         }
     }
 }
@@ -245,8 +267,6 @@ struct UploadedAudiobook: Identifiable {
 struct UploadedAudiobookRow: View {
     let uploaded: UploadedAudiobook
     let onDelete: () -> Void
-
-    @State private var showingDeleteConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

@@ -14,9 +14,9 @@ struct ImportView: View {
 
     @State private var libraryService: AudiobookLibraryService?
     @State private var isImporting = false
-    @State private var importError: AudiobookError?
+    @State private var importProgress: (done: Int, total: Int) = (0, 0)
+    @State private var importErrors: [String] = []
     @State private var showingFilePicker = false
-    @State private var showingRefreshSheet = false
     @State private var showingAudiobookshelf = false
     @State private var showingAudiobookshelfSettings = false
 
@@ -27,7 +27,7 @@ struct ImportView: View {
                     Button {
                         showingFilePicker = true
                     } label: {
-                        Label("Import M4B File", systemImage: "doc.badge.plus")
+                        Label("Import M4B Files", systemImage: "doc.badge.plus")
                     }
                     .disabled(isImporting)
 
@@ -57,14 +57,18 @@ struct ImportView: View {
                     }
                 }
 
-                if let error = importError {
+                if !importErrors.isEmpty {
                     Section {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text(error.userMessage)
-                                .font(.caption)
+                        ForEach(importErrors, id: \.self) { message in
+                            HStack(alignment: .top) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                Text(message)
+                                    .font(.caption)
+                            }
                         }
+                    } header: {
+                        Text("Not Imported")
                     }
                 }
 
@@ -75,7 +79,7 @@ struct ImportView: View {
                             Label("From iCloud Drive", systemImage: "icloud")
                                 .font(.subheadline.weight(.medium))
                             
-                            Text("Place M4B files in iCloud Drive, then tap 'Import M4B File' to select them.")
+                            Text("Place M4B files in iCloud Drive, then tap 'Import M4B Files' to select one or more.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -112,7 +116,7 @@ struct ImportView: View {
             .fileImporter(
                 isPresented: $showingFilePicker,
                 allowedContentTypes: [.audiobook, .mpeg4Audio],
-                allowsMultipleSelection: false
+                allowsMultipleSelection: true
             ) { result in
                 Task {
                     await handleFileImport(result)
@@ -128,7 +132,11 @@ struct ImportView: View {
             }
             .overlay {
                 if isImporting {
-                    ProgressView("Importing...")
+                    ProgressView(
+                        importProgress.total > 1
+                            ? "Importing \(importProgress.done + 1) of \(importProgress.total)..."
+                            : "Importing..."
+                    )
                         .padding()
                         .background(.regularMaterial)
                         .cornerRadius(10)
@@ -144,69 +152,38 @@ struct ImportView: View {
 
     // MARK: - Actions
 
+    /// Imports each picked file in turn. Closes when all succeed; otherwise
+    /// stays open listing the ones that didn't.
     private func handleFileImport(_ result: Result<[URL], Error>) async {
-        isImporting = true
-        importError = nil
+        importErrors = []
 
+        let urls: [URL]
+        do {
+            urls = try result.get()
+        } catch {
+            importErrors = [error.localizedDescription]
+            return
+        }
+
+        guard !urls.isEmpty, let service = libraryService else { return }
+
+        isImporting = true
         defer { isImporting = false }
 
-        do {
-            let urls = try result.get()
-
-            guard let url = urls.first else {
-                AppLogger.import.error("No URL selected")
-                return
+        for (index, url) in urls.enumerated() {
+            importProgress = (index, urls.count)
+            do {
+                _ = try await service.importFile(from: url)
+            } catch {
+                AppLogger.import.error(
+                    "Import of \(url.lastPathComponent) failed: \(error.localizedDescription)")
+                importErrors.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
+        }
 
-            guard let service = libraryService else {
-                AppLogger.import.error("Library service is nil")
-                return
-            }
-
-            _ = try await service.importFile(from: url)
-
-            // Success - dismiss after brief delay
-            try? await Task.sleep(for: .seconds(0.5))
+        if importErrors.isEmpty {
             dismiss()
-
-        } catch let error as AudiobookError {
-            AppLogger.import.error("AudiobookError: \(error.userMessage)")
-            importError = error
-        } catch {
-            AppLogger.import.error("Unknown error: \(error.localizedDescription)")
-            importError = .unknown(error)
         }
-    }
-}
-
-// MARK: - Supporting Views
-
-struct RefreshProgressView: View {
-    let isRefreshing: Bool
-
-    var body: some View {
-        VStack(spacing: 20) {
-            if isRefreshing {
-                ProgressView()
-                    .controlSize(.large)
-
-                Text("Scanning iCloud Drive...")
-                    .font(.headline)
-
-                Text("Looking for M4B audiobook files")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.green)
-
-                Text("Scan Complete")
-                    .font(.headline)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -21,6 +21,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) {
         logger.info("Background URLSession with identifier '\(identifier)' has events to deliver")
 
+        if identifier == AudiobookshelfDownloadManager.sessionIdentifier {
+            AudiobookshelfDownloadManager.shared.handleBackgroundSessionEvents(
+                completion: completionHandler)
+            return
+        }
+
         // Store the completion handler
         // The CloudKitChunkedTransferManager's URLSession delegate will call this
         // when urlSessionDidFinishEvents(forBackgroundURLSession:) is invoked

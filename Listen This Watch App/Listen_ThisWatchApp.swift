@@ -102,6 +102,12 @@ struct Listen_ThisWatchApp: App {
                     AudiobookshelfDownloadManager.shared.configure(
                         modelContext: modelContainer.mainContext)
 
+                    // Start any iCloud download the iPhone queued while the
+                    // app wasn't running
+                    WatchCloudKitDownloads.shared.configure(
+                        modelContext: modelContainer.mainContext)
+                    WatchCloudKitDownloads.shared.setAppActive(true)
+
                     // Check for any ongoing or pending transfers
                     watchConnectivityManager.checkPendingTransfers()
 
@@ -134,10 +140,11 @@ struct Listen_ThisWatchApp: App {
     // MARK: - Transfer Monitoring
 
     private func startTransferMonitoring() {
-        // Log transfer status every 10 seconds
+        // Drop transfers the iPhone has gone quiet about, so a row doesn't
+        // stay stuck on "transferring" with Download disabled
         transferCheckTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
-                _ = watchConnectivityManager.activeTransfers.count
+                watchConnectivityManager.expireStaleTransfers()
             }
         }
     }
@@ -187,6 +194,8 @@ struct Listen_ThisWatchApp: App {
     // MARK: - Scene Phase Handling
 
     private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+        WatchCloudKitDownloads.shared.setAppActive(newPhase == .active)
+
         if newPhase == .background {
             // App entering background - save playback state and sync
             AppLogger.general.info("[WatchApp] Entering background, saving playback state")
