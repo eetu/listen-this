@@ -38,7 +38,7 @@ Your library and playback position sync automatically across all your devices vi
 ## What's New
 
 Release notes live in `CHANGELOG.md` at the repository root; paste a version's
-**App Store** line into the "What's New in This Version" field.
+**App Store** bullets into the "What's New in This Version" field.
 
 ## Keywords
 audiobook, m4b, player, listen, books, audio, watch, offline, chapters, audiobookshelf

@@ -4,15 +4,21 @@ User-facing changes, newest first. Each heading is an App Store version. Git
 tags mark Xcode Cloud builds and don't map one-to-one: several tags can share a
 version (see the tags listed under each release).
 
-A version's **App Store** line is the short text for App Store Connect's
-"What's New in This Version" field; the lists below it are the full detail.
-Up to 1.3.0 the lists themselves were submitted.
+A version's **App Store** list is the text for App Store Connect's "What's New
+in This Version" field: a few short bullets; the lists below it are the full
+detail. Up to 1.3.0 the full lists were submitted, and 1.4.0 used one line.
 
 ## 1.5.0 — 2026-11-24
 
 Tags: `v1.5.0` (build 8)
 
-**App Store:** Sending books to Apple Watch is clearer, books sent via iCloud download on the Watch by themselves, and downloads show their progress everywhere.
+**App Store:**
+- Books sent to Apple Watch via iCloud now download on the Watch by themselves
+- See download progress and time left in the library, the player and book details
+- Clearer Send to Watch, with the option to use the other route
+- Import several audiobooks at once
+- Deleting a book everywhere now asks first
+- Failed downloads and transfers now say so and offer Try Again
 
 ### Added
 - A book sent via iCloud downloads on the Watch by itself the next time Listen This is open there (not on low battery)

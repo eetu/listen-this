@@ -173,9 +173,9 @@ Release checklist:
    new App Store version, also bump `MARKETING_VERSION`
 2. **Changelog**: user-facing changes go under the next version's heading in
    `CHANGELOG.md` (`## X.Y.Z — Unreleased`) as they land. At release, replace
-   "Unreleased" with the date, list the tag, and add a one-line **App Store**
-   summary — that line is the "What's New" text; users skim it, so the detail
-   stays in the lists. A tag that never reaches the App Store gets no section
+   "Unreleased" with the date, list the tag, and add an **App Store** list of a
+   few short bullets — that's the "What's New" text; users skim it, so the
+   detail stays in the lists below. A tag that never reaches the App Store gets no section
    or GitHub release; its changes roll into the next version
 3. **Verify**: clean build of both schemes with 0 warnings, and the full test
    suite
